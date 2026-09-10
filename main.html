@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="ru" class="scroll-smooth select-none">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <title>NOVA WEB — Веб-разработка сайтов под ключ</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Шрифты Google: Unbounded (акцент) и Inter (основной) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Unbounded:wght@500;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Иконки Lucide -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            heading: ['Unbounded', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Неоновые фоновые пятна */
+    .glow-bg {
+      position: absolute;
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.18) 0%, rgba(0, 0, 0, 0) 70%);
+      filter: blur(50px);
+      z-index: -1;
+      pointer-events: none;
+    }
+    @media (min-width: 768px) {
+      .glow-bg {
+        width: 550px;
+        height: 550px;
+        filter: blur(70px);
+      }
+    }
+    /* Стеклянные карточки */
+    .glass-card {
+      background: rgba(18, 18, 26, 0.75);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      transition: all 0.25s ease;
+    }
+    .glass-card:hover {
+      border-color: rgba(99, 102, 241, 0.4);
+    }
+    /* Раскрывающийся аккордеон FAQ */
+    details summary::-webkit-details-marker {
+      display: none;
+    }
+  </style>
+</head>
+
+<body class="bg-[#09090d] text-zinc-200 font-sans antialiased selection:bg-indigo-500 selection:text-white relative overflow-x-hidden pb-12">
+
+  <!-- Фоновые неоновые блики -->
+  <div class="glow-bg top-[-80px] left-1/2 -translate-x-1/2"></div>
+  <div class="glow-bg top-[1200px] -right-20"></div>
+
+  <!-- ПЛАВАЮЩАЯ КНОПКА ДЛЯ ТЕЛЕФОНОВ (Быстрая связь в Telegram внизу экрана) -->
+  <aside aria-label="Быстрая связь" class="md:hidden fixed bottom-5 right-5 z-50">
+    <a href="https://t.me/tima_bt" target="_blank" aria-label="Написать в Telegram" class="flex items-center gap-2.5 bg-indigo-600 active:scale-95 text-white px-4 py-3 rounded-full shadow-2xl shadow-indigo-600/60 border border-indigo-400/30">
+      <i data-lucide="send" class="w-5 h-5"></i>
+      <span class="text-xs font-bold tracking-wide">Telegram</span>
+    </a>
+  </aside>
+
+  <!-- ШАПКА САЙТА -->
+  <header class="fixed top-0 left-0 w-full z-40 bg-[#09090d]/90 backdrop-blur-md border-b border-white/5">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between">
+      
+      <!-- Логотип -->
+      <a href="#" class="font-heading font-bold text-base sm:text-lg tracking-wider text-white flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-indigo-500 shadow-[0_0_10px_#6366f1]"></span>
+        NOVA<span class="text-indigo-400">WEB</span>
+      </a>
+
+      <!-- Меню для компьютеров -->
+      <nav class="hidden md:flex items-center gap-8 text-sm text-zinc-400 font-medium">
+        <a href="#services" data-i18n="nav_services" class="hover:text-white transition">Услуги</a>
+        <a href="#pricing" data-i18n="nav_pricing" class="hover:text-white transition">Цены</a>
+        <a href="#steps" data-i18n="nav_steps" class="hover:text-white transition">Этапы</a>
+        <a href="#faq" data-i18n="nav_faq" class="hover:text-white transition">Вопросы</a>
+        <a href="#contacts" data-i18n="nav_contacts" class="hover:text-white transition">Контакты</a>
+      </nav>
+
+      <!-- Переключатель языка и кнопки -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        
+        <!-- Кнопки RU / UZ -->
+        <div class="flex items-center bg-white/5 border border-white/10 rounded-full p-1 text-[11px] sm:text-xs font-semibold">
+          <button id="lang-ru" onclick="setLanguage('ru')" class="px-2.5 py-1 rounded-full bg-indigo-600 text-white transition">RU</button>
+          <button id="lang-uz" onclick="setLanguage('uz')" class="px-2.5 py-1 rounded-full text-zinc-400 hover:text-white transition">UZ</button>
+        </div>
+
+        <!-- Кнопка Telegram на десктопе -->
+        <a href="https://t.me/tima_bt" target="_blank" class="hidden md:flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold px-4 py-2 rounded-full transition shadow-md shadow-indigo-600/30">
+          <i data-lucide="send" class="w-3.5 h-3.5"></i>
+          <span data-i18n="nav_tg">Telegram</span>
+        </a>
+
+        <!-- Бургер-кнопка для мобилок -->
+        <button id="mobile-menu-btn" onclick="toggleMobileMenu()" class="md:hidden p-2 rounded-xl bg-white/5 border border-white/10 text-zinc-300 active:bg-white/10" aria-label="Открыть меню">
+          <i data-lucide="menu" id="menu-icon" class="w-5 h-5"></i>
+        </button>
+
+      </div>
+    </div>
+
+    <!-- ВЫПАДАЮЩЕЕ МОБИЛЬНОЕ МЕНЮ -->
+    <div id="mobile-menu" class="hidden md:hidden bg-[#0e0e14] border-b border-white/10 px-6 py-6 space-y-4">
+      <a href="#services" onclick="toggleMobileMenu()" data-i18n="nav_services" class="block text-base font-medium text-zinc-300 py-1">Услуги</a>
+      <a href="#pricing" onclick="toggleMobileMenu()" data-i18n="nav_pricing" class="block text-base font-medium text-zinc-300 py-1">Цены</a>
+      <a href="#steps" onclick="toggleMobileMenu()" data-i18n="nav_steps" class="block text-base font-medium text-zinc-300 py-1">Этапы</a>
+      <a href="#faq" onclick="toggleMobileMenu()" data-i18n="nav_faq" class="block text-base font-medium text-zinc-300 py-1">Вопросы</a>
+      <a href="#contacts" onclick="toggleMobileMenu()" data-i18n="nav_contacts" class="block text-base font-medium text-zinc-300 py-1">Контакты</a>
+    </div>
+  </header>
+
+  <main class="pt-24 sm:pt-32">
+    <!-- HERO-СЕКЦИЯ -->
+    <section class="max-w-5xl mx-auto px-4 sm:px-6 pt-6 pb-16 sm:pb-24 text-center">
+      
+      <!-- Статус -->
+      <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 text-[11px] sm:text-xs font-medium mb-6">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span data-i18n="hero_status">Открыт для новых заказов</span>
+      </div>
+
+      <!-- Главный оффер -->
+      <h1 class="font-heading text-3xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-white leading-[1.2] mb-6 sm:mb-8">
+        <span data-i18n="hero_title_1">Создаю сайты, которые</span> <br class="hidden sm:block"/>
+        <span data-i18n="hero_title_2" class="bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-300 to-indigo-200">
+          продают ваш бизнес
+        </span>
+      </h1>
+
+      <p data-i18n="hero_desc" class="max-w-2xl mx-auto text-zinc-400 text-sm sm:text-lg leading-relaxed mb-8 sm:mb-10 px-2">
+        Разработка скоростных сайтов: от продающих лендингов до каталогов с базой данных и админкой для самостоятельного управления товарами без знания кода.
+      </p>
+
+      <!-- Кнопки действия -->
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 sm:gap-4 max-w-sm sm:max-w-none mx-auto">
+        <a href="#contacts" class="h-12 px-6 rounded-xl bg-indigo-600 active:bg-indigo-700 text-white font-semibold text-sm shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2">
+          <span data-i18n="hero_btn_discuss">Обсудить проект</span>
+          <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </a>
+        <a href="#pricing" data-i18n="hero_btn_prices" class="h-12 px-6 rounded-xl bg-white/5 active:bg-white/10 text-zinc-300 font-semibold text-sm border border-white/10 flex items-center justify-center">
+          Узнать расценки
+        </a>
+      </div>
+
+      <!-- Метрики / Преимущества -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mt-14 sm:mt-20 pt-8 border-t border-white/5 text-left">
+        <div class="p-3.5 sm:p-4 rounded-xl bg-white/[0.02] border border-white/5">
+          <p class="text-xl sm:text-2xl font-heading font-bold text-white mb-1">100%</p>
+          <p data-i18n="feat_mobile" class="text-[11px] sm:text-xs text-zinc-400">Мобильный адаптив</p>
+        </div>
+        <div class="p-3.5 sm:p-4 rounded-xl bg-white/[0.02] border border-white/5">
+          <p class="text-xl sm:text-2xl font-heading font-bold text-indigo-400 mb-1">&lt; 1.5s</p>
+          <p data-i18n="feat_speed" class="text-[11px] sm:text-xs text-zinc-400">Быстрая загрузка</p>
+        </div>
+        <div class="p-3.5 sm:p-4 rounded-xl bg-white/[0.02] border border-white/5">
+          <p class="text-xl sm:text-2xl font-heading font-bold text-white mb-1">Admin</p>
+          <p data-i18n="feat_admin" class="text-[11px] sm:text-xs text-zinc-400">Своя админ-панель</p>
+        </div>
+        <div class="p-3.5 sm:p-4 rounded-xl bg-white/[0.02] border border-white/5">
+          <p class="text-xl sm:text-2xl font-heading font-bold text-purple-400 mb-1">30 дней</p>
+          <p data-i18n="feat_warranty" class="text-[11px] sm:text-xs text-zinc-400">Гарантия поддержки</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- СЕКЦИЯ: УСЛУГИ -->
+    <section id="services" class="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
+      <div class="mb-10 sm:mb-14 text-center md:text-left">
+        <p data-i18n="serv_badge" class="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-2 font-heading">Услуги</p>
+        <h2 data-i18n="serv_title" class="text-2xl sm:text-4xl font-heading font-bold text-white">Что я разрабатываю</h2>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6">
+        <!-- Услуга 1 -->
+        <div class="glass-card p-6 sm:p-8 rounded-2xl">
+          <div class="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-5">
+            <i data-lucide="layout-template" class="w-6 h-6"></i>
+          </div>
+          <h3 data-i18n="serv_1_h" class="font-heading font-semibold text-lg text-white mb-2.5">Landing Page</h3>
+          <p data-i18n="serv_1_p" class="text-zinc-400 text-xs sm:text-sm leading-relaxed mb-5">
+            Одностраничный продающий сайт. Фокус на презентации одной услуги или товара для высокой конверсии из рекламы.
+          </p>
+          <span data-i18n="serv_1_t" class="text-xs text-indigo-400 font-medium tracking-wide">Срок: от 3 до 7 дней</span>
+        </div>
+
+        <!-- Услуга 2 -->
+        <div class="glass-card p-6 sm:p-8 rounded-2xl">
+          <div class="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mb-5">
+            <i data-lucide="grid" class="w-6 h-6"></i>
+          </div>
+          <h3 data-i18n="serv_2_h" class="font-heading font-semibold text-lg text-white mb-2.5">Сайт-каталог (Витрина)</h3>
+          <p data-i18n="serv_2_p" class="text-zinc-400 text-xs sm:text-sm leading-relaxed mb-5">
+            Каталог с разделами и карточками товаров. Клиент просматривает позиции и в 1 клик отправляет заявку на покупку в ваш Telegram.
+          </p>
+          <span data-i18n="serv_2_t" class="text-xs text-purple-400 font-medium tracking-wide">Срок: от 7 до 14 дней</span>
+        </div>
+
+        <!-- Услуга 3 -->
+        <div class="glass-card p-6 sm:p-8 rounded-2xl">
+          <div class="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mb-5">
+            <i data-lucide="database" class="w-6 h-6"></i>
+          </div>
+          <h3 data-i18n="serv_3_h" class="font-heading font-semibold text-lg text-white mb-2.5">Каталог с Админ-панелью</h3>
+          <p data-i18n="serv_3_p" class="text-zinc-400 text-xs sm:text-sm leading-relaxed mb-5">
+            Сайт с базой данных (БД) и личным кабинетом. Вы сможете сами за 1 минуту добавлять товары, менять цены и загружать фото без программиста.
+          </p>
+          <span data-i18n="serv_3_t" class="text-xs text-cyan-400 font-medium tracking-wide">Срок: от 14 до 25 дней</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- СЕКЦИЯ: ТАРИФЫ -->
+    <section id="pricing" class="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
+      <div class="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
+        <p data-i18n="price_badge" class="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-2 font-heading">Тарифы</p>
+        <h2 data-i18n="price_title" class="text-2xl sm:text-4xl font-heading font-bold text-white mb-3">Прозрачные расценки</h2>
+        <p data-i18n="price_sub" class="text-zinc-400 text-xs sm:text-sm">Стоимость фиксируется до старта проекта и не растет во время работы.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 items-stretch">
+        
+        <!-- ТАРИФ 1 -->
+        <div class="glass-card p-6 sm:p-8 rounded-2xl flex flex-col justify-between">
+          <div>
+            <h3 data-i18n="plan_1_name" class="font-heading font-bold text-lg text-white mb-1.5">Старт / Лендинг</h3>
+            <p data-i18n="plan_1_desc" class="text-zinc-400 text-xs mb-6">Быстрый запуск для рекламы и продаж</p>
+            
+            <div class="mb-6">
+              <span class="price-tag text-2xl sm:text-3xl font-heading font-bold text-white" data-price="1 000 000">от 1 000 000 UZS</span>
+            </div>
+
+            <ul class="space-y-3 text-xs text-zinc-300 mb-8">
+              <li class="flex items-center gap-2.5">
+                <i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0"></i> 
+                <span data-i18n="plan_1_f1">Индивидуальный дизайн (1 стр.)</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0"></i> 
+                <span data-i18n="plan_1_f2">Адаптив под все смартфоны</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0"></i> 
+                <span data-i18n="plan_1_f3">Заявки клиентов прямо в Telegram</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0"></i> 
+                <span data-i18n="plan_1_f4">Помощь с хостингом и доменом .UZ</span>
+              </li>
+            </ul>
+          </div>
+          <a href="#contacts" data-i18n="plan_btn" class="w-full h-12 flex items-center justify-center rounded-xl bg-white/10 active:bg-white/20 text-white text-xs font-semibold transition">
+            Выбрать тариф
+          </a>
+        </div>
+
+        <!-- ТАРИФ 2 (ХИТ) -->
+        <div class="glass-card p-6 sm:p-8 rounded-2xl flex flex-col justify-between border-indigo-500/50 relative shadow-xl shadow-indigo-500/10">
+          <div data-i18n="popular_badge" class="absolute -top-3 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[10px] uppercase tracking-wider font-bold px-3 py-1 rounded-full">
+            Хит продаж
+          </div>
+          <div>
+            <h3 data-i18n="plan_2_name" class="font-heading font-bold text-lg text-white mb-1.5">Каталог-витрина</h3>
+            <p data-i18n="plan_2_desc" class="text-zinc-400 text-xs mb-6">Для демонстрации товаров и приема заказов</p>
+            
+            <div class="mb-6">
+              <span class="price-tag text-2xl sm:text-3xl font-heading font-bold text-indigo-400" data-price="3 000 000">от 3 000 000 UZS</span>
+            </div>
+
+            <ul class="space-y-3 text-xs text-zinc-300 mb-8">
+              <li class="flex items-center gap-2.5">
+                <i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0"></i> 
+                <span data-i18n="plan_2_f1">Каталог товаров с рубрикатором</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0"></i> 
+                <span data-i18n="plan_2_f2">Кнопка «Заказать» у каждого товара</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0"></i> 
+                <span data-i18n="plan_2_f3">Интерактивный современный UI/UX</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0"></i> 
+                <span data-i18n="plan_2_f4">Базовое SEO и аналитика</span>
+              </li>
+            </ul>
+          </div>
+          <a href="#contacts" data-i18n="plan_btn_hot" class="w-full h-12 flex items-center justify-center rounded-xl bg-indigo-600 active:bg-indigo-500 text-white text-xs font-semibold transition shadow-md shadow-indigo-600/30">
+            Заказать сайт
+          </a>
+        </div>
+
+        <!-- ТАРИФ 3 (С АДМИНКОЙ И БД) -->
+        <div class="glass-card p-6 sm:p-8 rounded-2xl flex flex-col justify-between">
+          <div>
+            <h3 data-i18n="plan_3_name" class="font-heading font-bold text-lg text-white mb-1.5">Каталог + Админка</h3>
+            <p data-i18n="plan_3_desc" class="text-zinc-400 text-xs mb-6">Полный контроль над товарами без программиста</p>
+            
+            <div class="mb-6">
+              <span class="price-tag text-2xl sm:text-3xl font-heading font-bold text-white" data-price="4 000 000">от 4 000 000 UZS</span>
+            </div>
+
+            <ul class="space-y-3 text-xs text-zinc-300 mb-8">
+              <li class="flex items-center gap-2.5">
+                <i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0"></i> 
+                <span data-i18n="plan_3_f1">База данных (БД) под ваши товары</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0"></i> 
+                <span data-i18n="plan_3_f2">Админ-панель (вход по логину/паролю)</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0"></i> 
+                <span data-i18n="plan_3_f3">Смена цен и добавление фото за 1 минуту</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <i data-lucide="check" class="w-4 h-4 text-emerald-400 shrink-0"></i> 
+                <span data-i18n="plan_3_f4">Обучение по работе с админкой</span>
+              </li>
+            </ul>
+          </div>
+          <a href="#contacts" data-i18n="plan_btn" class="w-full h-12 flex items-center justify-center rounded-xl bg-white/10 active:bg-white/20 text-white text-xs font-semibold transition">
+            Обсудить детали
+          </a>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- СЕКЦИЯ: ЭТАПЫ РАБОТЫ -->
+    <section id="steps" class="max-w-5xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
+      <div class="mb-10 sm:mb-14 text-center">
+        <p data-i18n="step_badge" class="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-2 font-heading">Процесс</p>
+        <h2 data-i18n="step_title" class="text-2xl sm:text-4xl font-heading font-bold text-white">Как строится работа</h2>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="p-5 rounded-xl border border-white/5 bg-white/[0.02]">
+          <span class="text-xs font-heading text-indigo-400 font-bold block mb-2">01</span>
+          <h4 data-i18n="s1_h" class="font-heading font-bold text-white text-sm mb-1.5">Бриф и анализ</h4>
+          <p data-i18n="s1_p" class="text-zinc-400 text-xs leading-relaxed">Обсуждаем задачи, изучаем конкурентов и составляем точный план.</p>
+        </div>
+        <div class="p-5 rounded-xl border border-white/5 bg-white/[0.02]">
+          <span class="text-xs font-heading text-indigo-400 font-bold block mb-2">02</span>
+          <h4 data-i18n="s2_h" class="font-heading font-bold text-white text-sm mb-1.5">Дизайн</h4>
+          <p data-i18n="s2_p" class="text-zinc-400 text-xs leading-relaxed">Создаем стильный макет и утверждаем внешний вид каждой детали.</p>
+        </div>
+        <div class="p-5 rounded-xl border border-white/5 bg-white/[0.02]">
+          <span class="text-xs font-heading text-indigo-400 font-bold block mb-2">03</span>
+          <h4 data-i18n="s3_h" class="font-heading font-bold text-white text-sm mb-1.5">Вёрстка и код</h4>
+          <p data-i18n="s3_p" class="text-zinc-400 text-xs leading-relaxed">Верстаем под смартфоны, настраиваем базу данных и Telegram-бота.</p>
+        </div>
+        <div class="p-5 rounded-xl border border-white/5 bg-white/[0.02]">
+          <span class="text-xs font-heading text-indigo-400 font-bold block mb-2">04</span>
+          <h4 data-i18n="s4_h" class="font-heading font-bold text-white text-sm mb-1.5">Запуск</h4>
+          <p data-i18n="s4_p" class="text-zinc-400 text-xs leading-relaxed">Подключаем домен, заливаем на хостинг и передаем все доступы.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- СЕКЦИЯ: ЧАСТЫЕ ВОПРОСЫ (FAQ) -->
+    <section id="faq" class="max-w-4xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
+      <div class="text-center max-w-2xl mx-auto mb-10 sm:mb-14">
+        <p data-i18n="faq_badge" class="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-2 font-heading">FAQ</p>
+        <h2 data-i18n="faq_title" class="text-2xl sm:text-4xl font-heading font-bold text-white mb-3">Частые вопросы</h2>
+        <p data-i18n="faq_sub" class="text-zinc-400 text-xs sm:text-sm">Ответы на главные вопросы перед заказом сайта</p>
+      </div>
+
+      <div class="space-y-3.5">
+        <!-- Вопрос 1 -->
+        <details class="glass-card rounded-2xl p-5 group cursor-pointer">
+          <summary class="flex items-center justify-between font-heading font-bold text-sm text-white list-none">
+            <span data-i18n="q1_h">Входят ли домен и хостинг в стоимость?</span>
+            <i data-lucide="chevron-down" class="w-4 h-4 text-zinc-400 group-open:rotate-180 transition-transform"></i>
+          </summary>
+          <p data-i18n="q1_p" class="text-zinc-400 text-xs sm:text-sm leading-relaxed mt-3.5 pt-3 border-t border-white/5">
+            Я бесплатно помогаю выбрать, зарегистрировать домен (.uz) и настроить хостинг строго на ваши паспортные данные или организацию. Сама аренда домена (около 35 000 сум в год) и хостинга оплачивается вами официально поставщику услуг.
+          </p>
+        </details>
+
+        <!-- Вопрос 2 -->
+        <details class="glass-card rounded-2xl p-5 group cursor-pointer">
+          <summary class="flex items-center justify-between font-heading font-bold text-sm text-white list-none">
+            <span data-i18n="q2_h">Каковы условия оплаты?</span>
+            <i data-lucide="chevron-down" class="w-4 h-4 text-zinc-400 group-open:rotate-180 transition-transform"></i>
+          </summary>
+          <p data-i18n="q2_p" class="text-zinc-400 text-xs sm:text-sm leading-relaxed mt-3.5 pt-3 border-t border-white/5">
+            Работаем поэтапно: 30–50% предоплата перед началом разработки, остаток — только после того, как вы полностью протестируете и примете готовый сайт на тестовом сервере. Оплата через Click, Payme или наличными.
+          </p>
+        </details>
+
+        <!-- Вопрос 3 -->
+        <details class="glass-card rounded-2xl p-5 group cursor-pointer">
+          <summary class="flex items-center justify-between font-heading font-bold text-sm text-white list-none">
+            <span data-i18n="q3_h">Что если после запуска вылезет ошибка?</span>
+            <i data-lucide="chevron-down" class="w-4 h-4 text-zinc-400 group-open:rotate-180 transition-transform"></i>
+          </summary>
+          <p data-i18n="q3_p" class="text-zinc-400 text-xs sm:text-sm leading-relaxed mt-3.5 pt-3 border-t border-white/5">
+            Я предоставляю 30 дней бесплатной техподдержки после сдачи проекта. Если вы обнаружите какую-либо техническую ошибку — я устраню её бесплатно и оперативно.
+          </p>
+        </details>
+
+        <!-- Вопрос 4 -->
+        <details class="glass-card rounded-2xl p-5 group cursor-pointer">
+          <summary class="flex items-center justify-between font-heading font-bold text-sm text-white list-none">
+            <span data-i18n="q4_h">Что требуется от меня для начала?</span>
+            <i data-lucide="chevron-down" class="w-4 h-4 text-zinc-400 group-open:rotate-180 transition-transform"></i>
+          </summary>
+          <p data-i18n="q4_p" class="text-zinc-400 text-xs sm:text-sm leading-relaxed mt-3.5 pt-3 border-t border-white/5">
+            Достаточно рассказать о ваших целях, предоставить логотип, список услуг/товаров и контактные данные. Если у вас нет готового текста — я помогу его составить.
+          </p>
+        </details>
+      </div>
+    </section>
+
+    <!-- СЕКЦИЯ: КОНТАКТЫ (ИСПРАВЛЕНО: НОМЕР В ОДНУ СТРОКУ, ШИРОКИЙ БЛОК) -->
+    <section id="contacts" class="max-w-4xl mx-auto px-4 sm:px-6 py-14 sm:py-20 mb-10">
+      <div class="glass-card rounded-3xl p-6 sm:p-12 text-center relative overflow-hidden border border-white/10">
+        
+        <h2 data-i18n="cta_title" class="font-heading text-2xl sm:text-5xl font-bold text-white mb-3">
+          Давайте создадим крутой проект
+        </h2>
+        <p data-i18n="cta_desc" class="text-zinc-400 text-xs sm:text-base max-w-xl mx-auto mb-8 sm:mb-10 px-2">
+          Напишите в Telegram или позвоните. Обсудим вашу задачу и я сориентирую по точным срокам и бюджету.
+        </p>
+
+        <!-- КНОПКИ СВЯЗИ (TELEGRAM И ТЕЛЕФОН БЕЗ ПЕРЕНОСОВ) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mx-auto mb-6">
+          
+          <!-- Telegram -->
+          <a href="https://t.me/tima_bt" target="_blank" class="flex items-center gap-3.5 p-4 rounded-2xl bg-white/5 active:bg-white/10 border border-white/10 text-left hover:border-sky-500/40 transition group">
+            <div class="w-11 h-11 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center shrink-0">
+              <i data-lucide="send" class="w-5 h-5"></i>
+            </div>
+            <div class="min-w-0">
+              <p class="text-[11px] text-zinc-400">Telegram</p>
+              <p class="text-sm sm:text-base font-semibold text-white whitespace-nowrap group-hover:text-sky-400 transition">@tima_bt</p>
+            </div>
+          </a>
+
+          <!-- Телефон -->
+          <a href="tel:+998950382299" class="flex items-center gap-3.5 p-4 rounded-2xl bg-white/5 active:bg-white/10 border border-white/10 text-left hover:border-emerald-500/40 transition group">
+            <div class="w-11 h-11 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+              <i data-lucide="phone" class="w-5 h-5"></i>
+            </div>
+            <div class="min-w-0">
+              <p data-i18n="c_phone" class="text-[11px] text-zinc-400">Телефон</p>
+              <p class="text-sm sm:text-base font-semibold text-white whitespace-nowrap group-hover:text-emerald-400 transition">+998 95 038-22-99</p>
+            </div>
+          </a>
+
+        </div>
+
+        <p data-i18n="c_location" class="text-xs text-zinc-500">Ташкент (работа по всей стране и удаленно)</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- ФУТЕР -->
+  <footer class="border-t border-white/5 py-8 text-center text-xs text-zinc-500">
+    <p>© 2026 NOVA WEB. <span data-i18n="footer_copy">Все права защищены.</span></p>
+  </footer>
+
+  <!-- СКРИПТ ПЕРЕВОДА И МОБИЛЬНОГО МЕНЮ -->
+  <script>
+    const translations = {
+      ru: {
+        nav_services: "Услуги",
+        nav_pricing: "Цены",
+        nav_steps: "Этапы",
+        nav_faq: "Вопросы",
+        nav_contacts: "Контакты",
+        nav_tg: "Telegram",
+        hero_status: "Открыт для новых заказов",
+        hero_title_1: "Создаю сайты, которые",
+        hero_title_2: "продают ваш бизнес",
+        hero_desc: "Разработка скоростных сайтов: от продающих лендингов до каталогов с базой данных и админкой для самостоятельного управления товарами без знания кода.",
+        hero_btn_discuss: "Обсудить проект",
+        hero_btn_prices: "Узнать расценки",
+        feat_mobile: "Мобильный адаптив",
+        feat_speed: "Быстрая загрузка",
+        feat_admin: "Своя админ-панель",
+        feat_warranty: "Гарантия поддержки",
+        serv_badge: "Услуги",
+        serv_title: "Что я разрабатываю",
+        serv_1_h: "Landing Page",
+        serv_1_p: "Одностраничный продающий сайт. Фокус на презентации одной услуги или товара для высокой конверсии из таргетированной рекламы.",
+        serv_1_t: "Срок: от 3 до 7 дней",
+        serv_2_h: "Сайт-каталог (Витрина)",
+        serv_2_p: "Каталог с разделами и карточками товаров. Клиент просматривает позиции и в 1 клик отправляет заявку на покупку в ваш Telegram.",
+        serv_2_t: "Срок: от 7 до 14 дней",
+        serv_3_h: "Каталог с Админ-панелью",
+        serv_3_p: "Сайт с базой данных (БД) и личным кабинетом. Вы сможете сами за 1 минуту добавлять товары, менять цены и загружать фото без программиста.",
+        serv_3_t: "Срок: от 14 до 25 дней",
+        price_badge: "Тарифы",
+        price_title: "Прозрачные расценки",
+        price_sub: "Стоимость фиксируется до старта проекта и не растет во время работы.",
+        popular_badge: "Хит продаж",
+        plan_1_name: "Старт / Лендинг",
+        plan_1_desc: "Быстрый запуск для рекламы и продаж",
+        plan_1_f1: "Индивидуальный дизайн (1 стр.)",
+        plan_1_f2: "Адаптив под все смартфоны",
+        plan_1_f3: "Заявки клиентов прямо в Telegram",
+        plan_1_f4: "Помощь с хостингом и доменом .UZ",
+        plan_2_name: "Каталог-витрина",
+        plan_2_desc: "Для демонстрации товаров и приема заказов",
+        plan_2_f1: "Каталог товаров с рубрикатором",
+        plan_2_f2: "Кнопка «Заказать» у каждого товара",
+        plan_2_f3: "Интерактивный современный UI/UX",
+        plan_2_f4: "Базовое SEO и аналитика",
+        plan_3_name: "Каталог + Админка",
+        plan_3_desc: "Полный контроль над товарами без программиста",
+        plan_3_f1: "База данных (БД) под ваши товары",
+        plan_3_f2: "Админ-панель (вход по логину/паролю)",
+        plan_3_f3: "Смена цен и добавление фото за 1 минуту",
+        plan_3_f4: "Обучение по работе с админкой",
+        plan_btn: "Выбрать тариф",
+        plan_btn_hot: "Заказать сайт",
+        step_badge: "Процесс",
+        step_title: "Как строится работа",
+        s1_h: "Бриф и анализ",
+        s1_p: "Обсуждаем задачи, изучаем конкурентов и составляем точный план.",
+        s2_h: "Дизайн",
+        s2_p: "Создаем стильный макет и утверждаем внешний вид каждой детали.",
+        s3_h: "Вёрстка и код",
+        s3_p: "Верстаем под смартфоны, настраиваем базу данных и Telegram-бота.",
+        s4_h: "Запуск",
+        s4_p: "Подключаем домен, заливаем на хостинг и передаем все доступы.",
+        faq_badge: "FAQ",
+        faq_title: "Частые вопросы",
+        faq_sub: "Ответы на главные вопросы перед заказом сайта",
+        q1_h: "Входят ли домен и хостинг в стоимость?",
+        q1_p: "Я бесплатно помогаю выбрать, зарегистрировать домен (.uz) и настроить хостинг строго на ваши паспортные данные или организацию. Сама аренда домена (около 35 000 сум в год) и хостинга оплачивается вами официально поставщику услуг.",
+        q2_h: "Каковы условия оплаты?",
+        q2_p: "Работаем поэтапно: 30–50% предоплата перед началом разработки, остаток — только после того, как вы полностью протестируете и примете готовый сайт на тестовом сервере. Оплата через Click, Payme или наличными.",
+        q3_h: "Что если после запуска вылезет ошибка?",
+        q3_p: "Я предоставляю 30 дней бесплатной техподдержки после сдачи проекта. Если вы обнаружите какую-либо техническую ошибку — я устраню её бесплатно и оперативно.",
+        q4_h: "Что требуется от меня для начала?",
+        q4_p: "Достаточно рассказать о ваших целях, предоставить логотип, список услуг/товаров и контактные данные. Если у вас нет готового текста — я помогу его составить.",
+        cta_title: "Давайте создадим крутой проект",
+        cta_desc: "Напишите в Telegram или позвоните. Обсудим вашу задачу и я сориентирую по точным срокам и бюджету.",
+        c_phone: "Телефон",
+        c_location: "Ташкент (работа по всей стране и удаленно)",
+        footer_copy: "Все права защищены."
+      },
+      uz: {
+        nav_services: "Xizmatlar",
+        nav_pricing: "Narxlar",
+        nav_steps: "Bosqichlar",
+        nav_faq: "Savollar",
+        nav_contacts: "Aloqa",
+        nav_tg: "Telegram",
+        hero_status: "Yangi loyihalar uchun ochiq",
+        hero_title_1: "Biznesingiz uchun sotuvchi",
+        hero_title_2: "zamonaviy saytlar",
+        hero_desc: "Tezkor saytlar yaratish: bir sahifali lendinglardan tortib, ma'lumotlar bazasi va tovarlarni o'zingiz boshqarishingiz uchun qulay admin panelli saytlargacha.",
+        hero_btn_discuss: "Loyihani muhokama qilish",
+        hero_btn_prices: "Narxlar bilan tanishish",
+        feat_mobile: "Mobil moslashuv 100%",
+        feat_speed: "Tezkor yuklanish",
+        feat_admin: "Shaxsiy admin panel",
+        feat_warranty: "Qo'llab-quvvatlash kafolati",
+        serv_badge: "Xizmatlar",
+        serv_title: "Qanday saytlar yarataman",
+        serv_1_h: "Landing Page",
+        serv_1_p: "Bir sahifali sotuvchi sayt. Aniq bir xizmat yoki mahsulotni reklama qilib, tezkor buyurtmalar olish uchun mo'ljallangan.",
+        serv_1_t: "Muddat: 3 kundan 7 kungacha",
+        serv_2_h: "Katalog sayt (Vitrina)",
+        serv_2_p: "Bo'limlar va tovarlar kartasiga ega qulay vitrina. Xaridor tovarlarni ko'rib, 1 ta bosish bilan Telegramingizga buyurtma yuboradi.",
+        serv_2_t: "Muddat: 7 kundan 14 kungacha",
+        serv_3_h: "Admin panelli katalog",
+        serv_3_p: "Ma'lumotlar bazasi (DB) va shaxsiy kabinetga ega sayt. Dasturchisiz o'zingiz 1 daqiqada yangi mahsulot, rasm va narxlarni o'zgartirasiz.",
+        serv_3_t: "Muddat: 14 kundan 25 kungacha",
+        price_badge: "Narxlar",
+        price_title: "Shaffof narxlar",
+        price_sub: "Narx ish boshlanishidan oldin kelishiladi va jarayon davomida oshmaydi.",
+        popular_badge: "Eng ommabop",
+        plan_1_name: "Start / Lending",
+        plan_1_desc: "Reklama va tezkor savdo uchun",
+        plan_1_f1: "Maxsus dizayn (1 sahifa)",
+        plan_1_f2: "Barcha telefonlarga moslashuv",
+        plan_1_f3: "Buyurtmalar to'g'ridan-to'g'ri Telegramga",
+        plan_1_f4: ".UZ domen va xostingda yordam",
+        plan_2_name: "Katalog-vitrina",
+        plan_2_desc: "Mahsulotlarni ko'rsatish va buyurtma olish",
+        plan_2_f1: "Bo'limlarga ajratilgan tovarlar katalogi",
+        plan_2_f2: "Har bir tovar uchun «Buyurtma» tugmasi",
+        plan_2_f3: "Zamonaviy interaktiv dizayn",
+        plan_2_f4: "Boshlang'ich SEO va statistika",
+        plan_3_name: "Katalog + Admin panel",
+        plan_3_desc: "Tovarlarni dasturchisiz to'liq boshqarish",
+        plan_3_f1: "Mahsulotlar uchun ma'lumotlar bazasi (DB)",
+        plan_3_f2: "Parol bilan kiriladigan admin panel",
+        plan_3_f3: "Narx va rasmlarni 1 daqiqada yangilash",
+        plan_3_f4: "Admin panelda ishlashni to'liq o'rgatish",
+        plan_btn: "Tanlash",
+        plan_btn_hot: "Saytga buyurtma berish",
+        step_badge: "Jarayon",
+        step_title: "Ish qanday olib boriladi",
+        s1_h: "Brif va tahlil",
+        s1_p: "Vazifalarni aniqlaymiz, raqobatchilarni o'rganamiz va aniq reja tuzamiz.",
+        s2_h: "Dizayn",
+        s2_p: "Zamonaviy maket chizamiz va har bir detalni siz bilan tasdiqlaymiz.",
+        s3_h: "Dasturlash va kod",
+        s3_p: "Telefonlarga moslab teramiz, ma'lumotlar bazasi va Telegramni ulaymiz.",
+        s4_h: "Ishga tushirish",
+        s4_p: "Domenni ulaymiz, xostingga joylaymiz va to'liq topshiramiz.",
+        faq_badge: "FAQ",
+        faq_title: "Ko'p beriladigan savollar",
+        faq_sub: "Sayt buyurtma qilishdan oldin eng muhim javoblar",
+        q1_h: "Domen va xosting narx ichiga kiradimi?",
+        q1_p: "Men .uz domenini tanlash va xostingni sizning pasportingizga bepul rasmiylashtirib, ulab beraman. Domen narxi (yiliga ~35 000 so'm) to'g'ridan-to'g'ri xizmat ko'rsatuvchi provayderga to'lanadi.",
+        q2_h: "To'lov shartlari qanday?",
+        q2_p: "Bosqichma-bosqich ishlaymiz: 30–50% oldindan to'lov qilinadi, qolgan qismi sayt to'liq tayyor bo'lib, tekshirib ko'rganingizdan so'ng. To'lov: Click, Payme yoki naqd.",
+        q3_h: "Sayt topshirilgach xatolik chiqsa nima bo'ladi?",
+        q3_p: "Loyihani topshirgandan so'ng 30 kun bepul texnik yordam beraman. Biror texnik xatolik chiqsa, uni tezda va bepul to'g'irlab beraman.",
+        q4_h: "Ishni boshlash uchun mendan nima kerak?",
+        q4_p: "Shunchaki maqsadingizni aytib berasiz, logotip, tovarlar yoki xizmatlar ro'yxatini berasiz. Matnlar bo'lmasa, tuzishda yordamlashaman.",
+        cta_title: "Ajoyib loyihani birga yaratamiz",
+        cta_desc: "Telegram orqali yozing yoki qo'ng'iroq qiling. Vazifangizni muhokama qilamiz va aniq muddat-narxni belgilaymiz.",
+        c_phone: "Telefon",
+        c_location: "Toshkent (masofadan butun mamlakat bo'ylab)",
+        footer_copy: "Barcha huquqlar himoyalangan."
+      }
+    };
+
+    // Переключение языков + исправление синтаксиса цен
+    function setLanguage(lang) {
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (translations[lang] && translations[lang][key]) {
+          el.textContent = translations[lang][key];
+        }
+      });
+
+      // Исправление цен: RU = "от 1 000 000 UZS", UZ = "1 000 000 so'mdan"
+      document.querySelectorAll('.price-tag').forEach(tag => {
+        const price = tag.getAttribute('data-price');
+        if (lang === 'uz') {
+          tag.textContent = `${price} so'mdan`;
+        } else {
+          tag.textContent = `от ${price} UZS`;
+        }
+      });
+
+      // Переключение кнопок RU / UZ
+      const btnRu = document.getElementById('lang-ru');
+      const btnUz = document.getElementById('lang-uz');
+      if (lang === 'uz') {
+        btnUz.className = "px-2.5 py-1 rounded-full bg-indigo-600 text-white transition";
+        btnRu.className = "px-2.5 py-1 rounded-full text-zinc-400 hover:text-white transition";
+      } else {
+        btnRu.className = "px-2.5 py-1 rounded-full bg-indigo-600 text-white transition";
+        btnUz.className = "px-2.5 py-1 rounded-full text-zinc-400 hover:text-white transition";
+      }
+
+      localStorage.setItem('nova_lang', lang);
+    }
+
+    // Мобильное бургер-меню
+    function toggleMobileMenu() {
+      const menu = document.getElementById('mobile-menu');
+      menu.classList.toggle('hidden');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      const savedLang = localStorage.getItem('nova_lang') || 'ru';
+      setLanguage(savedLang);
+    });
+
+    /* =======================================================
+       ЗАЩИТА ОТ ПРОСМОТРА И КОПИРОВАНИЯ КОДА САЙТА
+       ======================================================= */
+    
+    // 1. Блокировка правой кнопки мыши (контекстного меню)
+    document.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+    });
+
+    // 2. Блокировка горячих клавиш (F12, Ctrl+U, Ctrl+Shift+I/J/C, Ctrl+S)
+    document.addEventListener('keydown', function (e) {
+      // F12
+      if (e.keyCode === 123) {
+        e.preventDefault();
+        return false;
+      }
+      // Ctrl+Shift+I или Cmd+Option+I (Инспектор)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.keyCode === 73 || e.key === 'I' || e.key === 'i')) {
+        e.preventDefault();
+        return false;
+      }
+      // Ctrl+Shift+J или Cmd+Option+J (Консоль)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.keyCode === 74 || e.key === 'J' || e.key === 'j')) {
+        e.preventDefault();
+        return false;
+      }
+      // Ctrl+Shift+C (Выбор элемента)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.keyCode === 67 || e.key === 'C' || e.key === 'c')) {
+        e.preventDefault();
+        return false;
+      }
+      // Ctrl+U или Cmd+Option+U (Просмотр исходного кода)
+      if ((e.ctrlKey || e.metaKey) && (e.keyCode === 85 || e.key === 'U' || e.key === 'u')) {
+        e.preventDefault();
+        return false;
+      }
+      // Ctrl+S (Сохранение страницы)
+      if ((e.ctrlKey || e.metaKey) && (e.keyCode === 83 || e.key === 'S' || e.key === 's')) {
+        e.preventDefault();
+        return false;
+      }
+    });
+
+    // 3. Запрет перетаскивания элементов (drag and drop)
+    document.addEventListener('dragstart', function (e) {
+      e.preventDefault();
+    });
+  </script>
+</body>
+</html>

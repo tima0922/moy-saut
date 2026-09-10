@@ -8,7 +8,7 @@
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   
-  <!-- Шрифты Google: Unbounded (акцент) и Inter (основной) -->
+  <!-- Шрифты Google: Unbounded (заголовки) и Inter (основной) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Unbounded:wght@500;700;800&display=swap" rel="stylesheet">
@@ -30,24 +30,36 @@
   </script>
 
   <style>
-    /* Неоновые фоновые пятна */
+    /* 1. ГАРАНТИЯ ЦЕНТРОВКИ: исключаем смещение и горизонтальный скролл */
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+    html, body {
+      overflow-x: hidden !important;
+      max-width: 100vw !important;
+      width: 100% !important;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* 2. Неоновые фоновые пятна */
     .glow-bg {
       position: absolute;
-      width: 320px;
-      height: 320px;
-      background: radial-gradient(circle, rgba(99, 102, 241, 0.18) 0%, rgba(0, 0, 0, 0) 70%);
+      width: 280px;
+      height: 280px;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(0, 0, 0, 0) 70%);
       filter: blur(50px);
-      z-index: -1;
       pointer-events: none;
     }
     @media (min-width: 768px) {
       .glow-bg {
-        width: 550px;
-        height: 550px;
-        filter: blur(70px);
+        width: 520px;
+        height: 520px;
+        filter: blur(75px);
       }
     }
-    /* Стеклянные карточки */
+
+    /* 3. Стеклянные карточки */
     .glass-card {
       background: rgba(18, 18, 26, 0.75);
       backdrop-filter: blur(16px);
@@ -57,20 +69,23 @@
     .glass-card:hover {
       border-color: rgba(99, 102, 241, 0.4);
     }
-    /* Раскрывающийся аккордеон FAQ */
+
+    /* 4. Раскрывающийся аккордеон FAQ */
     details summary::-webkit-details-marker {
       display: none;
     }
   </style>
 </head>
 
-<body class="bg-[#09090d] text-zinc-200 font-sans antialiased selection:bg-indigo-500 selection:text-white relative overflow-x-hidden pb-12">
+<body class="bg-[#09090d] text-zinc-200 font-sans antialiased selection:bg-indigo-500 selection:text-white relative pb-12">
 
-  <!-- Фоновые неоновые блики -->
-  <div class="glow-bg top-[-80px] left-1/2 -translate-x-1/2"></div>
-  <div class="glow-bg top-[1200px] -right-20"></div>
+  <!-- ИЗОЛИРОВАННЫЙ КОНТЕЙНЕР ДЛЯ ФОНОВЫХ ЭФФЕКТОВ (не ломает ширину страницы) -->
+  <div class="absolute inset-0 overflow-hidden pointer-events-none -z-10 w-full h-full">
+    <div class="glow-bg top-[-60px] left-1/2 -translate-x-1/2"></div>
+    <div class="glow-bg top-[1100px] right-[-80px]"></div>
+  </div>
 
-  <!-- ПЛАВАЮЩАЯ КНОПКА ДЛЯ ТЕЛЕФОНОВ (Быстрая связь в Telegram внизу экрана) -->
+  <!-- ПЛАВАЮЩАЯ КНОПКА TELEGRAM ДЛЯ ТЕЛЕФОНОВ -->
   <aside aria-label="Быстрая связь" class="md:hidden fixed bottom-5 right-5 z-50">
     <a href="https://t.me/tima_bt" target="_blank" aria-label="Написать в Telegram" class="flex items-center gap-2.5 bg-indigo-600 active:scale-95 text-white px-4 py-3 rounded-full shadow-2xl shadow-indigo-600/60 border border-indigo-400/30">
       <i data-lucide="send" class="w-5 h-5"></i>
@@ -80,7 +95,7 @@
 
   <!-- ШАПКА САЙТА -->
   <header class="fixed top-0 left-0 w-full z-40 bg-[#09090d]/90 backdrop-blur-md border-b border-white/5">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between w-full">
       
       <!-- Логотип -->
       <a href="#" class="font-heading font-bold text-base sm:text-lg tracking-wider text-white flex items-center gap-2">
@@ -88,7 +103,7 @@
         NOVA<span class="text-indigo-400">WEB</span>
       </a>
 
-      <!-- Меню для компьютеров -->
+      <!-- Меню для десктопа -->
       <nav class="hidden md:flex items-center gap-8 text-sm text-zinc-400 font-medium">
         <a href="#services" data-i18n="nav_services" class="hover:text-white transition">Услуги</a>
         <a href="#pricing" data-i18n="nav_pricing" class="hover:text-white transition">Цены</a>
@@ -97,10 +112,10 @@
         <a href="#contacts" data-i18n="nav_contacts" class="hover:text-white transition">Контакты</a>
       </nav>
 
-      <!-- Переключатель языка и кнопки -->
+      <!-- Переключатель языка и кнопка -->
       <div class="flex items-center gap-2 sm:gap-3">
         
-        <!-- Кнопки RU / UZ -->
+        <!-- Кнопки переключения языка RU / UZ -->
         <div class="flex items-center bg-white/5 border border-white/10 rounded-full p-1 text-[11px] sm:text-xs font-semibold">
           <button id="lang-ru" onclick="setLanguage('ru')" class="px-2.5 py-1 rounded-full bg-indigo-600 text-white transition">RU</button>
           <button id="lang-uz" onclick="setLanguage('uz')" class="px-2.5 py-1 rounded-full text-zinc-400 hover:text-white transition">UZ</button>
@@ -130,11 +145,11 @@
     </div>
   </header>
 
-  <main class="pt-24 sm:pt-32">
+  <main class="pt-24 sm:pt-32 w-full">
     <!-- HERO-СЕКЦИЯ -->
-    <section class="max-w-5xl mx-auto px-4 sm:px-6 pt-6 pb-16 sm:pb-24 text-center">
+    <section class="max-w-5xl mx-auto px-4 sm:px-6 pt-6 pb-16 sm:pb-24 text-center w-full">
       
-      <!-- Статус -->
+      <!-- Статус-бейдж -->
       <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-400 text-[11px] sm:text-xs font-medium mb-6">
         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
         <span data-i18n="hero_status">Открыт для новых заказов</span>
@@ -163,8 +178,8 @@
         </a>
       </div>
 
-      <!-- Метрики / Преимущества -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mt-14 sm:mt-20 pt-8 border-t border-white/5 text-left">
+      <!-- Метрики -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mt-14 sm:mt-20 pt-8 border-t border-white/5 text-left w-full">
         <div class="p-3.5 sm:p-4 rounded-xl bg-white/[0.02] border border-white/5">
           <p class="text-xl sm:text-2xl font-heading font-bold text-white mb-1">100%</p>
           <p data-i18n="feat_mobile" class="text-[11px] sm:text-xs text-zinc-400">Мобильный адаптив</p>
@@ -185,27 +200,27 @@
     </section>
 
     <!-- СЕКЦИЯ: УСЛУГИ -->
-    <section id="services" class="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
+    <section id="services" class="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20 w-full">
       <div class="mb-10 sm:mb-14 text-center md:text-left">
         <p data-i18n="serv_badge" class="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-2 font-heading">Услуги</p>
         <h2 data-i18n="serv_title" class="text-2xl sm:text-4xl font-heading font-bold text-white">Что я разрабатываю</h2>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6 w-full">
         <!-- Услуга 1 -->
-        <div class="glass-card p-6 sm:p-8 rounded-2xl">
+        <div class="glass-card p-6 sm:p-8 rounded-2xl w-full">
           <div class="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-5">
             <i data-lucide="layout-template" class="w-6 h-6"></i>
           </div>
           <h3 data-i18n="serv_1_h" class="font-heading font-semibold text-lg text-white mb-2.5">Landing Page</h3>
           <p data-i18n="serv_1_p" class="text-zinc-400 text-xs sm:text-sm leading-relaxed mb-5">
-            Одностраничный продающий сайт. Фокус на презентации одной услуги или товара для высокой конверсии из рекламы.
+            Одностраничный продающий сайт. Фокус на презентации одной услуги или товара для высокой конверсии из таргетированной рекламы.
           </p>
           <span data-i18n="serv_1_t" class="text-xs text-indigo-400 font-medium tracking-wide">Срок: от 3 до 7 дней</span>
         </div>
 
         <!-- Услуга 2 -->
-        <div class="glass-card p-6 sm:p-8 rounded-2xl">
+        <div class="glass-card p-6 sm:p-8 rounded-2xl w-full">
           <div class="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mb-5">
             <i data-lucide="grid" class="w-6 h-6"></i>
           </div>
@@ -217,7 +232,7 @@
         </div>
 
         <!-- Услуга 3 -->
-        <div class="glass-card p-6 sm:p-8 rounded-2xl">
+        <div class="glass-card p-6 sm:p-8 rounded-2xl w-full">
           <div class="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mb-5">
             <i data-lucide="database" class="w-6 h-6"></i>
           </div>
@@ -231,17 +246,17 @@
     </section>
 
     <!-- СЕКЦИЯ: ТАРИФЫ -->
-    <section id="pricing" class="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
+    <section id="pricing" class="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20 w-full">
       <div class="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
         <p data-i18n="price_badge" class="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-2 font-heading">Тарифы</p>
         <h2 data-i18n="price_title" class="text-2xl sm:text-4xl font-heading font-bold text-white mb-3">Прозрачные расценки</h2>
         <p data-i18n="price_sub" class="text-zinc-400 text-xs sm:text-sm">Стоимость фиксируется до старта проекта и не растет во время работы.</p>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 items-stretch">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 items-stretch w-full">
         
         <!-- ТАРИФ 1 -->
-        <div class="glass-card p-6 sm:p-8 rounded-2xl flex flex-col justify-between">
+        <div class="glass-card p-6 sm:p-8 rounded-2xl flex flex-col justify-between w-full">
           <div>
             <h3 data-i18n="plan_1_name" class="font-heading font-bold text-lg text-white mb-1.5">Старт / Лендинг</h3>
             <p data-i18n="plan_1_desc" class="text-zinc-400 text-xs mb-6">Быстрый запуск для рекламы и продаж</p>
@@ -275,7 +290,7 @@
         </div>
 
         <!-- ТАРИФ 2 (ХИТ) -->
-        <div class="glass-card p-6 sm:p-8 rounded-2xl flex flex-col justify-between border-indigo-500/50 relative shadow-xl shadow-indigo-500/10">
+        <div class="glass-card p-6 sm:p-8 rounded-2xl flex flex-col justify-between border-indigo-500/50 relative shadow-xl shadow-indigo-500/10 w-full">
           <div data-i18n="popular_badge" class="absolute -top-3 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[10px] uppercase tracking-wider font-bold px-3 py-1 rounded-full">
             Хит продаж
           </div>
@@ -312,7 +327,7 @@
         </div>
 
         <!-- ТАРИФ 3 (С АДМИНКОЙ И БД) -->
-        <div class="glass-card p-6 sm:p-8 rounded-2xl flex flex-col justify-between">
+        <div class="glass-card p-6 sm:p-8 rounded-2xl flex flex-col justify-between w-full">
           <div>
             <h3 data-i18n="plan_3_name" class="font-heading font-bold text-lg text-white mb-1.5">Каталог + Админка</h3>
             <p data-i18n="plan_3_desc" class="text-zinc-400 text-xs mb-6">Полный контроль над товарами без программиста</p>
@@ -349,13 +364,13 @@
     </section>
 
     <!-- СЕКЦИЯ: ЭТАПЫ РАБОТЫ -->
-    <section id="steps" class="max-w-5xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
+    <section id="steps" class="max-w-5xl mx-auto px-4 sm:px-6 py-14 sm:py-20 w-full">
       <div class="mb-10 sm:mb-14 text-center">
         <p data-i18n="step_badge" class="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-2 font-heading">Процесс</p>
         <h2 data-i18n="step_title" class="text-2xl sm:text-4xl font-heading font-bold text-white">Как строится работа</h2>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 w-full">
         <div class="p-5 rounded-xl border border-white/5 bg-white/[0.02]">
           <span class="text-xs font-heading text-indigo-400 font-bold block mb-2">01</span>
           <h4 data-i18n="s1_h" class="font-heading font-bold text-white text-sm mb-1.5">Бриф и анализ</h4>
@@ -380,16 +395,16 @@
     </section>
 
     <!-- СЕКЦИЯ: ЧАСТЫЕ ВОПРОСЫ (FAQ) -->
-    <section id="faq" class="max-w-4xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
+    <section id="faq" class="max-w-4xl mx-auto px-4 sm:px-6 py-14 sm:py-20 w-full">
       <div class="text-center max-w-2xl mx-auto mb-10 sm:mb-14">
         <p data-i18n="faq_badge" class="text-xs font-semibold uppercase tracking-widest text-indigo-400 mb-2 font-heading">FAQ</p>
         <h2 data-i18n="faq_title" class="text-2xl sm:text-4xl font-heading font-bold text-white mb-3">Частые вопросы</h2>
         <p data-i18n="faq_sub" class="text-zinc-400 text-xs sm:text-sm">Ответы на главные вопросы перед заказом сайта</p>
       </div>
 
-      <div class="space-y-3.5">
+      <div class="space-y-3.5 w-full">
         <!-- Вопрос 1 -->
-        <details class="glass-card rounded-2xl p-5 group cursor-pointer">
+        <details class="glass-card rounded-2xl p-5 group cursor-pointer w-full">
           <summary class="flex items-center justify-between font-heading font-bold text-sm text-white list-none">
             <span data-i18n="q1_h">Входят ли домен и хостинг в стоимость?</span>
             <i data-lucide="chevron-down" class="w-4 h-4 text-zinc-400 group-open:rotate-180 transition-transform"></i>
@@ -400,7 +415,7 @@
         </details>
 
         <!-- Вопрос 2 -->
-        <details class="glass-card rounded-2xl p-5 group cursor-pointer">
+        <details class="glass-card rounded-2xl p-5 group cursor-pointer w-full">
           <summary class="flex items-center justify-between font-heading font-bold text-sm text-white list-none">
             <span data-i18n="q2_h">Каковы условия оплаты?</span>
             <i data-lucide="chevron-down" class="w-4 h-4 text-zinc-400 group-open:rotate-180 transition-transform"></i>
@@ -411,7 +426,7 @@
         </details>
 
         <!-- Вопрос 3 -->
-        <details class="glass-card rounded-2xl p-5 group cursor-pointer">
+        <details class="glass-card rounded-2xl p-5 group cursor-pointer w-full">
           <summary class="flex items-center justify-between font-heading font-bold text-sm text-white list-none">
             <span data-i18n="q3_h">Что если после запуска вылезет ошибка?</span>
             <i data-lucide="chevron-down" class="w-4 h-4 text-zinc-400 group-open:rotate-180 transition-transform"></i>
@@ -422,7 +437,7 @@
         </details>
 
         <!-- Вопрос 4 -->
-        <details class="glass-card rounded-2xl p-5 group cursor-pointer">
+        <details class="glass-card rounded-2xl p-5 group cursor-pointer w-full">
           <summary class="flex items-center justify-between font-heading font-bold text-sm text-white list-none">
             <span data-i18n="q4_h">Что требуется от меня для начала?</span>
             <i data-lucide="chevron-down" class="w-4 h-4 text-zinc-400 group-open:rotate-180 transition-transform"></i>
@@ -434,9 +449,9 @@
       </div>
     </section>
 
-    <!-- СЕКЦИЯ: КОНТАКТЫ (ИСПРАВЛЕНО: НОМЕР В ОДНУ СТРОКУ, ШИРОКИЙ БЛОК) -->
-    <section id="contacts" class="max-w-4xl mx-auto px-4 sm:px-6 py-14 sm:py-20 mb-10">
-      <div class="glass-card rounded-3xl p-6 sm:p-12 text-center relative overflow-hidden border border-white/10">
+    <!-- СЕКЦИЯ: КОНТАКТЫ (ИДЕАЛЬНАЯ ЦЕНТРОВКА БЕЗ ПЕРЕНОСОВ) -->
+    <section id="contacts" class="max-w-4xl mx-auto px-4 sm:px-6 py-14 sm:py-20 mb-10 w-full">
+      <div class="glass-card rounded-3xl p-6 sm:p-12 text-center relative overflow-hidden border border-white/10 w-full">
         
         <h2 data-i18n="cta_title" class="font-heading text-2xl sm:text-5xl font-bold text-white mb-3">
           Давайте создадим крутой проект
@@ -445,11 +460,11 @@
           Напишите в Telegram или позвоните. Обсудим вашу задачу и я сориентирую по точным срокам и бюджету.
         </p>
 
-        <!-- КНОПКИ СВЯЗИ (TELEGRAM И ТЕЛЕФОН БЕЗ ПЕРЕНОСОВ) -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mx-auto mb-6">
+        <!-- КНОПКИ СВЯЗИ -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mx-auto mb-6 w-full">
           
           <!-- Telegram -->
-          <a href="https://t.me/tima_bt" target="_blank" class="flex items-center gap-3.5 p-4 rounded-2xl bg-white/5 active:bg-white/10 border border-white/10 text-left hover:border-sky-500/40 transition group">
+          <a href="https://t.me/tima_bt" target="_blank" class="flex items-center gap-3.5 p-4 rounded-2xl bg-white/5 active:bg-white/10 border border-white/10 text-left hover:border-sky-500/40 transition group w-full">
             <div class="w-11 h-11 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center shrink-0">
               <i data-lucide="send" class="w-5 h-5"></i>
             </div>
@@ -460,7 +475,7 @@
           </a>
 
           <!-- Телефон -->
-          <a href="tel:+998950382299" class="flex items-center gap-3.5 p-4 rounded-2xl bg-white/5 active:bg-white/10 border border-white/10 text-left hover:border-emerald-500/40 transition group">
+          <a href="tel:+998950382299" class="flex items-center gap-3.5 p-4 rounded-2xl bg-white/5 active:bg-white/10 border border-white/10 text-left hover:border-emerald-500/40 transition group w-full">
             <div class="w-11 h-11 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
               <i data-lucide="phone" class="w-5 h-5"></i>
             </div>
@@ -478,11 +493,11 @@
   </main>
 
   <!-- ФУТЕР -->
-  <footer class="border-t border-white/5 py-8 text-center text-xs text-zinc-500">
+  <footer class="border-t border-white/5 py-8 text-center text-xs text-zinc-500 w-full">
     <p>© 2026 NOVA WEB. <span data-i18n="footer_copy">Все права защищены.</span></p>
   </footer>
 
-  <!-- СКРИПТ ПЕРЕВОДА И МОБИЛЬНОГО МЕНЮ -->
+  <!-- СКРИПТ ПЕРЕВОДА, МЕНЮ И ЗАЩИТЫ -->
   <script>
     const translations = {
       ru: {
@@ -645,7 +660,7 @@
       }
     };
 
-    // Переключение языков + исправление синтаксиса цен
+    // Переключение языков и корректный формат валюты
     function setLanguage(lang) {
       document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');
@@ -654,7 +669,7 @@
         }
       });
 
-      // Исправление цен: RU = "от 1 000 000 UZS", UZ = "1 000 000 so'mdan"
+      // Пересчет цен без синтаксических ошибок
       document.querySelectorAll('.price-tag').forEach(tag => {
         const price = tag.getAttribute('data-price');
         if (lang === 'uz') {
@@ -664,7 +679,7 @@
         }
       });
 
-      // Переключение кнопок RU / UZ
+      // Стили кнопок переключателя
       const btnRu = document.getElementById('lang-ru');
       const btnUz = document.getElementById('lang-uz');
       if (lang === 'uz') {
@@ -678,7 +693,7 @@
       localStorage.setItem('nova_lang', lang);
     }
 
-    // Мобильное бургер-меню
+    // Мобильное меню
     function toggleMobileMenu() {
       const menu = document.getElementById('mobile-menu');
       menu.classList.toggle('hidden');
@@ -690,50 +705,44 @@
       setLanguage(savedLang);
     });
 
-    /* =======================================================
-       ЗАЩИТА ОТ ПРОСМОТРА И КОПИРОВАНИЯ КОДА САЙТА
-       ======================================================= */
-    
-    // 1. Блокировка правой кнопки мыши (контекстного меню)
+    /* БЛОКИРОВКА ПРОСМОТРА И КОПИРОВАНИЯ КОДА */
     document.addEventListener('contextmenu', function (e) {
       e.preventDefault();
     });
 
-    // 2. Блокировка горячих клавиш (F12, Ctrl+U, Ctrl+Shift+I/J/C, Ctrl+S)
     document.addEventListener('keydown', function (e) {
       // F12
       if (e.keyCode === 123) {
         e.preventDefault();
         return false;
       }
-      // Ctrl+Shift+I или Cmd+Option+I (Инспектор)
+      // Ctrl+Shift+I / Cmd+Option+I
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.keyCode === 73 || e.key === 'I' || e.key === 'i')) {
         e.preventDefault();
         return false;
       }
-      // Ctrl+Shift+J или Cmd+Option+J (Консоль)
+      // Ctrl+Shift+J / Cmd+Option+J
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.keyCode === 74 || e.key === 'J' || e.key === 'j')) {
         e.preventDefault();
         return false;
       }
-      // Ctrl+Shift+C (Выбор элемента)
+      // Ctrl+Shift+C
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.keyCode === 67 || e.key === 'C' || e.key === 'c')) {
         e.preventDefault();
         return false;
       }
-      // Ctrl+U или Cmd+Option+U (Просмотр исходного кода)
+      // Ctrl+U
       if ((e.ctrlKey || e.metaKey) && (e.keyCode === 85 || e.key === 'U' || e.key === 'u')) {
         e.preventDefault();
         return false;
       }
-      // Ctrl+S (Сохранение страницы)
+      // Ctrl+S
       if ((e.ctrlKey || e.metaKey) && (e.keyCode === 83 || e.key === 'S' || e.key === 's')) {
         e.preventDefault();
         return false;
       }
     });
 
-    // 3. Запрет перетаскивания элементов (drag and drop)
     document.addEventListener('dragstart', function (e) {
       e.preventDefault();
     });

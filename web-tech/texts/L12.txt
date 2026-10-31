@@ -1,0 +1,49 @@
+Архивная лабораторная работа №12. Одноразовое проверочное задание
+Методический разбор
+
+Локальный PHP-сервер. Только собственный учебный стенд.
+
+Это демонстрация серверной проверки и одноразовости, не полноценная CAPTCHA, не форма входа и не промышленная защита от ботов.
+
+ПОРЯДОК ВЫПОЛНЕНИЯ
+1. Сохрани пример как challenge.php.
+2. Отправь правильный и неправильный ответ.
+3. Повтори старый запрос с тем же token и ответом.
+4. Проверь просроченный и отсутствующий token.
+5. Опиши, почему простая арифметика не останавливает автоматизацию и зачем нужны лимиты попыток.
+
+ПРИМЕР
+
+<?php
+// Только демонстрация одноразового задания: не система входа.
+session_start();
+$message = "";
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    $challenge = $_SESSION["challenge"] ?? null;
+    unset($_SESSION["challenge"]); // Одноразовое использование
+    $answer = $_POST["answer"] ?? null;
+    $token = $_POST["token"] ?? null;
+    $valid = is_array($challenge)
+        && is_string($answer) && is_string($token)
+        && hash_equals($challenge["token"], $token)
+        && time() <= $challenge["expires"]
+        && trim($answer) === (string) $challenge["answer"];
+    $message = $valid ? "Ответ принят" : "Неверный, просроченный или повторный ответ";
+}
+$a = random_int(1, 9);
+$b = random_int(1, 9);
+$token = bin2hex(random_bytes(16));
+$_SESSION["challenge"] = ["answer" => $a + $b, "token" => $token, "expires" => time() + 120];
+?>
+<p><?= htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8") ?></p>
+<form method="post">
+  <label for="answer">Сколько будет <?= $a ?> + <?= $b ?>?</label>
+  <input id="answer" name="answer" inputmode="numeric" required>
+  <input type="hidden" name="token" value="<?= $token ?>">
+  <button>Проверить</button>
+</form>
+
+ПРОВЕРКА
+- Правильный актуальный ответ принимается.
+- Старый ответ не принимается повторно.
+- Просроченный/пустой токен отвергается.

@@ -1,0 +1,27 @@
+Архивная лабораторная работа №9. HTTP: запрос и ответ
+Методический разбор
+
+Статический HTTP-сервер; файлы index.html и users.json из примеров.
+
+Убраны неработающие заглушки api.example.com и неверное ожидание поля name у корня GitHub API.
+
+ПОРЯДОК ВЫПОЛНЕНИЯ
+1. Запусти HTTP-сервер и открой DevTools → Network.
+2. Сделай GET к users.json.
+3. Запиши статус, Content-Type и тело ответа.
+4. Измени путь на отсутствующий и сравни результат. PUT/PATCH/DELETE обсуди как семантику API, которое должно быть реализовано отдельно.
+
+ПРИМЕР
+
+async function inspect() {
+  const response = await fetch("users.json");
+  console.log(response.status, response.headers.get("Content-Type"));
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  console.log(await response.json());
+}
+inspect().catch(console.error);
+
+ПРОВЕРКА
+- Корректный JSON виден в Network.
+- 404 обрабатывается отдельно.
+- Статический сервер не выдаётся за реализацию CRUD API.

@@ -1,0 +1,35 @@
+Архивная лабораторная работа №14. Безопасная AJAX-таблица
+Методический разбор
+
+HTTP-сервер; локальный JSON. Используй основу разбора №11.
+
+Функция — часть страницы с существующим tbody. Исправлен endpoint; посторонние фрагменты поиска удалены из разбора.
+
+ПОРЯДОК ВЫПОЛНЕНИЯ
+1. Загрузи локальный JSON, проверь статус и массив.
+2. Для каждого пользователя создай tr и td через createElement.
+3. Задай содержимое через textContent и добавь строку в tbody.
+4. Проверь строку <img src=x onerror=alert(1)> как обычное имя.
+5. Выводи ошибки через textContent; не вставляй внешний HTML.
+
+ПРИМЕР
+
+function renderRows(users, tbody) {
+  tbody.replaceChildren();
+  for (const user of users) {
+    const row = document.createElement("tr");
+    for (const value of [user.id, user.name, user.email]) {
+      const cell = document.createElement("td");
+      cell.textContent = String(value ?? "");
+      row.append(cell);
+    }
+    tbody.append(row);
+  }
+}
+// После загрузки массива:
+// renderRows(users, document.querySelector("tbody"));
+
+ПРОВЕРКА
+- Тестовая разметка видна как текст.
+- Нет выполнения обработчика из данных.
+- Состояния загрузки, ошибки и пустоты понятны.

@@ -1,0 +1,33 @@
+Архивная лабораторная работа №3. Виджеты jQuery UI
+Методический разбор
+
+Локальные jquery.js, jquery-ui.js и jquery-ui.css из совместимых официальных дистрибутивов.
+
+Это дополнительный разбор виджетов к A11, а не отдельная тема официальной программы.
+
+ПОРЯДОК ВЫПОЛНЕНИЯ
+1. Подключи CSS темы, затем jQuery, затем jQuery UI.
+2. Добавь поле даты и вызови datepicker.
+3. Добавь dialog с autoOpen:false и кнопку открытия.
+4. Проверь доступность клавиатурой; исследуй tabs и draggable как расширение.
+
+ПРИМЕР
+
+<link rel="stylesheet" href="jquery-ui.css">
+<label for="date">Дата</label><input id="date">
+<button id="open" type="button">Открыть диалог</button>
+<div id="dialog" title="Учебный диалог"><p>Пример jQuery UI</p></div>
+<script src="jquery.js"></script>
+<script src="jquery-ui.js"></script>
+<script>
+$(function () {
+  $("#date").datepicker();
+  $("#dialog").dialog({autoOpen: false});
+  $("#open").on("click", () => $("#dialog").dialog("open"));
+});
+</script>
+
+ПРОВЕРКА
+- Календарь открывается.
+- Диалог открывается и закрывается.
+- Файлы зависимостей доступны, Console без ошибок.

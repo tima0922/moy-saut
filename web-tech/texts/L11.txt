@@ -1,0 +1,49 @@
+Архивная лабораторная работа №11. AJAX и корректный JSON
+Методический разбор
+
+HTTP-сервер; index.html и соседний users.json. Серверный PHP не требуется.
+
+JSON для этой работы доступен в разделе «Примеры». Пропущенные запятые восстановлены, innerHTML заменён безопасным выводом.
+
+ПОРЯДОК ВЫПОЛНЕНИЯ
+1. Сохрани исправленный HTML и массив users.json.
+2. Запусти локальный сервер, открой страницу и нажми кнопку.
+3. Проверь response.ok и структуру массива.
+4. Переименуй JSON-файл и проверь видимую ошибку.
+5. Верни файл; добавь пустой массив и имя с HTML-символами.
+
+ПРИМЕР
+
+<!doctype html>
+<html lang="ru"><head><meta charset="UTF-8"><title>AJAX</title></head>
+<body>
+<button id="load">Загрузить пользователей</button>
+<p id="status" role="status"></p><ul id="list"></ul>
+<script>
+document.querySelector("#load").addEventListener("click", async () => {
+  const status = document.querySelector("#status");
+  const list = document.querySelector("#list");
+  list.replaceChildren();
+  status.textContent = "Загрузка…";
+  try {
+    const response = await fetch("users.json");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const users = await response.json();
+    if (!Array.isArray(users)) throw new Error("Ожидался массив");
+    for (const user of users) {
+      const li = document.createElement("li");
+      li.textContent = String(user.name ?? "Без имени");
+      list.append(li);
+    }
+    status.textContent = users.length ? "Готово" : "Список пуст";
+  } catch (error) {
+    status.textContent = `Ошибка загрузки: ${error.message}`;
+  }
+});
+</script></body></html>
+
+ПРОВЕРКА
+- Данные загружаются без перезагрузки.
+- JSON валиден.
+- Текст не исполняется как HTML.
+- Ошибка и пустой ответ различаются.

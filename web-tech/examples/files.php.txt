@@ -1,0 +1,17 @@
+<?php
+// Поместите logs.txt рядом со скриптом. Пример для локального стенда.
+$handle = fopen(__DIR__ . "/logs.txt", "r");
+if ($handle === false) {
+    http_response_code(500);
+    exit("Не удалось открыть журнал");
+}
+try {
+    while (($line = fgets($handle)) !== false) {
+        if (str_contains($line, "ERROR")) {
+            echo htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8") . "<br>";
+        }
+    }
+    if (!feof($handle)) throw new RuntimeException("Ошибка чтения");
+} finally {
+    fclose($handle);
+}

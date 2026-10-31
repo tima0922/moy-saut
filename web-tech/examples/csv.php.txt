@@ -1,0 +1,20 @@
+<?php
+$path = __DIR__ . "/students.csv";
+$handle = fopen($path, "a");
+if ($handle === false) exit("Не удалось открыть файл для записи");
+try {
+    if (fputcsv($handle, ["Тимур", "student"], ";", '"', "") === false) {
+        throw new RuntimeException("Ошибка записи");
+    }
+} finally {
+    fclose($handle);
+}
+$handle = fopen($path, "r");
+if ($handle === false) exit("Не удалось открыть файл для чтения");
+try {
+    while (($row = fgetcsv($handle, 0, ";", '"', "")) !== false) {
+        echo htmlspecialchars(implode(" — ", $row), ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8") . "<br>";
+    }
+} finally {
+    fclose($handle);
+}

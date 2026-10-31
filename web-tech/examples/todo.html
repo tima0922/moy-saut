@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="UTF-8"><title>Задачи</title></head>
+<body>
+<form id="form"><label for="task">Новая задача</label>
+<input id="task" required><button>Добавить</button></form>
+<ul id="list"></ul>
+<script>
+const tasks = [{id: 1, text: "Изучить JS"}, {id: 2, text: "Проверить DOM"}];
+const list = document.querySelector("#list");
+function render() {
+  list.replaceChildren();
+  for (const task of tasks) {
+    const li = document.createElement("li");
+    const label = document.createElement("span");
+    label.textContent = task.text;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "Удалить";
+    remove.addEventListener("click", () => {
+      tasks.splice(tasks.indexOf(task), 1);
+      render();
+    });
+    li.append(label, " ", remove);
+    list.append(li);
+  }
+}
+document.querySelector("#form").addEventListener("submit", event => {
+  event.preventDefault();
+  const input = document.querySelector("#task");
+  const text = input.value.trim();
+  if (!text) return;
+  tasks.push({id: Date.now(), text});
+  input.value = "";
+  render();
+});
+render();
+</script></body></html>

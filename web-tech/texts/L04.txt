@@ -1,0 +1,32 @@
+Архивная лабораторная работа №4. Массивы и строки PHP
+Методический разбор
+
+PHP с mbstring; сохраните код как names.php.
+
+Исправлена обработка кириллицы; посторонние фрагменты исключены из учебного разбора.
+
+ПОРЯДОК ВЫПОЛНЕНИЯ
+1. Создай массив имён в разном регистре.
+2. Используй mb_convert_case с UTF-8.
+3. Преобразуй массив через array_map.
+4. Удали дубли из массива ID через array_unique и сравни ключи.
+
+ПРИМЕР
+
+<?php
+$names = ["дмитрий", "АЛЕКСЕЙ", "иван"];
+$formatted = array_map(
+    fn(string $name): string => mb_convert_case(trim($name), MB_CASE_TITLE, "UTF-8"),
+    $names
+);
+foreach ($formatted as $name) {
+    echo htmlspecialchars($name, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8") . "<br>";
+}
+$ids = array_values(array_unique([10, 5, 20, 5, 30, 10, 50]));
+$ids[] = 100;
+echo implode("|", $ids);
+
+ПРОВЕРКА
+- Кириллица преобразована.
+- Вывод экранирован для HTML.
+- Пустой массив не вызывает ошибку.

@@ -1,52 +1,36 @@
 <!doctype html>
-<html lang="ru" data-theme="night">
+<html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#080d1d">
-<meta name="description" content="Веб технологии I. Лекции, практика и лабораторные материалы в одном учебном пространстве.">
-<title>Веб технологии I — учебные материалы TIFT</title>
-<link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/npm/daisyui@5.7.50/daisyui.css" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/npm/daisyui@5.7.50/themes.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.1.13" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js" defer></script>
-<link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="interface.css">
-<script src="https://cdn.jsdelivr.net/npm/three@0.134.0/build/three.min.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/vanta@0.5.24/dist/vanta.net.min.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/vanilla-tilt@1.8.1/dist/vanilla-tilt.min.js" defer></script>
-<script src="data.js" defer></script>
-<script src="exam-data.js" defer></script>
-<script src="trainer.js" defer></script>
-<script src="app.js" defer></script>
-<script src="motion.js" defer></script>
-<script src="ui.js" defer></script>
-<script src="visuals.js" defer></script>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#070c15"><meta name="description" content="Личное пространство Тимура. Веб-технологии, компьютерные сети и интерактивные лаборатории — все проекты на wong.uz.">
+<title>wong.uz — Один адрес. Три направления.</title>
+<link rel="icon" type="image/svg+xml" href="/portal/icon.svg"><link rel="stylesheet" href="/portal/portal.css">
+<script src="/portal/portal.js" defer></script>
 </head>
 <body>
-<div class="universe-background" aria-hidden="true"></div>
-<div class="ambient" aria-hidden="true"><span></span><span></span><div class="ambient-grid"></div></div>
-<a class="skip" href="#main">К содержимому</a>
-<div class="mobile-shade" id="mobileShade"></div>
-<aside class="sidebar" id="sidebar" aria-label="Основная навигация">
-<a class="brand" href="#home" aria-label="TIFT — учебные материалы дисциплины"><img class="university-logo" src="assets/tift-university.png" alt="TIFT Universiteti" width="1280" height="497" decoding="async"><span class="brand-mark academic-brand">T</span><span>TIFT<small>ВЕБ ТЕХНОЛОГИИ I</small></span></a>
-<div class="course-label"><span class="status-dot"></span> 5 семестр <span>Очная форма</span></div>
-<p class="nav-label">РАЗДЕЛЫ ДИСЦИПЛИНЫ</p>
-<nav id="nav"></nav>
-<div class="sidebar-bottom"><a class="syllabus-link" href="sources/study-plan.docx" download><span>↓</span> Учебный план <small>DOCX</small></a><div class="sidebar-foot"><span>2026–2027 <b>учебный год</b></span><button id="themeToggle" class="icon-button" aria-label="Включить светлую тему" title="Сменить тему">◐</button></div></div>
-</aside>
-<div class="app-shell"><header class="topbar"><button class="icon-button mobile-menu" id="menuToggle" aria-label="Открыть меню" aria-expanded="false">☰</button><div class="breadcrumb">TIFT <span>/</span> <b id="crumb">Учебный план</b></div><button id="openSearch" class="search-trigger"><span>⌕</span><span>Найти материал</span><kbd>Ctrl K</kbd></button><a href="#saved" class="semester-pill">Избранное <span>☆</span></a></header>
-<main id="main" tabindex="-1"></main>
-<footer class="footer"><span>TIFT University <i>·</i> Веб технологии I</span><span>Учебные материалы дисциплины</span><a href="#syllabus">Syllabus ↗</a></footer>
+<a class="skip" href="#projects">Перейти к проектам</a>
+<div class="ambient" aria-hidden="true"></div><div class="grid" aria-hidden="true"></div>
+<div class="shell">
+<header class="header"><a class="brand" href="/" aria-label="wong.uz — главная"><span class="brand-mark"></span>wong<span class="brand-domain">.uz</span></a><nav aria-label="Главная навигация"><a class="nav-projects" href="#projects">Проекты <span>03</span></a><a class="contact" href="https://t.me/tima_bt" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 3-4 18-6-5-3 3 1-6L21 3ZM9 13l8-6-6 9M3 10l18-7-12 10-6-3Z"/></svg><span>@tima_bt</span><span class="external">↗</span></a></nav></header>
+<main>
+<section class="hero" aria-labelledby="hero-title">
+<div class="hero-copy"><div class="eyebrow entrance"><span class="live-dot"></span> ЛИЧНОЕ ПРОСТРАНСТВО ТИМУРА</div><h1 id="hero-title"><span class="title-line"><span>Один адрес.</span></span><span class="title-line"><span class="accent">Три направления<span class="period">.</span></span></span></h1><p class="hero-description entrance">Знания, эксперименты и немного магии.<br>Выбирай свой маршрут — и погнали.</p><a class="explore entrance" href="#projects"><span class="down">↓</span> Исследовать проекты <span class="mono">/ 01—03</span></a></div>
+<div class="planet-wrap" aria-hidden="true"><div class="planet-halo"></div><canvas id="planet"></canvas><span class="planet-caption"><i></i> WONG ORBIT / 001</span><span class="planet-coordinate">41°18′ N &nbsp; 69°16′ E<br>TASHKENT, EARTH</span></div>
+</section>
+<section class="projects-section" id="projects" aria-labelledby="projects-title"><div class="section-heading"><h2 id="projects-title"><span class="tiny-cross">+</span> ВЫБЕРИ НАПРАВЛЕНИЕ</h2><span class="section-note">Три проекта. Одна орбита.</span></div>
+<div class="projects">
+<a class="project web" href="/web-tech/" aria-label="Открыть Web Studio — Веб-технологии I">
+<div class="preview web-preview" aria-hidden="true"><div class="preview-bar"><span><i></i><i></i><i></i></span><span>WEB STUDIO / LEARN & BUILD</span><b>↗</b></div><div class="web-stage"><div class="code-window"><div class="window-label">index.html <span>●</span></div><div class="code"><small>01</small> <em>&lt;idea&gt;</em><br><small>02</small> &nbsp;создавай.<br><small>03</small> &nbsp;пробуй.<br><small>04</small> &nbsp;<strong>разбирайся.</strong><br><small>05</small> <em>&lt;/idea&gt;</em></div><div class="code-status"><i></i> YOUR NEXT COMMIT STARTS HERE</div></div><div class="floating-tag tag-html">&lt;/&gt; <span>HTML</span></div><div class="floating-tag tag-css">{ } <span>CSS</span></div><div class="floating-tag tag-js">JS</div></div><div class="preview-bottom"><span>ОТ ПЕРВОЙ СТРОКИ К ПРОЕКТУ</span><span>01 / WEB</span></div></div>
+<div class="project-content"><div class="project-meta"><span>01 <i>—</i> WEB DEVELOPMENT</span><span class="category">УЧЁБА</span></div><h3>Web Studio<span>↗</span></h3><p>Веб-технологии I. Лекции, практика<br class="desktop-break"> и лабораторные в одном месте.</p><div class="project-footer"><span class="tags">HTML <i>·</i> CSS <i>·</i> JavaScript</span><span class="open-project">Открыть <span>↗</span></span></div></div></a>
+<a class="project packet" href="/2/" aria-label="Открыть PACKET — компьютерные сети с нуля">
+<div class="preview packet-preview" aria-hidden="true"><div class="preview-bar"><span class="mini-brand">⌘ PACKET</span><span>INSIDE THE NETWORK</span><b>↗</b></div><div class="network-stage"><svg viewBox="0 0 420 240"><defs><radialGradient id="networkGlow"><stop stop-color="#b5f469" stop-opacity=".18"/><stop offset="1" stop-color="#b5f469" stop-opacity="0"/></radialGradient></defs><circle cx="210" cy="115" r="115" fill="url(#networkGlow)"/><g class="net-grid"><ellipse cx="210" cy="118" rx="165" ry="64"/><ellipse cx="210" cy="118" rx="115" ry="44"/></g><g class="connections"><path d="m74 177 136-63 136 63M210 114V44M74 177l136 34 136-34M210 114v97"/></g><g class="data-particles"><circle r="3"><animateMotion dur="3s" repeatCount="indefinite" path="M210 44V114L74 177"/></circle><circle r="3"><animateMotion dur="3.8s" repeatCount="indefinite" path="M210 211V114L346 177"/></circle></g><g class="network-nodes"><g transform="translate(210 111)"><path d="m-29-11 29-15 29 15v28L0 32-29 17Z"/><path d="M-29-11 0 4l29-15M0 4v28"/><circle cy="-4" r="4"/></g><g transform="translate(210 33)"><rect x="-24" y="-14" width="48" height="30" rx="8"/><path d="M-12 0h24M0-8v16"/></g><g transform="translate(74 172)"><rect x="-21" y="-16" width="42" height="28" rx="4"/><path d="M-9 19H9M0 12v7"/></g><g transform="translate(346 172)"><rect x="-21" y="-16" width="42" height="28" rx="4"/><path d="M-9 19H9M0 12v7"/></g><g transform="translate(210 208)"><rect x="-22" y="-10" width="44" height="22" rx="4"/><path d="M-12 0h4M0 0h4M12 0h2"/></g></g><g class="net-labels"><text x="210" y="8">INTERNET</text><text x="74" y="214">192.168.1.1</text><text x="346" y="214">192.168.1.2</text></g></svg><span class="network-label">Всё связано.</span></div><div class="preview-bottom"><span><i class="live-dot"></i> ПАКЕТ В ПУТИ</span><span>02 / NETWORK</span></div></div>
+<div class="project-content"><div class="project-meta"><span>02 <i>—</i> NETWORK ACADEMY</span><span class="category">СЕТИ</span></div><h3>PACKET<span>↗</span></h3><p>Компьютерные сети с нуля.<br class="desktop-break"> Загляни внутрь интернета.</p><div class="project-footer"><span class="tags">3D-мир <i>·</i> Уроки <i>·</i> Практика</span><span class="open-project">Открыть <span>↗</span></span></div></div></a>
+<a class="project lab" href="/netlab/" aria-label="Открыть NetLab 3D — виртуальную сетевую лабораторию">
+<div class="preview lab-preview" aria-hidden="true"><div class="preview-bar"><span class="mini-brand">NETLAB <b>3D</b></span><span>BUILD. CONNECT. EXPLORE.</span><b>↗</b></div><div class="lab-stage"><div class="lab-floor"></div><div class="lab-orbit orbit-one"></div><div class="lab-orbit orbit-two"></div><div class="lab-core"><div class="core-top"></div><div class="core-front"><span></span><span></span><span></span></div><div class="core-side"></div></div><span class="lab-satellite sat-one">⌘</span><span class="lab-satellite sat-two">⌁</span><span class="lab-badge"><i></i> SIMULATION RUNNING</span></div><div class="preview-bottom"><span>ТВОЯ СЕТЬ. ТВОИ ПРАВИЛА.</span><span>03 / SANDBOX</span></div></div>
+<div class="project-content"><div class="project-meta"><span>03 <i>—</i> VIRTUAL LAB</span><span class="category">ПРАКТИКА</span></div><h3>NetLab 3D<span>↗</span></h3><p>Собери свою сеть и посмотри,<br class="desktop-break"> как данные оживают в 3D.</p><div class="project-footer"><span class="tags">Симуляция <i>·</i> Эксперименты</span><span class="open-project">Открыть <span>↗</span></span></div></div></a>
+</div></section>
+<section class="connect"><div><span class="tiny-cross">✳</span><p>Есть идея?<span>Давай выйдем на связь.</span></p></div><a href="https://t.me/tima_bt" target="_blank" rel="noopener noreferrer">Написать в Telegram <span>↗</span></a></section>
+</main>
+<footer><span>© <span id="year">2026</span> wong.uz <i>·</i> Сделано Тимуром</span><div><span class="footer-location">TASHKENT <span id="clock"></span></span><button id="motion-toggle" type="button" aria-pressed="false"><span class="motion-icon">Ⅱ</span><span class="motion-label">Пауза эффектов</span></button></div></footer>
 </div>
-<dialog id="searchDialog" class="search-dialog"><div class="search-top"><span>⌕</span><input type="search" id="globalSearch" placeholder="Тема, функция или название файла…" aria-label="Поиск по всем материалам"><button class="icon-button" id="closeSearch" aria-label="Закрыть поиск">×</button></div><div class="search-results" id="searchResults"></div><div class="search-bottom"><span>Поиск по программе и полным текстам исходников</span><kbd>Esc</kbd></div></dialog>
-<div class="toast" id="toast" role="status" aria-live="polite"></div>
-<noscript><p style="padding:40px">Для просмотра разделов включи JavaScript. <a href="sources/syllabus.docx">Скачать силабус</a>.</p></noscript>
 </body></html>

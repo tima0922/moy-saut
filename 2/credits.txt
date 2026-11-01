@@ -1,0 +1,26 @@
+PACKET Academy / Внутри сети
+
+Three.js 0.170.0 + OrbitControls, EffectComposer, UnrealBloomPass, OutputPass, FXAA.
+https://github.com/mrdoob/three.js/tree/r170
+MIT license: fonts/THREE-LICENSE.txt
+
+GSAP 3.15.0 и SplitText.
+https://gsap.com/docs/v3/
+https://gsap.com/standard-license/
+
+Unbounded, Onest, JetBrains Mono (локальные Latin/Cyrillic subsets).
+https://github.com/google/fonts/tree/main/ofl/unbounded
+https://github.com/google/fonts/tree/main/ofl/onest
+https://github.com/google/fonts/tree/main/ofl/jetbrainsmono
+Лицензии SIL OFL: файлы в fonts/.
+
+Материалы курса написаны для этого сайта по источникам:
+Cisco: https://www.cisco.com/site/us/en/learn/topics/networking/what-is-computer-networking.html
+Cloudflare: https://www.cloudflare.com/learning/
+MDN: https://developer.mozilla.org/en-US/docs/Learn_web_development/Getting_started/Web_standards/How_the_web_works
+TCP: https://www.rfc-editor.org/rfc/rfc9293.html
+Private IPv4: https://www.rfc-editor.org/rfc/rfc1918
+ARP: https://www.rfc-editor.org/rfc/rfc826
+Детальные ссылки находятся в главах.
+
+Все устройства и архитектура созданы программно. Сторонние 3D-модели, фотографии и текстуры не используются.

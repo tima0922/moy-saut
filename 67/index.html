@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#161e22">
+  <meta name="description" content="GARAGE LIFE — браузерный 3D-симулятор автомеханика. Диагностируй, разбери, отремонтируй и собери двигатель своими руками.">
+  <title>GARAGE LIFE — твоя мастерская</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%23192226'/%3E%3Cpath d='M13 44V22l19-10 19 10v22H40V30H24v14Z' fill='%23f48145'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./style.css">
+  <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/addons/","@tweenjs/tween.js":"./vendor/tween/tween.esm.js"}}</script>
+</head>
+<body>
+  <canvas id="scene" aria-label="Трёхмерная мастерская. Управление: WASD, мышь, E — действие."></canvas>
+  <div class="vignette" aria-hidden="true"></div>
+  <div id="loader" class="loader"><div class="loader-logo">GARAGE<span> LIFE</span><i>®</i></div><div class="loading-track"><span></span></div><p id="loading-text">Открываем мастерскую…</p></div>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="GARAGE LIFE"><span class="brand-symbol" data-icon="garage"></span><span>GARAGE<span class="brand-light"> LIFE</span><sup>®</sup></span></a>
+    <div class="location"><span class="status-dot"></span> МАСТЕРСКАЯ <span class="slash">/</span> <strong>БОКС 01</strong></div>
+    <div class="top-actions"><span class="alpha">BETA <b>0.3</b></span><button id="saves-open" class="icon-button" title="Слоты сохранений" aria-label="Слоты сохранений" data-icon="clipboard"></button><button id="save-now" class="icon-button" title="Сохранить" aria-label="Сохранить" data-icon="clipboard"></button><button id="pause-button" class="icon-button" title="Пауза" aria-label="Пауза" data-icon="power"></button><button id="sound-toggle" class="icon-button" title="Включить звук" aria-label="Включить звук" data-icon="volumeOff"></button><button id="settings-open" class="icon-button" title="Настройки" aria-label="Настройки" data-icon="settings"></button><button id="help-open" class="icon-button" title="Управление" aria-label="Управление" data-icon="help"></button></div>
+  </header>
+
+  <main id="welcome" class="welcome">
+    <div class="eyebrow"><span></span> СИМУЛЯТОР АВТОМЕХАНИКА</div>
+    <h1>ХОРОШИЙ РЕМОНТ<br>НАЧИНАЕТСЯ<br><em>С ТЕБЯ.</em></h1>
+    <p class="welcome-description">Твоя мастерская. Один автомобиль.<br>От первой ошибки до ровного звука мотора.</p>
+    <div class="welcome-selectors"><label for="mode-choice">РЕЖИМ ИГРЫ</label><select id="mode-choice"><option value="guided">Обучение</option></select><label for="job-choice">РЕМОНТ</label><select id="job-choice" disabled><option value="ignition">Зажигание</option></select></div>
+    <button id="start-button" class="primary-button"><span data-icon="power"></span> НАЧАТЬ СМЕНУ <span class="button-arrow">↗</span></button>
+    <div class="welcome-actions"><button id="continue-button" class="secondary-button hidden">ПРОДОЛЖИТЬ РЕМОНТ ↗</button><button id="saves-menu" class="secondary-button">СОХРАНЕНИЯ / ИМПОРТ ↗</button><button id="profile-menu" class="secondary-button">ПРОФИЛЬ / СТАТИСТИКА ↗</button></div><div class="welcome-meta"><span><i></i> 3D ОТ ПЕРВОГО ЛИЦА</span><span>26 СЪЁМНЫХ УЗЛОВ</span></div>
+    <div class="welcome-controls"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> движение</span><span><span data-icon="mouse"></span> осмотр</span></div>
+  </main>
+  <aside id="welcome-order" class="welcome-order glass"><div class="eyebrow">ПЕРВЫЙ ЗАКАЗ <span>№ 001</span></div><h2>KOVA S4 <small>1991</small></h2><div class="car-spec"><span>2.0 L · 16V</span><span>184 260 км</span></div><div class="order-separator"></div><div class="fault"><span data-icon="engine"></span><div><strong>Двигатель работает неровно</strong><p>Перегрев. Потеря мощности.<br>Нужно найти причину.</p></div></div><div class="difficulty"><span>СЛОЖНОСТЬ</span><div><i></i><i></i><i></i><i class="off"></i><i class="off"></i></div><b>Средняя</b></div></aside>
+  <footer id="welcome-footer" class="welcome-footer"><span>СНАЧАЛА РАЗБЕРИСЬ. ПОТОМ РАЗБЕРИ.</span><span>АВТОСОХРАНЕНИЯ ВКЛЮЧЕНЫ <i>↗</i></span></footer>
+
+  <section id="hud" class="hud hidden" aria-label="Игровой интерфейс">
+    <aside class="job-panel glass">
+      <div class="job-heading"><span class="eyebrow">ЗАКАЗ № 001</span><button id="job-collapse" class="tiny-button" aria-label="Свернуть заказ" data-icon="chevronUp"></button></div>
+      <h2>KOVA S4 <span>2.0 / 16V</span></h2>
+      <div class="job-body"><div class="job-fault"><i></i><span id="fault-text">Неровная работа двигателя</span></div><div class="job-progress-label"><span>ХОД РЕМОНТА</span><strong id="progress-percent">0%</strong></div><div class="job-progress"><span id="progress-bar"></span></div><ol id="chapters" class="chapters"></ol></div>
+      <button id="journal-open" class="journal-link"><span data-icon="clipboard"></span> Журнал ремонта <span>↗</span></button>
+    </aside>
+    <div class="scene-label"><span class="status-dot"></span><span id="scene-mode">СВОБОДНЫЙ ОСМОТР</span><span class="scene-label-line"></span><b id="fps">— FPS</b><small id="render-stats" class="render-stats"></small></div>
+    <aside class="task-panel glass">
+      <div class="task-eyebrow"><span id="chapter-label">01 / ДИАГНОСТИКА</span><span id="step-count">01</span></div>
+      <h3 id="task-title">Дождись автомобиля</h3>
+      <p id="task-description">Автомобиль заезжает в бокс.</p>
+      <div id="required-tool" class="required-tool"><span data-icon="wrench"></span><span>Нужен инструмент</span><b id="required-tool-name">OBD-сканер</b></div>
+      <button id="free-steps" class="secondary-button hidden">Доступные действия ↗</button><button id="diagnosis-open" class="secondary-button hidden">Диагноз / проверка ↗</button><button id="focus-button" class="secondary-button"><span data-icon="crosshair"></span> К месту работы <span>F</span></button>
+      <button id="action-button" class="action-button" disabled><span class="action-progress"></span><span class="action-content"><kbd>E</kbd><span id="action-label">Дождись автомобиля</span></span></button>
+      <label class="auto-focus"><input id="auto-focus" type="checkbox" checked><span></span> Переходить к следующей детали</label>
+    </aside>
+    <button id="world-marker" class="world-marker hidden" aria-label="Выбрать деталь"><span class="marker-dot"></span><span id="marker-name"></span></button>
+    <div id="crosshair" class="crosshair hidden"><i></i><i></i></div>
+    <div id="look-tip" class="look-tip"><span data-icon="mouse"></span> Нажми на сцену, чтобы осмотреться <kbd>Esc</kbd> курсор</div>
+    <nav id="toolbar" class="toolbar glass" aria-label="Инструменты"></nav>
+    <div class="bottom-hints"><span><kbd>WASD</kbd> движение</span><span><kbd>Shift</kbd> быстрее</span><span><kbd>F</kbd> к детали</span><span><kbd>Esc</kbd> курсор</span></div>
+    <div class="session-time"><span data-icon="clock"></span><span id="session-time">00:00</span><span>СМЕНА 01</span></div>
+    <div class="touch-controls"><div id="joystick" aria-label="Джойстик движения"><div id="joystick-knob"></div></div><button id="touch-look" aria-label="Проведи для осмотра"><span data-icon="move"></span><span>ОСМОТР</span></button></div>
+    <div id="arrival" class="arrival-banner hidden"><span class="status-dot"></span> АВТОМОБИЛЬ ЗАЕЗЖАЕТ В БОКС</div>
+  </section>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  <div id="modal-backdrop" class="modal-backdrop hidden">
+    <section id="modal" class="modal glass" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button id="modal-close" class="modal-close icon-button" aria-label="Закрыть" data-icon="close"></button><div id="modal-body"></div></section>
+  </div>
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

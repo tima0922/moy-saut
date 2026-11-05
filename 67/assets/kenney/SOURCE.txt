@@ -1,0 +1,4 @@
+Kenney Survival Kit
+https://kenney.nl/assets/survival-kit
+License: CC0 1.0 Universal
+Downloaded from official Kenney endpoint on 2026-11-05.

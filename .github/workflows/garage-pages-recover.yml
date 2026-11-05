@@ -1,0 +1,33 @@
+name: Recover stalled GARAGE LIFE Pages deployment
+
+on:
+  push:
+    paths:
+      - .github/workflows/garage-pages-recover.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+jobs:
+  recover-pages:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel blocked Pages deployment (not the website)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "Cancelling the stale Pages deployment a39f54c1721b82857683b373071dd49ea8db4b5a"
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/pages/deployments/a39f54c1721b82857683b373071dd49ea8db4b5a/cancel"
+          echo "Stale deployment cancellation submitted."
+
+      - name: Queue a fresh Pages build from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/pages/builds"
+          echo "Fresh Pages build requested."

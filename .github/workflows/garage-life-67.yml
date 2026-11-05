@@ -1,0 +1,73 @@
+name: Publish GARAGE LIFE 0.3 at /67
+
+on:
+  push:
+    paths:
+      - ".github/workflows/garage-life-67.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: garage-life-67-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout wong.uz
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+
+      - name: Fetch and verify original game archive
+        env:
+          GARAGE_ARCHIVE_URL: "https://at.adobe.com/9Fy7QWejj97CnYLC"
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --connect-timeout 15 --max-time 240 \
+            "$GARAGE_ARCHIVE_URL" --output /tmp/garage-life-0.3.zip
+          echo "6545bf440233734912c96bb8e415f488f7da54c765def38a092b5e6a5f0b8854  /tmp/garage-life-0.3.zip" | sha256sum --check
+
+      - name: Install static game at /67 without touching other directories
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path, PurePosixPath
+          from zipfile import ZipFile
+          import shutil, stat
+          dest = Path("67")
+          assert not dest.exists(), "Directory /67 already exists: refusing to overwrite it"
+          with ZipFile("/tmp/garage-life-0.3.zip") as z:
+              files = [f for f in z.infolist() if not f.is_dir()]
+              names = {f.filename for f in files}
+              required = {"index.html", "style.css", "js/main.js", "js/world.js",
+                          "vendor/three/build/three.module.js", "assets/kenney/workbench.glb",
+                          "assets/pbr/garage_tile_normal.png"}
+              assert required.issubset(names), f"Archive missing: {required - names}"
+              for item in files:
+                  name = PurePosixPath(item.filename)
+                  assert not name.is_absolute() and ".." not in name.parts
+                  assert not stat.S_ISLNK(item.external_attr >> 16)
+                  out = dest.joinpath(*name.parts)
+                  out.parent.mkdir(parents=True, exist_ok=True)
+                  with z.open(item) as source, out.open("wb") as target:
+                      shutil.copyfileobj(source, target)
+          print(f"Published {len(files)} game assets under /67")
+          PY
+
+      - name: Commit only /67 to website
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- 67
+          if git diff --cached --quiet; then
+            echo "Nothing new to publish."
+            exit 0
+          fi
+          git commit -m "Publish GARAGE LIFE 0.3 to wong.uz/67"
+          git push origin HEAD:main

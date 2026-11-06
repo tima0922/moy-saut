@@ -1,2 +1,0 @@
-GARAGE LIFE 0.3 — website deployment validation
-This directory is intended to be publicly available at https://wong.uz/67/

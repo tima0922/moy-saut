@@ -5,7 +5,7 @@ import {PARTS} from './game-state.js';
 
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
 export function createWorld(renderer){
-  const scene=new THREE.Scene();scene.background=new THREE.Color('#202a30');scene.fog=new THREE.Fog('#263139',15,34);
+  const scene=new THREE.Scene();scene.background=new THREE.Color('#5e8193');scene.fog=new THREE.Fog('#688899',28,72);
   const env=new RoomEnvironment();const pmrem=new THREE.PMREMGenerator(renderer);scene.environment=pmrem.fromScene(env,0.05).texture;env.dispose();pmrem.dispose();
   const mats={
     wall:new THREE.MeshStandardMaterial({color:0x545f64,roughness:.93}),
@@ -64,15 +64,22 @@ export function createWorld(renderer){
   mats.glass.metalness=0;mats.glass.roughness=.095;mats.glass.opacity=.71;mats.glass.ior=1.48;mats.glass.clearcoat=1;
   const targets=new Map(), bolts=new Map(), partObjects=new Map();
   const boxGeo=new THREE.BoxGeometry(1,1,1);
+  const wallVariants=new Map();
   function box(parent,size,pos,mat=mats.dark,rot){
     let material=mat;
     if(mat===mats.wall && atlas.wall[0]){
       const repeat=[Math.max(1,Math.max(size[0],size[2])/2.5),Math.max(1,size[1]/2.5)];
-      material=mat.clone();
-      // Clone samplers per wall, share pixel data; no GPU textures change in gameplay.
-      for(const key of ['map','normalMap','roughnessMap']){
-        if(mat[key]){material[key]=mat[key].clone();material[key].repeat.set(...repeat);material[key].needsUpdate=true;}
+      // Share one textured material for every matching tiling ratio instead of
+      // allocating duplicate GPU texture samplers for every wall segment.
+      const signature=repeat.join('x');
+      if(!wallVariants.has(signature)){
+        const variant=mat.clone();
+        for(const key of ['map','normalMap','roughnessMap']){
+          if(mat[key]){variant[key]=mat[key].clone();variant[key].repeat.set(...repeat);variant[key].needsUpdate=true;loadedTextures.push(variant[key]);}
+        }
+        wallVariants.set(signature,variant);
       }
+      material=wallVariants.get(signature);
     }
     const o=new THREE.Mesh(boxGeo,material);o.scale.set(...size);o.position.set(...pos);if(rot)o.rotation.set(...rot);o.castShadow=true;o.receiveShadow=true;parent.add(o);return o;}
   function cylinder(parent,r1,r2,h,pos,mat=mats.metal,rot=[0,0,0],segments=16){const o=new THREE.Mesh(new THREE.CylinderGeometry(r1,r2,h,segments),mat);o.position.set(...pos);o.rotation.set(...rot);o.castShadow=true;o.receiveShadow=true;parent.add(o);return o;}
@@ -104,9 +111,64 @@ export function createWorld(renderer){
   for(const z of [-5,0,5]){box(scene,[14,.2,.16],[0,5.1,z],mats.steel);for(const x of [-3.5,3.5]){box(scene,[.48,.09,3],[x,4.95,z],mats.black);box(scene,[.32,.025,2.8],[x,4.89,z],mats.light);}}
   // High windows and a diffused exterior, no imported background images.
   for(let z=-5.6;z<6;z+=2.8){box(scene,[.06,1.15,2.35],[-6.82,3.55,z],mats.black);box(scene,[.065,.94,2.12],[-6.77,3.55,z],new THREE.MeshBasicMaterial({color:0x9fbabf}));box(scene,[.08,1.1,.06],[-6.70,3.55,z],mats.steel);}
-  const outside=box(scene,[12,.1,16],[0,-.04,15],mats.wall);
-  box(scene,[18,7,.2],[0,3.5,23],new THREE.MeshBasicMaterial({color:0x798b91}));
-  const door=group(scene,[0,0,7.95]);for(let y=.15;y<4.35;y+=.22){box(door,[5.1,.205,.1],[0,y,0],mats.steel);}
+  const pavement=new THREE.MeshStandardMaterial({color:0x9ca3a2,roughness:.98});
+  const asphalt=new THREE.MeshStandardMaterial({color:0x363e45,roughness:1});
+  const grass=new THREE.MeshStandardMaterial({color:0x53735f,roughness:1});
+  const yellow=new THREE.MeshBasicMaterial({color:0xf1d79a});
+  const buildingA=new THREE.MeshStandardMaterial({color:0xa6b3ad,roughness:.97});
+  const buildingB=new THREE.MeshStandardMaterial({color:0xbfa999,roughness:.97});
+  const distant=new THREE.MeshStandardMaterial({color:0x6a8790,roughness:1});
+  const outside=box(scene,[18,.12,18],[0,-.09,16],pavement);
+  outside.castShadow=false;
+  // Open forecourt leads to a small low-poly street outside of the walkable bay.
+  box(scene,[38,.08,9],[0,-.14,24],asphalt).castShadow=false;
+  box(scene,[38,.08,2], [0,-.08,18.7],pavement).castShadow=false;
+  box(scene,[38,.06,4],[0,-.08,32],pavement).castShadow=false;
+  for(const x of [-15,-9,-3,3,9,15])box(scene,[2,.008,.12],[x,-.086,24],yellow).castShadow=false;
+  for(const x of [-14,-10,-6,6,10,14]){
+    box(scene,[.47,.009,1.5],[x,-.065,21.3],mats.white).castShadow=false;
+  }
+  // Sidewalk buildings, real storefront volumes with doors/windows rather than a flat sky card.
+  for(const side of [-1,1]){
+    for(let j=0;j<3;j++){
+      const x=side*(7.8+j*4.7),z=29+j%2*.5,h=4.3+(j%3)*1.35;
+      box(scene,[4.2,h,4],[x,h/2,z],j%2?buildingB:buildingA);
+      box(scene,[4.3,.2,4.25],[x,h+.13,z],mats.dark);
+      for(const y of [1.8,3.1])for(const off of [-1.05,1.05]){
+        if(y>h-.8)continue;
+        box(scene,[.95,.92,.08],[x+off,y,z-2.07],mats.glass).castShadow=false;
+        box(scene,[.065,1.05,.1],[x+off-.51,y,z-2.15],mats.steel).castShadow=false;
+      }
+      if(j===0)textPlane(scene,side<0?'АВТОЗАПЧАСТИ':'KOVA SERVICE',2.8,.33,[x,3.47,z-2.18],[0,0,0],'#e7f0e8','#243b40');
+    }
+  }
+  // Low-detail parked vehicles and sidewalk trees; stay outside walking corridor.
+  for(const x of [-5.4,6.0]){
+    const parked=group(scene,[x,0,30]);
+    box(parked,[1.65,.6,3.2],[0,.62,0],x<0?mats.blue:mats.paint);
+    box(parked,[1.44,.48,1.6],[0,1.12,-.23],mats.glass);
+    for(const sx of [-.84,.84])for(const sz of [-1.0,1]){
+      cylinder(parked,.3,.3,.17,[sx,.32,sz],mats.rubber,[0,0,Math.PI/2],12);
+      cylinder(parked,.16,.16,.18,[sx,.32,sz],mats.metal,[0,0,Math.PI/2],10);
+    }
+  }
+  for(const x of [-6,6,-12,12]){
+    const z=15.6+(Math.abs(x)>10?12:0);
+    cylinder(scene,.14,.21,1.8,[x,.9,z],mats.rust,undefined,10);
+    const crown=new THREE.Mesh(new THREE.IcosahedronGeometry(1.05,1),grass);crown.position.set(x,2.5,z);crown.castShadow=false;scene.add(crown);
+  }
+  for(const x of [-5.6,5.6]){
+    cylinder(scene,.06,.1,4.4,[x,2.2,17.9],mats.metal,undefined,10);
+    box(scene,[.75,.14,.27],[x,4.48,17.85],mats.light).castShadow=false;
+  }
+  textPlane(scene,'УЛИЦА · СВОБОДНЫЙ ВЫХОД',3,.36,[0,2.6,35],[0,Math.PI,0],'#e9eee8', '#29434e');
+  const backdrop=new THREE.Mesh(new THREE.PlaneGeometry(120,40),new THREE.MeshBasicMaterial({color:0x96b7c9}));backdrop.position.set(0,15,39);backdrop.rotation.y=Math.PI;scene.add(backdrop);
+  for(let x=-26;x<=26;x+=5){
+    box(scene,[4.8,6+(Math.abs(x)%4)*1.2,2],[x,3,37],distant).castShadow=false;
+  }
+  // Garage portal remains the ONLY traversable passage through solid front wall.
+
+  const door=group(scene,[0,4.5,7.95]);for(let y=.15;y<4.35;y+=.22){box(door,[5.1,.205,.1],[0,y,0],mats.steel);}
   box(scene,[.16,4.5,.2],[-2.65,2.25,7.7],mats.orange);box(scene,[.16,4.5,.2],[2.65,2.25,7.7],mats.orange);
   textPlane(scene,'GARAGE LIFE',3.5,.65,[-4.7,3,7.84],[0,Math.PI,0],'#c7d5d2');
   textPlane(scene,'01',1.8,2,[4.7,3,7.84],[0,Math.PI,0],'#f47734');
@@ -196,6 +258,20 @@ export function createWorld(renderer){
   // Interior visible through windows.
   for(const x of [-.43,.43]){rounded(car,[.55,.18,.55],[x,.82,.1],mats.dark,.08);const seat=rounded(car,[.55,.63,.16],[x,1.07,.42],mats.dark,.08);seat.rotation.x=-.12;rounded(car,[.31,.2,.14],[x,1.5,.45],mats.dark,.05);}
   box(car,[1.6,.21,.33],[0,1.1,-.58],mats.dark);const steering=new THREE.Mesh(new THREE.TorusGeometry(.17,.022,8,24),mats.black);steering.position.set(-.45,1.27,-.37);steering.rotation.x=-.35;car.add(steering);
+  // Opening front doors: thin hinged body/trim panels, black inner surface and handles.
+  const carDoors={};
+  for(const side of [-1,1]){
+    const sideName=side<0?'left':'right';
+    // Dark inset remains behind each swinging door to suggest a cabin aperture.
+    const inset=box(car,[.014,.70,.90],[side*1.005,1.01,-.10],mats.black);inset.castShadow=false;
+    const pivot=group(car,[side*1.015,1.06,-.57]);
+    const leaf=box(pivot,[.065,.69,.93],[0,-.08,.47],mats.paint);
+    box(pivot,[.02,.12,.26],[side*.045,-.06,.43],mats.black);
+    box(pivot,[.025,.035,.18],[side*.065,.14,.51],mats.metal);
+    const glass=box(pivot,[.04,.3,.78],[0,.40,.48],mats.glass);glass.castShadow=false;
+    target(sideName+'_car_door',leaf);
+    carDoors[sideName]=pivot;
+  }
   const hood=group(car,[0,1.13,-.69]);const hoodMesh=rounded(hood,[1.72,.055,1.41],[0,-.03,-.74],mats.paint,.045);hood.rotation.x=.02;target('hood',hoodMesh);
   for(const x of [-.5,.5])box(hood,[.017,.009,1.1],[x,.005,-.78],mats.paint);
   box(car,[1.5,.1,.15],[0,.95,-2.04],mats.dark);box(car,[1.55,.44,.08],[0,.69,-1.98],mats.steel);for(let i=0;i<15;i++)box(car,[.03,.39,.03],[-.7+i*.1,.7,-2.03],mats.dark);
@@ -203,7 +279,7 @@ export function createWorld(renderer){
   target('scanner',box(car,[.19,.055,.27],[-.62,1.18,-.67],mats.orange));
 
   // 26 individually removable assemblies; local origins survive re-parenting.
-  const engine=group(car,[0,.68,-1.28]);engine.scale.set(.95,.6,1);
+  const engine=group(car,[0,.61,-1.28]);engine.scale.set(.95,.55,1);
   rounded(engine,[.59,.42,.9],[0,0,0],mats.engine,.04);rounded(engine,[.51,.15,.82],[0,-.29,0],mats.cover,.03);
   for(let z=-.3;z<=.3;z+=.2){cylinder(engine,.082,.082,.04,[0,.225,z],mats.dark,[0,0,0],24);cylinder(engine,.068,.068,.045,[0,.23,z],mats.metal,[0,0,0],24);}
   for(const x of [-.31,.31])for(let z=-.32;z<.4;z+=.15)box(engine,[.018,.32,.03],[x,0,z],mats.steel);
@@ -216,7 +292,7 @@ export function createWorld(renderer){
 
   cylinder(engine,.18,.18,.1,[0,-.07,-.51],mats.dark,[Math.PI/2,0,0],24);cylinder(engine,.11,.11,.12,[0,-.07,-.53],mats.metal,[Math.PI/2,0,0],16);
   function part(id,parent,pos,make){const p=group(parent,pos);p.name=id;make(p);target(id,p);partObjects.set(id,{object:p,homeParent:parent,homePosition:p.position.clone(),homeRotation:p.quaternion.clone()});return p;}
-  part('battery',car,[-.66,1.03,-1.55],p=>{cylinder(p,.036,.036,.045,[0,0,0],mats.metal);tube(p,[[0,0,0],[-.1,-.04,.13],[-.12,-.28,.23]],.017,mats.black);});
+  part('battery',car,[-.66,.87,-1.55],p=>{rounded(p,[.31,.26,.22],[0,-.08,0],mats.dark,.025);box(p,[.29,.03,.20],[0,.065,0],mats.black);cylinder(p,.036,.036,.045,[0,.085,0],mats.metal);tube(p,[[0,0,0],[-.1,-.04,.13],[-.12,-.28,.23]],.017,mats.black);});
   part('intake_duct',car,[.39,1.02,-1.1],p=>tube(p,[[0,0,0],[.23,.01,-.03],[.28,-.04,-.34]],.061));
   part('airbox',car,[.62,.89,-1.65],p=>{rounded(p,[.32,.29,.4],[0,0,0],mats.dark,.025);for(let z=-.15;z<.16;z+=.045)box(p,[.31,.018,.014],[0,.15,z],mats.steel);});
   part('wiring',car,[-.31,1.02,-1.28],p=>{tube(p,[[0,0,-.32],[0,.04,.3],[.18,-.1,.48]],.025);for(let z=-.3;z<=.3;z+=.2)tube(p,[[0,0,z],[.2,.06,z]],.009,mats.blue);});
@@ -301,5 +377,5 @@ export function createWorld(renderer){
     const anisotropy=q==='low'?1:q==='balanced'?4:8;
     for(const t of loadedTextures){t.anisotropy=Math.min(anisotropy,renderer.capabilities.getMaxAnisotropy());t.needsUpdate=true;}
   }
-  return {scene,mats,car,engine,hood,door,wheels,lift,arms,crane,chain,stand,standEnginePosition,targets,partObjects,bolts,installSlots,partsTray,newPart,contact,highlight,key,dust,assetsReady,assetStatus,rayTargets,box,cylinder,textPlane,setTextureQuality};
+  return {scene,mats,car,engine,hood,door,carDoors,wheels,lift,arms,crane,chain,stand,standEnginePosition,targets,partObjects,bolts,installSlots,partsTray,newPart,contact,highlight,key,dust,assetsReady,assetStatus,rayTargets,box,cylinder,textPlane,setTextureQuality};
 }

@@ -61,3 +61,71 @@ body:not(.playing) #save-now,body:not(.playing) #pause-button{display:none}
   #touch-look{width:77px;height:30px;margin-top:6px}
   .bottom-hints,.look-tip,.session-time,.scene-label{display:none}
 }
+
+/* 0.4: OBD diagnostics UI / adaptive graphics settings */
+.scanner-link{display:flex;align-items:center;justify-content:center;gap:8px;border-color:#f0ad6940!important;color:#e5c3a4!important}
+.scanner-link svg{width:15px;height:15px}.scanner-link span:last-child{margin-left:auto;font-size:9px;opacity:.6}
+.scanner-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 14px;border:1px solid #e99a614b;background:#e99a610f;margin:20px 0 15px;border-radius:7px}
+.scanner-status strong{font-size:10px;color:#fac18c;letter-spacing:1.2px}
+.scanner-status>span:last-child{font-size:10px;color:#9db4b5;margin-left:auto}
+.scanner-status.scanner-good{border-color:#8bc89e55;background:#8bc89e12}.scanner-status.scanner-good strong{color:#a7dfb8}
+.scanner-code{background:#0b161c;border:1px solid #ffffff16;border-radius:8px;padding:14px 18px;display:grid;gap:8px}
+.scanner-code small,.scanner-gauges small,.scanner-graph-label{color:#85a5a7;font-size:9px;letter-spacing:1.2px}
+.scanner-code b{font-size:32px;color:#f5ac73;letter-spacing:2px;font-weight:600}
+.scanner-code p{margin:0;font-size:12px;color:#b6cacb}
+.scanner-gauges{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:13px 0 20px}
+.scanner-gauges>div{padding:13px;background:#ffffff09;border:1px solid #ffffff10;border-radius:6px;display:flex;flex-direction:column;gap:8px}
+.scanner-gauges strong{font-variant-numeric:tabular-nums;font-size:19px;letter-spacing:-.4px;color:#e5ede9;font-weight:600}
+.scanner-chart{height:104px;display:flex;gap:5px;align-items:flex-end;margin:10px 0 8px;border-bottom:1px solid #ffffff3a;background:linear-gradient(0deg,#cbdbde08,#ffffff03);padding:12px}
+.scanner-chart span{flex:1;min-width:5px;background:linear-gradient(0deg,#f19354,#ecc69d);border-radius:3px 3px 0 0;opacity:.9}
+.scanner-chart.scanner-empty{justify-content:center;align-items:center;color:#90a9ab;font-size:11px}
+.scanner-hint{color:#cee4d7!important;font-size:12px!important}
+.scanner-disclaimer{font-size:10px!important;line-height:1.6!important;color:#78969d!important}
+.settings-row input[type=checkbox]{accent-color:#eaa36c;margin-right:8px;width:14px;height:14px;vertical-align:middle}
+@media (max-width:760px){.scanner-gauges strong{font-size:16px}.scanner-code b{font-size:27px}.scanner-chart{height:82px}.scanner-link{font-size:9px}}
+
+/* 0.5: unobstructed first-person HUD. Explicitly win over old mobile media rules. */
+#hud .job-panel,#hud .task-panel,#hud #toolbar{display:none!important}
+#hud[data-drawer="order"] .job-panel{display:block!important;z-index:21;max-height:calc(100dvh - 110px);overflow:auto}
+#hud[data-drawer="task"] .task-panel{display:block!important;z-index:21;max-height:calc(100dvh - 110px);overflow:auto}
+#hud[data-drawer="tools"] #toolbar{display:flex!important;z-index:21}
+.quick-controls{position:absolute;z-index:18;bottom:max(14px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);min-width:280px;width:min(540px,54vw);border-radius:12px;padding:7px;pointer-events:auto;background:#152127eb}
+.quick-tabs,.quick-actions{display:flex;gap:6px;justify-content:center}
+.quick-tabs button,.quick-actions button,.car-controls button{font-size:12px;color:#e1eee7;background:#ffffff12;padding:8px 10px;border-radius:8px;border:1px solid #ffffff24;min-height:38px}
+.quick-tabs button[aria-expanded="true"]{background:#e88445;color:#172126}
+.quick-actions{margin-top:5px}.quick-actions>*{flex:1;min-width:0}
+.quick-actions #action-button{position:relative;display:block;width:100%;min-height:44px;margin:0;border-radius:8px;overflow:hidden}
+.quick-actions #action-label{font-size:11px}.quick-actions .action-content{justify-content:center}
+.compact-step{font-size:11px;line-height:1.25;color:#b9d4d0;text-align:center;padding:6px 5px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.car-controls{position:absolute;z-index:15;top:106px;left:50%;transform:translateX(-50%);display:flex;gap:5px;padding:5px;background:#121b22db;border-radius:9px;pointer-events:auto}
+.car-controls button{font-size:10px;min-height:32px;padding:5px 8px;white-space:nowrap}
+#hud .job-panel,#hud .task-panel{box-shadow:0 10px 42px #000b}
+@media(max-width:900px), (pointer:coarse){
+  .quick-controls{left:auto;right:8px;transform:none;bottom:max(5px,env(safe-area-inset-bottom));width:min(500px,63vw);min-width:0;padding:5px}
+  .quick-tabs button{padding:5px 4px;font-size:10px;flex:1;min-height:30px}
+  .quick-actions button{font-size:9px;padding:5px 4px;min-height:36px}
+  .compact-step{font-size:10px;padding:3px 2px 0}
+  .car-controls{top:53px;right:4px;left:auto;transform:none;gap:3px}
+  .car-controls button{padding:4px;font-size:9px;min-height:29px}
+  #hud[data-drawer="order"] .job-panel{left:6px;top:80px;width:min(270px,74vw);max-height:calc(100dvh - 125px)}
+  #hud[data-drawer="task"] .task-panel{left:auto;right:6px;top:80px;bottom:auto;width:min(320px,80vw);max-height:calc(100dvh - 125px)}
+  #hud[data-drawer="tools"] #toolbar{left:50%;right:auto;bottom:75px;transform:translateX(-50%);max-width:95vw;overflow-x:auto}
+  .bottom-hints,.session-time{display:none!important}
+  .touch-controls{bottom:80px}
+  #hud .scene-label{display:none}
+  #hud .world-marker{bottom:105px}
+}
+@media(max-height:490px) and (pointer:coarse){.quick-controls{width:55vw}.quick-tabs button{min-height:26px}.quick-actions #action-button{min-height:34px}.compact-step{font-size:9px}.car-controls{top:47px}.touch-controls{bottom:67px}}
+
+/* Optional landscape mode where native Screen Orientation API is denied. */
+.landscape-button{display:none;position:relative;z-index:2;background:#e78a4d;color:#111b1d;border-radius:9px;padding:12px 18px;margin:14px 0 0;font-weight:800;font-size:12px}
+.landscape-small{display:none;position:absolute;z-index:18;top:51px;left:8px;border-radius:7px;background:#d68248;color:#172026;font-weight:800;padding:8px;font-size:10px;pointer-events:auto}
+@media(pointer:coarse){.landscape-button,.landscape-small{display:inline-block}}
+body.force-landscape{width:100dvh!important;height:100dvw!important;overflow:hidden!important;position:fixed!important;top:0;left:0;transform-origin:0 0;transform:translateX(100vw) rotate(90deg)}
+body.force-landscape #scene{width:100%!important;height:100%!important}
+body.force-landscape .topbar{height:50px;padding:0 9px;left:0;right:0}
+body.force-landscape .welcome{max-width:none;max-height:100%;overflow-y:auto}
+body.force-landscape #welcome-order,body.force-landscape #welcome-footer{display:none!important}
+body.force-landscape .car-controls{top:51px}
+body.force-landscape .quick-controls{width:55%;bottom:5px}
+body.force-landscape #hud .touch-controls{bottom:65px}

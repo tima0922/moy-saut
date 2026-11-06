@@ -16,13 +16,14 @@ export function validateSave(save){
   if(!Array.isArray(save.camera)||save.camera.length!==5||save.camera.some(v=>!Number.isFinite(v)||Math.abs(v)>100))
     throw new Error('Некорректная позиция камеры');
   if(!save.settings||!['low','balanced','high'].includes(save.settings.quality)||
-     !Number.isFinite(save.settings.sensitivity)||save.settings.sensitivity<.3||save.settings.sensitivity>2)
+     !Number.isFinite(save.settings.sensitivity)||save.settings.sensitivity<.3||save.settings.sensitivity>2||
+     (save.settings.autoResolution!==undefined&&typeof save.settings.autoResolution!=='boolean'))
     throw new Error('Некорректные настройки');
   return save;
 }
-export function createSave(slot,session,{elapsed=0,camera=[-5.4,1.7,-5.8,0,0],quality='balanced',sensitivity=1,muted=true}={}){
-  const save={version:1,slot,updatedAt:Date.now(),appVersion:'0.2.0',session:session.snapshot(),
-    elapsed,camera:[...camera],settings:{quality,sensitivity,muted:Boolean(muted)}};
+export function createSave(slot,session,{elapsed=0,camera=[-5.4,1.7,-5.8,0,0],quality='balanced',sensitivity=1,muted=true,autoResolution=true}={}){
+  const save={version:1,slot,updatedAt:Date.now(),appVersion:'0.4.0',session:session.snapshot(),
+    elapsed,camera:[...camera],settings:{quality,sensitivity,muted:Boolean(muted),autoResolution:Boolean(autoResolution)}};
   return validateSave(save);
 }
 function encode(save){const content=JSON.stringify(validateSave(save));if(content.length>MAX_BYTES)throw new Error('Сохранение слишком большое');return {slot:save.slot,content,hash:checksum(content)};}

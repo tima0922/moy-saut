@@ -14,13 +14,13 @@ export function applyCommittedState(world,session){
   world.contact.material.opacity=session.lift?.45:1;
   world.arms.position.y=session.lift;
   world.hood.rotation.x=session.hoodOpen?1.13:.02;
-  world.door.position.y=session.delivered?4.5:0;
+  world.door.position.y=4.5;
   world.crane.position.set(3.7,0,2.7);
   if(session.done.has('crane_move')&&!session.done.has('engine_stand'))world.crane.position.set(0,0,0);
   if(session.engineLocation==='stand')world.crane.position.set(4.4,0,1.8);
   if(session.done.has('engine_return')&&!session.done.has('engine_install'))world.crane.position.set(0,0,0);
   world.car.attach(world.engine);
-  world.engine.position.set(0,.68,-1.28);
+  world.engine.position.set(0,.61,-1.28);
   if(session.engineLocation!=='car'){
     world.scene.attach(world.engine);
     if(session.engineLocation==='stand')world.engine.position.set(3.55,1.32,-1.03);

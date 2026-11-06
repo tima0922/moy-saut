@@ -106,7 +106,15 @@ const coolant=[scan(),hood(),fluids('coolant_drain','Слить охлаждаю
 coolant[1].deps=['scan'];
 const oil=sequential([scan(),hood(),fluids('oil_drain','Слить масло'),remove('oil_filter','Масляный фильтр'),replacement('oil_filter'),install('oil_filter','Новый масляный фильтр'),fluids('refill','Залить свежее масло'),close(),verify(),deliver()]);
 
+// Three short hands-on repairs that retain the real mesh, part and save-state pipeline.
+// No artificial 122-step overhaul required to test a single component.
+const quickBattery=sequential([scan(),hood(),remove('battery','Аккумулятор'),replacement('battery'),install('battery','Аккумулятор'),close(),verify(),deliver()]);
+const quickAir=sequential([scan(),hood(),remove('airbox','Корпус воздушного фильтра'),replacement('airbox'),install('airbox','Новый воздушный фильтр'),close(),verify(),deliver()]);
+const quickSpark=sequential([scan(),hood(),remove('coil_2','Катушка второго цилиндра'),remove('plug_2','Свеча второго цилиндра'),replacement('plug_2'),install('plug_2','Новая свеча'),install('coil_2','Катушка'),close(),verify(),deliver()]);
 export const JOBS=Object.freeze({
+  quick_battery:{id:'quick_battery',title:'⚡ Быстро: аккумулятор',fault:'Разряженный аккумулятор',symptoms:'Не крутит стартер; замена аккумулятора.',replacementPart:'battery',steps:quickBattery,quick:true},
+  quick_air:{id:'quick_air',title:'🍃 Быстро: воздушный фильтр',fault:'Засорён фильтр',symptoms:'Мотор плохо тянет, фильтр забит пылью.',replacementPart:'airbox',steps:quickAir,quick:true},
+  quick_spark:{id:'quick_spark',title:'🔩 Быстро: свеча зажигания',fault:'Свеча второго цилиндра',symptoms:'Неровные обороты; заменить одну свечу.',replacementPart:'plug_2',steps:quickSpark,quick:true},
   gasket:{id:'gasket',title:'Капитальный ремонт ГБЦ',fault:'Повреждение прокладки ГБЦ',symptoms:'Перегрев, нестабильный холостой ход и антифриз в масле.',replacementPart:'gasket',steps:STEPS},
   ignition:{id:'ignition',title:'Пропуски зажигания',fault:'Неисправная катушка цилиндра № 2',symptoms:'Двигатель троит, появляется P0302, плохой разгон.',replacementPart:'coil_2',steps:ignition},
   intake:{id:'intake',title:'Потеря тяги',fault:'Забитый воздушный фильтр',symptoms:'Машина плохо разгоняется и расходует больше топлива.',replacementPart:'airbox',steps:intake},
@@ -114,9 +122,21 @@ export const JOBS=Object.freeze({
   oil:{id:'oil',title:'Масляный сервис',fault:'Загрязнён масляный фильтр',symptoms:'Пора заменить масло и масляный фильтр.',replacementPart:'oil_filter',steps:oil},
 });
 export const MODES={guided:'Обучение',diagnostic:'Диагностика',free:'Свободный ремонт',career:'Карьера',challenge:'На время'};
-const JOB_PAYOUTS={gasket:[1700,440],ignition:[520,180],intake:[440,130],coolant:[670,230],oil:[460,160]};
+const JOB_PAYOUTS={quick_battery:[170,75],quick_air:[90,20],quick_spark:[130,30],gasket:[1700,440],ignition:[520,180],intake:[440,130],coolant:[670,230],oil:[460,160]};
 const defaultProfile=()=>({balance:0,reputation:50,orders:[],bestTimes:{}});
 const MAX_HISTORY=300;
+// Deterministic *gameplay* sensor presets. These are not actual ECU data or repair advice.
+// All displays use the committed session state so saving/loading never changes the readout.
+const DIAGNOSTIC_PRESETS=Object.freeze({
+  gasket:{code:'P0217',codeDescription:'Перегрев двигателя',rpm:670,temp:116,oil:2.0,volts:13.5,trace:[66,71,63,78,69,75,60,73,65,76],hint:'Проверь систему охлаждения и состояние масла.'},
+  ignition:{code:'P0302',codeDescription:'Пропуски воспламенения, цилиндр № 2',rpm:630,temp:91,oil:2.6,volts:13.8,trace:[42,77,51,85,38,72,49,81,44,76],hint:'Проверь свечу и катушку второго цилиндра.'},
+  intake:{code:'P0101',codeDescription:'Несоответствие расхода воздуха',rpm:710,temp:93,oil:2.7,volts:13.8,trace:[58,70,61,72,62,74,59,71,63,68],hint:'Проверь фильтр и впускную магистраль.'},
+  coolant:{code:'P0217',codeDescription:'Перегрев двигателя',rpm:760,temp:119,oil:2.5,volts:13.6,trace:[70,72,69,74,71,73,70,72,71,73],hint:'Проверь уровень антифриза и герметичность патрубков.'},
+  quick_battery:{code:'P0562',codeDescription:'Низкое напряжение системы',rpm:0,temp:32,oil:0,volts:10.1,trace:[12,14,13,12,11,12,13,12,12,11],hint:'Проверь аккумулятор и напряжение.'},
+  quick_air:{code:'P0101',codeDescription:'Неверный поток воздуха',rpm:710,temp:93,oil:2.7,volts:13.8,trace:[58,70,61,72,62,74,59,71,63,68],hint:'Замени воздушный фильтр.'},
+  quick_spark:{code:'P0302',codeDescription:'Пропуски, цилиндр 2',rpm:630,temp:91,oil:2.6,volts:13.8,trace:[42,77,51,85,38,72,49,81,44,76],hint:'Проверь свечу второго цилиндра.'},
+  oil:{code:'SERVICE',codeDescription:'Плановое техническое обслуживание (не код DTC)',rpm:790,temp:94,oil:1.6,volts:13.8,trace:[70,69,71,70,68,71,69,70,69,71],hint:'Проверь масло и состояние фильтра. SERVICE — игровое напоминание.'}
+});
 /** Gameplay state is the only authority. Animated meshes must never be serialized. */
 export class RepairSession {
   constructor(jobId='gasket',mode='guided'){this.reset(jobId,mode);}
@@ -151,6 +171,27 @@ export class RepairSession {
     this.selectedStepId=id;return true;
   }
   get progress(){return this.index/this.steps.length;}
+  get telemetry(){
+    const preset=DIAGNOSTIC_PRESETS[this.jobId];
+    const connected=this.diagnosed;
+    const verified=this.tested || this.completed;
+    const replaced=this.replacedParts.has(JOBS[this.jobId].replacementPart);
+    const candidate=replaced && (!['gasket','coolant','oil'].includes(this.jobId)||this.refilled);
+    const trace=verified?[70,71,70,72,71,70,71,70,72,71]:preset.trace;
+    return {
+      connected,verified,pendingVerification:!verified&&candidate,
+      status:!connected?'СКАНЕР НЕ ПОДКЛЮЧЁН':verified?'ПРОВЕРКА ПРОЙДЕНА':candidate?'ОЖИДАЕТ КОНТРОЛЯ':'НЕИСПРАВНОСТЬ',
+      code:!connected?'—':verified?'НЕТ':preset.code,
+      codeDescription:!connected?'Сначала выполни чтение ошибок в заказе.':verified?'Активных игровых ошибок нет.':preset.codeDescription,
+      rpm:!connected?null:verified?820:preset.rpm,
+      coolantC:!connected?null:verified?89:preset.temp,
+      oilBar:!connected?null:verified?2.8:preset.oil,
+      voltage:!connected?null:verified?13.9:preset.volts,
+      trace:connected?[...trace]:[],
+      hint:!connected?'Подключи сканер и выполни первый шаг заказа.':verified?'Выполнена контрольная проверка после ремонта.':candidate?'Нужна контрольная проверка перед выдачей машины.':preset.hint,
+      simulated:true
+    };
+  }
   recordCompletion(elapsed){
     if(!this.completed||this.rewarded||!Number.isFinite(elapsed)||elapsed<0)return null;
     if(this.mode!=='career'&&this.mode!=='challenge')return null;

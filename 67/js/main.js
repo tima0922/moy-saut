@@ -70,6 +70,7 @@ const center=new THREE.Vector2();
 const clock=new THREE.Clock();
 let busy=false,traveling=false,hold=0,held=false,holdSource=null,modalOpen=false,autoFocus=true;
 let quality=matchMedia('(max-width:760px)').matches?'balanced':'high',sensitivity=1,muted=true;
+let autoResolution=matchMedia('(max-width:760px)').matches,renderScale=1,slowWindows=0,fastWindows=0;
 let focused=false,toastTimer=null,frameCount=0,fpsElapsed=0,gameElapsed=0,dragging=false,lastPointer={x:0,y:0};
 const keys=new Set(),joy={x:0,y:0};
 let modalReturnFocus=null,audioContext=null;
@@ -91,7 +92,7 @@ function targetPosition(s=session.step){
     const rec=world.partObjects.get(s.part);
     return rec.homeParent.localToWorld(rec.homePosition.clone());
   }
-  if(s.id==='engine_install')return new THREE.Vector3(0,.68,-1.28);
+  if(s.id==='engine_install')return new THREE.Vector3(0,.61,-1.28);
   return worldPosition(world.targets.get(s.target));
 }
 function distance(){return session.step?camera.position.distanceTo(targetPosition()):Infinity;}
@@ -103,6 +104,15 @@ function renderToolbar(){
   document.querySelectorAll('.tool').forEach(b=>b.addEventListener('click',()=>{stopHold();showTool(b.dataset.tool);}));
 }
 renderToolbar();
+// Move the original action button to the compact HUD, retaining all input handlers.
+$('#quick-action-slot')?.appendChild?.($('#action-button'));
+function panel(name=''){
+  const hud=$('#hud');const next=hud.dataset.drawer===name?'':name;
+  hud.dataset.drawer=next;
+  document.querySelectorAll('[data-open-panel]').forEach(b=>b.setAttribute('aria-expanded',String(next===b.dataset.openPanel)));
+}
+document.querySelectorAll('[data-open-panel]').forEach(b=>b.addEventListener('click',()=>panel(b.dataset.openPanel)));
+$('#quick-focus')?.addEventListener('click',()=>focusTarget());
 function updateTask(){
   const s=session.step;if(!s)return;
   $('#free-steps')?.classList.toggle('hidden',session.mode!=='free');
@@ -113,7 +123,7 @@ function updateTask(){
   const progress=Math.round(session.progress*100);$('#progress-percent').textContent=progress+'%';$('#progress-bar').style.width=progress+'%';
   $('#chapters').innerHTML=CHAPTERS.map((name,i)=>`<li class="${i<s.chapter?'done':i===s.chapter?'active':''}"><span class="chapter-number">${i<s.chapter?'✓':String(i+1).padStart(2,'0')}</span>${name}</li>`).join('');
   $('#fault-text').textContent=session.tested?'Двигатель исправен':session.diagnosed?JOBS[session.jobId].fault:JOBS[session.jobId].symptoms;
-  $('#marker-name').textContent=s.title;
+  $('#marker-name').textContent=s.title;$('#compact-step').textContent=`${session.index+1}/${session.steps.length} · ${s.title}`;
   updateActionButton();
 }
 function updateActionButton(){
@@ -160,7 +170,7 @@ $('#modal-backdrop').addEventListener('click',e=>{if(e.target.id==='modal-backdr
 function diagnosisModal(){
   const job=JOBS[session.jobId];
   if(session.mode==='guided'){
-    openModal(`<div class="eyebrow">РЕЗУЛЬТАТ ДИАГНОСТИКИ</div><h2 id="modal-title">Нашли проблему.</h2><p>Перегрев и антифриз в масле указывают на повреждение прокладки ГБЦ. Тебе предстоит разобрать двигатель.</p><div class="diagnosis-code"><b>P0302</b><span>Пропуски воспламенения<br>Цилиндр № 2</span></div><button class="primary-button" id="diagnosis-continue">К РЕМОНТУ →</button>`);
+    openModal(`<div class="eyebrow">РЕЗУЛЬТАТ ДИАГНОСТИКИ</div><h2 id="modal-title">Нашли проблему.</h2><p>Перегрев и антифриз в масле указывают на повреждение прокладки ГБЦ. Тебе предстоит разобрать двигатель.</p><div class="diagnosis-code"><b>P0217</b><span>Перегрев двигателя<br>Проверить систему охлаждения</span></div><button class="primary-button" id="diagnosis-continue">К РЕМОНТУ →</button>`);
     $('#diagnosis-continue').onclick=closeModal;return;
   }
   openModal(`<div class="eyebrow">ДИАГНОСТИКА / ${MODES[session.mode]}</div><h2 id="modal-title">Определи неисправность.</h2><p>${job.symptoms} Сканер показывает симптомы, а не готовый диагноз.</p><div class="diagnostic-options">${Object.values(JOBS).filter(j=>j.id!=='gasket').map(j=>`<button class="secondary-button" data-hypothesis="${j.id}">${j.fault}</button>`).join('')}</div><p id="hypothesis-feedback" class="help-note">Выбери вероятную причину. Неверные ответы фиксируются, но заказ можно продолжать.</p><button class="primary-button" id="diagnosis-continue">ПРОДОЛЖИТЬ →</button>`);
@@ -174,13 +184,28 @@ function diagnosisModal(){
     closeModal();
   };
 }
-function testModal(){openModal(`<div class="eyebrow">КОНТРОЛЬНЫЙ ЗАПУСК</div><h2 id="modal-title">Работает как надо.</h2><p>Двигатель собран, жидкости залиты. Повторная диагностика завершена — машину можно отдавать клиенту.</p><div class="modal-grid"><div class="stat"><small>ОШИБКИ OBD</small><strong class="good">0 ошибок</strong></div><div class="stat"><small>ХОЛОСТОЙ ХОД</small><strong class="good">820 об/мин</strong></div><div class="stat"><small>ТЕМПЕРАТУРА</small><strong>89 °C</strong></div><div class="stat"><small>ГЕРМЕТИЧНОСТЬ</small><strong class="good">В норме</strong></div></div><button class="primary-button" id="test-continue">ВЕРНУТЬСЯ В МАСТЕРСКУЮ →</button>`);$('#test-continue').onclick=closeModal;}
+function telemetryModal(){
+  const d=session.telemetry;
+  const number=(value,unit)=>value===null?'—':`${value}${unit}`;
+  const chart=d.trace.length?`<div class="scanner-chart" role="img" aria-label="Условный график оборотов холостого хода">${d.trace.map((v,i)=>`<span style="height:${v}%" title="Отсчёт ${i+1}"></span>`).join('')}</div>`:'<div class="scanner-chart scanner-empty">Нет данных до сканирования</div>';
+  openModal(`<div class="eyebrow">KOVA DIAGNOSTICS / OBD-II</div><h2 id="modal-title">Блок диагностики</h2><div class="scanner-status ${d.verified?'scanner-good':d.connected?'scanner-warning':''}"><span class="status-dot"></span><strong>${d.status}</strong><span>${JOBS[session.jobId].title}</span></div><div class="scanner-code"><small>${d.code==='SERVICE'?'НАПОМИНАНИЕ':'АКТИВНЫЙ КОД / DTC'}</small><b>${d.code}</b><p>${d.codeDescription}</p></div><div class="scanner-gauges"><div><small>ХОЛОСТОЙ ХОД</small><strong>${number(d.rpm,' об/мин')}</strong></div><div><small>ОХЛАЖДЕНИЕ</small><strong>${number(d.coolantC,' °C')}</strong></div><div><small>ДАВЛЕНИЕ МАСЛА</small><strong>${number(d.oilBar,' бар')}</strong></div><div><small>НАПРЯЖЕНИЕ</small><strong>${number(d.voltage,' В')}</strong></div></div><div class="scanner-graph-label">УСЛОВНАЯ СТАБИЛЬНОСТЬ ХОЛОСТОГО ХОДА</div>${chart}<p class="scanner-hint">${d.hint}</p><p class="scanner-disclaimer">Это модель игровых показаний для текущего заказа, а не подключение к настоящему ЭБУ и не измерения реального автомобиля. Данные обновятся после контрольной проверки.</p><button class="primary-button" id="scanner-close">ВЕРНУТЬСЯ К РЕМОНТУ →</button>`);
+  $('#scanner-close').onclick=closeModal;
+}
+$('#scanner-data')?.addEventListener('click',telemetryModal);
+$('#telemetry-shortcut')?.addEventListener('click',()=>session.started?telemetryModal():toast('Сначала начни смену.'));
+function testModal(){
+  const d=session.telemetry;
+  const ok=d.verified;
+  openModal(`<div class="eyebrow">КОНТРОЛЬНЫЙ ЗАПУСК</div><h2 id="modal-title">${ok?'Контроль пройден.':'Контроль ещё не пройден.'}</h2><p>${ok?'После ремонта сканер не показывает активных игровых ошибок.':'Заверши контрольное сканирование для подтверждения ремонта.'}</p><div class="modal-grid"><div class="stat"><small>КОДЫ</small><strong class="${ok?'good':'bad'}">${d.code}</strong></div><div class="stat"><small>ХОЛОСТОЙ ХОД</small><strong>${d.rpm??'—'} об/мин</strong></div><div class="stat"><small>ОХЛАЖДЕНИЕ</small><strong>${d.coolantC??'—'} °C</strong></div><div class="stat"><small>ПРОВЕРКА</small><strong class="${ok?'good':'bad'}">${ok?'Пройдена':'Не завершена'}</strong></div></div><button class="secondary-button" id="test-readings">ПОКАЗАНИЯ СКАНЕРА</button><button class="primary-button" id="test-continue">ВЕРНУТЬСЯ В МАСТЕРСКУ →</button>`);
+  $('#test-continue').onclick=closeModal;
+  $('#test-readings').onclick=telemetryModal;
+}
 
 async function begin(options={}){
   if(session.started)return;
   if(!options.preserveExisting){
     const selectedMode=$('#mode-choice')?.value||'guided';
-    const selectedJob=selectedMode==='guided'?'gasket':($('#job-choice')?.value||'ignition');
+    const selectedJob=selectedMode==='guided'?'gasket':($('#job-choice')?.value||'quick_battery');
     session.reset(selectedJob,selectedMode);
   }
   showTool(session.tool,true);
@@ -188,8 +213,8 @@ async function begin(options={}){
   document.body.classList.add('playing');['#welcome','#welcome-order','#welcome-footer'].forEach(id=>$(id).classList.add('hidden'));$('#hud').classList.remove('hidden');$('#arrival').classList.remove('hidden');
   busy=true;world.car.position.z=12;world.contact.position.z=12;world.door.position.y=4.5;motorSound(4.2);
   const arrival={z:12};await anim(arrival,{z:0},4000,()=>{world.car.position.z=arrival.z;world.contact.position.z=arrival.z;world.wheels.forEach(w=>w.rotation.x=arrival.z/.405);});
-  world.wheels.forEach(w=>w.rotation.x=0);await anim(world.door.position,{y:0},900);
-  session.arrived=true;busy=false;$('#arrival').classList.add('hidden');updateTask();saveGame('auto',true);toast('Заказ принят. Выбери OBD-сканер и начни диагностику.');focusTarget();
+  world.wheels.forEach(w=>w.rotation.x=0);await anim(world.door.position,{y:4.5},300);
+  session.arrived=true;busy=false;$('#arrival').classList.add('hidden');updateTask();saveGame('auto',true);toast('Заказ принят. Начни с первого шага.');focusTarget();
 }
 $('#start-button').addEventListener('click',begin);
 const modeChoice=$('#mode-choice'),jobChoice=$('#job-choice');
@@ -207,7 +232,7 @@ if(modeChoice&&jobChoice){
 function cameraSnapshot(){return [...camera.position.toArray(),camera.rotation.x,camera.rotation.y];}
 async function saveGame(slot='auto',silent=false){
   if(!session.started||!session.arrived||gpuLost)return false;
-  try{await saveStore.write(slot,createSave(slot,session,{elapsed:gameElapsed,camera:cameraSnapshot(),quality,sensitivity,muted}));
+  try{await saveStore.write(slot,createSave(slot,session,{elapsed:gameElapsed,camera:cameraSnapshot(),quality,sensitivity,muted,autoResolution}));
     if(!silent)toast(`Сохранено: ${slot==='auto'?'автоматически':slot.toUpperCase()}`);autosaveErrorShown=false;return true;
   }catch(e){console.warn('Save failed',e);if(!autosaveErrorShown){toast(`Прогресс не сохранён: ${e.message}`,true);autosaveErrorShown=true;}return false;}
 }
@@ -216,7 +241,7 @@ async function resumeSave(slot){
   try{
     const save=await saveStore.read(slot);if(!save)throw new Error('Слот пуст');
     session.restore(save.session);gameElapsed=save.elapsed;
-    quality=save.settings.quality;sensitivity=save.settings.sensitivity;muted=save.settings.muted;
+    quality=save.settings.quality;sensitivity=save.settings.sensitivity;muted=save.settings.muted;autoResolution=save.settings.autoResolution??autoResolution;
     setQuality(quality);showTool(session.tool,true);
     document.body.classList.add('playing');['#welcome','#welcome-order','#welcome-footer'].forEach(id=>$(id).classList.add('hidden'));
     $('#hud').classList.remove('hidden');$('#arrival').classList.add('hidden');
@@ -269,7 +294,45 @@ refreshContinue();
 $('#focus-button').addEventListener('click',focusTarget);
 $('#world-marker').addEventListener('click',()=>{if(!canReach()){focusTarget();return;}if(session.tool!==session.step.tool){showTool(session.step.tool);return;}toast('Удерживай E или оранжевую кнопку, чтобы выполнить действие.');});
 $('#auto-focus').addEventListener('change',e=>autoFocus=e.target.checked);
-$('#job-collapse').addEventListener('click',()=>$('.job-panel').classList.toggle('collapsed'));
+$('#job-collapse').addEventListener('click',()=>panel(''));
+// Direct vehicle/workshop controls. Original long repair scripted hood steps still work.
+const accessible=(position,threshold=5.2)=>camera.position.distanceTo(position)<threshold;
+let movingDoor=false,movingHood=false,movingShutter=false;
+async function toggleVehiclePart(which){
+  if(!session.started||!session.arrived||busy||traveling||modalOpen)return;
+  if(which==='hood'){
+    if(movingHood)return;
+    if(!accessible(new THREE.Vector3(0,1,-1.4),5.5)){toast('Подойди к капоту.');return;}
+    movingHood=true;
+    const opening=world.hood.rotation.x<.55;
+    // Prevent shutting the hood while any removed part is being worked on.
+    if(!opening&&session.removed.size){toast('Сначала установи снятые детали.',true);movingHood=false;return;}
+    try{await anim(world.hood.rotation,{x:opening?1.13:.02},580);session.hoodOpen=opening;beep();saveGame('auto',true);}
+    finally{movingHood=false;}
+    return;
+  }
+  const leaf=world.carDoors[which];
+  if(!leaf)return;
+  if(movingDoor)return;
+  if(!accessible(leaf.getWorldPosition(new THREE.Vector3()),4.8)){toast('Подойди к двери.');return;}
+  movingDoor=true;const opening=Math.abs(leaf.rotation.y)<.2;
+  try{await anim(leaf.rotation,{y:opening?(which==='left'?.95:-.95):0},650);beep();}
+  finally{movingDoor=false;}
+}
+async function toggleGarageShutter(){
+  if(!session.started||!session.arrived||busy||traveling||movingShutter||modalOpen)return;
+  // Only the bay control near the entrance can drive the rolling shutter.
+  if(!accessible(new THREE.Vector3(0,1.7,6.7),15)){toast('Подойди к воротам.');return;}
+  movingShutter=true;
+  const opening=world.door.position.y<3.3;
+  try{await anim(world.door.position,{y:opening?4.5:0},900);beep();toast(opening?'Ворота открыты — можно выйти на улицу.':'Ворота закрыты.');}
+  finally{movingShutter=false;}
+}
+$('#hood-toggle')?.addEventListener('click',()=>toggleVehiclePart('hood'));
+$('#left-door-toggle')?.addEventListener('click',()=>toggleVehiclePart('left'));
+$('#right-door-toggle')?.addEventListener('click',()=>toggleVehiclePart('right'));
+$('#garage-toggle')?.addEventListener('click',toggleGarageShutter);
+
 
 function startHold(source){
   if(!usable()||held)return;
@@ -336,7 +399,7 @@ async function animateStep(s){
     await anim(world.crane.position,{x:3.55,z:.25},700);await anim(world.engine.position,{y:1.95},700);await Promise.all([anim(world.crane.position,{x:0,z:0},1400),anim(world.engine.position,{x:0,z:-1.28},1400)]);
   }
   if(s.id==='engine_install'){
-    await anim(world.engine.position,{x:0,y:.68,z:-1.28},1200);world.car.attach(world.engine);world.engine.position.set(0,.68,-1.28);await anim(world.crane.position,{x:3.7,z:2.7},900);
+    await anim(world.engine.position,{x:0,y:.61,z:-1.28},1200);world.car.attach(world.engine);world.engine.position.set(0,.61,-1.28);await anim(world.crane.position,{x:3.7,z:2.7},900);
   }
   if(s.id==='test'){motorSound(4);const rumble={x:0};await anim(rumble,{x:1},1100,()=>world.car.rotation.z=Math.sin(rumble.x*90)*.0007);world.car.rotation.z=0;}
   if(s.id==='deliver'){
@@ -392,11 +455,44 @@ function finish(){
   };
 }
 
-$('#help-open').addEventListener('click',()=>openModal(`<div class="eyebrow">КАК ИГРАТЬ</div><h2 id="modal-title">Освойся в мастерской.</h2><p>Следуй текущей задаче справа. Кнопка «К месту работы» подведёт к нужной детали. Выбери инструмент и удерживай действие до заполнения полосы.</p><div class="help-row"><span>Движение</span><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span></div><div class="help-row"><span>Осмотр</span><span>Нажать на сцену + мышь</span></div><div class="help-row"><span>Действие / инструмент</span><span><kbd>E</kbd><kbd>1–4</kbd></span></div><div class="help-row"><span>К текущей детали</span><span><kbd>F</kbd></span></div><div class="help-row"><span>Вернуть курсор</span><span><kbd>Esc</kbd></span></div><p class="help-note">На телефоне: левый джойстик — движение, «Осмотр» — поворот камеры. Можно проходить ремонт кнопками панели. Сессия сохраняется автоматически; копию можно экспортировать из меню сохранений.</p><p class="help-note">Игровая модель ремонта упрощена: это не инструкция по ремонту реального автомобиля.</p>`));
-function settings(){openModal(`<div class="eyebrow">ПОД СЕБЯ</div><h2 id="modal-title">Настройки мастерской</h2><div class="settings-row"><label>Качество графики</label><div class="segmented">${[['low','Быстро'],['balanced','Баланс'],['high','Красиво']].map(([id,name])=>`<button data-quality="${id}" class="${id===quality?'active':''}">${name}</button>`).join('')}</div></div><div class="settings-row"><label for="sensitivity">Чувствительность мыши</label><input id="sensitivity" type="range" min="0.3" max="2" step="0.1" value="${sensitivity}"></div><div class="settings-row"><label>Звук мастерской</label><div class="segmented"><button id="audio-setting">${muted?'Включить звук':'Выключить звук'}</button></div></div><p class="settings-foot">«Быстро» отключает тени и уменьшает разрешение. «Красиво» включает тени и более чёткое изображение. Настройки сохраняются в автослоте после следующего действия.</p><p class="settings-foot">Three.js · Tween.js · предметы Kenney (CC0). <a href="./credits.html" target="_blank" rel="noopener">Авторы и лицензии ↗</a></p>`);
-  document.querySelectorAll('[data-quality]').forEach(b=>b.onclick=()=>{setQuality(b.dataset.quality);document.querySelectorAll('[data-quality]').forEach(el=>el.classList.toggle('active',el.dataset.quality===quality));});$('#sensitivity').oninput=e=>{sensitivity=+e.target.value;saveGame('auto',true);};$('#audio-setting').onclick=()=>{toggleAudio();$('#audio-setting').textContent=muted?'Включить звук':'Выключить звук';};
+$('#help-open').addEventListener('click',()=>openModal(`<div class="eyebrow">КАК ИГРАТЬ</div><h2 id="modal-title">Освойся в мастерской.</h2><p>Следуй текущей задаче справа. Кнопка «К месту работы» подведёт к нужной детали. Выбери инструмент и удерживай действие до заполнения полосы.</p><div class="help-row"><span>Движение</span><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span></div><div class="help-row"><span>Осмотр</span><span>Нажать на сцену + мышь</span></div><div class="help-row"><span>Действие / инструмент</span><span><kbd>E</kbd><kbd>1–4</kbd></span></div><div class="help-row"><span>К текущей детали</span><span><kbd>F</kbd></span></div><div class="help-row"><span>Показания сканера</span><span><kbd>I</kbd></span></div><div class="help-row"><span>Вернуть курсор</span><span><kbd>Esc</kbd></span></div><p class="help-note">На телефоне: левый джойстик — движение, «Осмотр» — поворот камеры. Можно проходить ремонт кнопками панели. Сессия сохраняется автоматически; копию можно экспортировать из меню сохранений.</p><p class="help-note">Игровая модель ремонта упрощена: это не инструкция по ремонту реального автомобиля.</p>`));
+function settings(){openModal(`<div class="eyebrow">ПОД СЕБЯ</div><h2 id="modal-title">Настройки мастерской</h2><div class="settings-row"><label>Качество графики</label><div class="segmented">${[['low','Быстро'],['balanced','Баланс'],['high','Красиво']].map(([id,name])=>`<button data-quality="${id}" class="${id===quality?'active':''}">${name}</button>`).join('')}</div></div><div class="settings-row"><label><input id="auto-resolution" type="checkbox" ${autoResolution?'checked':''}> Автоматически снижать разрешение при просадках FPS</label></div><div class="settings-row"><label for="sensitivity">Чувствительность мыши</label><input id="sensitivity" type="range" min="0.3" max="2" step="0.1" value="${sensitivity}"></div><div class="settings-row"><label>Звук мастерской</label><div class="segmented"><button id="audio-setting">${muted?'Включить звук':'Выключить звук'}</button></div></div><p class="settings-foot">«Быстро» отключает тени и уменьшает разрешение. «Красиво» включает тени и более чёткое изображение. Настройки сохраняются в автослоте после следующего действия.</p><p class="settings-foot">Three.js · Tween.js · предметы Kenney (CC0). <a href="./credits.html" target="_blank" rel="noopener">Авторы и лицензии ↗</a></p>`);
+  document.querySelectorAll('[data-quality]').forEach(b=>b.onclick=()=>{setQuality(b.dataset.quality);document.querySelectorAll('[data-quality]').forEach(el=>el.classList.toggle('active',el.dataset.quality===quality));});$('#auto-resolution').onchange=e=>{autoResolution=e.target.checked;renderScale=1;slowWindows=fastWindows=0;applyResolution();};$('#sensitivity').oninput=e=>{sensitivity=+e.target.value;saveGame('auto',true);};$('#audio-setting').onclick=()=>{toggleAudio();$('#audio-setting').textContent=muted?'Включить звук':'Выключить звук';};
 }
-function setQuality(q){quality=q;world.setTextureQuality?.(q);renderer.setPixelRatio(q==='low'?.85:Math.min(devicePixelRatio,q==='balanced'?1:1.5));renderer.shadowMap.enabled=q!=='low';world.key.shadow.mapSize.set(q==='high'?2048:1024,q==='high'?2048:1024);if(world.key.shadow.map){world.key.shadow.map.dispose();world.key.shadow.map=null;}world.dust.visible=q==='high';renderer.setSize(innerWidth,innerHeight);saveGame('auto',true);scene.traverse(o=>{if(o.material){for(const m of Array.isArray(o.material)?o.material:[o.material])m.needsUpdate=true;}});}
+const landscapeFallback=()=>document.body.classList.contains('force-landscape');
+const gameWidth=()=>landscapeFallback()?innerHeight:innerWidth;
+const gameHeight=()=>landscapeFallback()?innerWidth:innerHeight;
+function applyResolution(){
+  const base=quality==='low'?.85:Math.min(devicePixelRatio,quality==='balanced'?1:1.5);
+  renderer.setPixelRatio(Math.max(.6,base*renderScale));renderer.setSize(gameWidth(),gameHeight());
+  camera.aspect=gameWidth()/gameHeight();camera.updateProjectionMatrix();
+}
+// Trigger privileged calls inside the real tap handler; CSS fallback still works in Android WebViews.
+async function requestMobileLandscape(){
+  const active=document.body.classList.contains('force-landscape')||Boolean(document.fullscreenElement);
+  if(active){
+    document.body.classList.remove('force-landscape');
+    try{globalThis.screen?.orientation?.unlock?.();}catch{}
+    try{if(document.fullscreenElement)await document.exitFullscreen();}catch{}
+    applyResolution();return;
+  }
+  const fullscreen=(()=>{try{return document.documentElement?.requestFullscreen?.()||Promise.resolve();}catch{return Promise.resolve();}})();
+  const lock=(()=>{try{return globalThis.screen?.orientation?.lock?.('landscape')||Promise.reject(new Error('orientation not supported'));}catch(e){return Promise.reject(e);}})();
+  const [full,locked]=await Promise.allSettled([fullscreen,lock]);
+  if(full.status==='fulfilled'&&locked.status==='rejected'){
+    try{await globalThis.screen?.orientation?.lock?.('landscape');}catch{}
+  }
+  // Do not rotate the CSS when the device actually entered landscape orientation.
+  if(innerHeight>innerWidth){document.body.classList.add('force-landscape');}
+  applyResolution();
+  if(locked.status==='rejected')toast('Браузер не разрешил поворот — использован горизонтальный режим сайта.');
+}
+$('#landscape-welcome')?.addEventListener('click',requestMobileLandscape);
+$('#landscape-play')?.addEventListener('click',requestMobileLandscape);
+const syncLandscape=()=>{if(innerWidth>innerHeight&&landscapeFallback()){document.body.classList.remove('force-landscape');applyResolution();}};
+window.addEventListener('orientationchange',syncLandscape);
+document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&!landscapeFallback())applyResolution();});
+function setQuality(q){quality=q;renderScale=1;slowWindows=fastWindows=0;world.setTextureQuality?.(q);applyResolution();renderer.shadowMap.enabled=q!=='low';world.key.shadow.mapSize.set(q==='high'?2048:1024,q==='high'?2048:1024);if(world.key.shadow.map){world.key.shadow.map.dispose();world.key.shadow.map=null;}world.dust.visible=q==='high';saveGame('auto',true);scene.traverse(o=>{if(o.material){for(const m of Array.isArray(o.material)?o.material:[o.material])m.needsUpdate=true;}});}
 setQuality(quality);
 $('#settings-open').addEventListener('click',settings);
 function toggleAudio(){muted=!muted;$('#sound-toggle').innerHTML=icon(muted?'volumeOff':'volume');$('#sound-toggle').title=muted?'Включить звук':'Выключить звук';$('#sound-toggle').setAttribute('aria-label',$('#sound-toggle').title);saveGame('auto',true);beep();}
@@ -407,13 +503,25 @@ $('#journal-open').addEventListener('click',()=>{
 $('.brand').addEventListener('click',e=>{e.preventDefault();if(session.started)toast('Ты уже в мастерской. Продолжай текущий заказ.');});
 
 // First-person controls. Pointer Lock has a drag-look fallback for embedded browsers.
+let carTap=null;
 canvas.addEventListener('pointerdown',e=>{
+  carTap={x:e.clientX,y:e.clientY};
   if(!session.started||modalOpen||busy||traveling)return;
   if(e.pointerType==='touch'){dragging=true;lastPointer={x:e.clientX,y:e.clientY};canvas.setPointerCapture(e.pointerId);return;}
   if(document.pointerLockElement!==canvas){try{const result=canvas.requestPointerLock();result?.catch(()=>toast('Зажми мышь на сцене и двигай её для осмотра.'));}catch{toast('Зажми мышь на сцене для осмотра.');}dragging=true;lastPointer={x:e.clientX,y:e.clientY};}
 });
-canvas.addEventListener('pointerup',()=>dragging=false);canvas.addEventListener('pointercancel',()=>dragging=false);
-function look(dx,dy){if(!session.started||modalOpen||traveling||busy)return;focused=false;camera.rotation.y-=dx*.002*sensitivity;camera.rotation.x=THREE.MathUtils.clamp(camera.rotation.x-dy*.002*sensitivity,-1.35,1.35);camera.rotation.z=0;}
+canvas.addEventListener('pointerup',e=>{
+  dragging=false;const tap=carTap;carTap=null;
+  if(!tap||!session.started||!session.arrived||modalOpen||busy||traveling||Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>12)return;
+  const rect=canvas.getBoundingClientRect();
+  const uv=landscapeFallback()?{u:(e.clientY-rect.top)/rect.height,v:(rect.right-e.clientX)/rect.width}
+    :{u:(e.clientX-rect.left)/rect.width,v:(e.clientY-rect.top)/rect.height};
+  raycaster.setFromCamera(new THREE.Vector2(uv.u*2-1,1-uv.v*2),camera);
+  const hood=world.targets.get('hood'),left=world.targets.get('left_car_door'),right=world.targets.get('right_car_door');
+  const candidates=[[hood,'hood'],[left,'left'],[right,'right']].flatMap(([obj,name])=>obj?raycaster.intersectObject(obj,true).map(hit=>({hit,name})):[]).sort((a,b)=>a.hit.distance-b.hit.distance);
+  if(candidates[0]&&candidates[0].hit.distance<4.8)toggleVehiclePart(candidates[0].name);
+});canvas.addEventListener('pointercancel',()=>{dragging=false;carTap=null;});
+function look(dx,dy){if(landscapeFallback())([dx,dy]=[dy,-dx]);if(!session.started||modalOpen||traveling||busy)return;focused=false;camera.rotation.y-=dx*.002*sensitivity;camera.rotation.x=THREE.MathUtils.clamp(camera.rotation.x-dy*.002*sensitivity,-1.35,1.35);camera.rotation.z=0;}
 document.addEventListener('pointermove',e=>{if(document.pointerLockElement===canvas)look(e.movementX,e.movementY);else if(dragging){look(e.clientX-lastPointer.x,e.clientY-lastPointer.y);lastPointer={x:e.clientX,y:e.clientY};}});
 document.addEventListener('pointerlockchange',()=>{const locked=document.pointerLockElement===canvas;document.body.classList.toggle('pointer-locked',locked);$('#crosshair').classList.toggle('hidden',!locked);if(!locked){keys.clear();stopHold();}});
 document.addEventListener('keydown',e=>{
@@ -427,7 +535,8 @@ document.addEventListener('keydown',e=>{
   keys.add(e.code);
   if(e.repeat)return;
   if(/^Digit[1-4]$/.test(e.code)){stopHold();showTool(TOOLS[+e.code.slice(-1)-1].id);}
-  if(e.code==='KeyF')focusTarget();if(e.code==='KeyE')startHold('keyboard');
+  if(e.code==='KeyI')telemetryModal();if(e.code==='KeyF')focusTarget();if(e.code==='KeyE')startHold('keyboard');
+  if(e.code==='KeyH')toggleVehiclePart('hood');if(e.code==='KeyG')toggleGarageShutter();if(e.code==='KeyJ')toggleVehiclePart('left');if(e.code==='KeyK')toggleVehiclePart('right');
 });
 document.addEventListener('keyup',e=>{keys.delete(e.code);if(e.code==='KeyE'&&holdSource==='keyboard')stopHold();});
 window.addEventListener('blur',()=>{keys.clear();joy.x=joy.y=0;dragging=false;stopHold();saveGame('auto',true);});
@@ -437,19 +546,25 @@ document.addEventListener('visibilitychange',()=>{
   else if(pausedAt!==null){pausedMs+=performance.now()-pausedAt;pausedAt=null;clock.getDelta();}
 });
 const joystick=$('#joystick'),knob=$('#joystick-knob');let joyPointer=null;
-function moveJoy(e){const rect=joystick.getBoundingClientRect(),dx=e.clientX-rect.left-rect.width/2,dy=e.clientY-rect.top-rect.height/2,d=Math.hypot(dx,dy),scale=Math.min(1,28/Math.max(d,1));joy.x=dx*scale/28;joy.y=dy*scale/28;knob.style.transform=`translate(${dx*scale}px,${dy*scale}px)`;}
+function moveJoy(e){const rect=joystick.getBoundingClientRect(),rawX=e.clientX-rect.left-rect.width/2,rawY=e.clientY-rect.top-rect.height/2,dx=landscapeFallback()?rawY:rawX,dy=landscapeFallback()?-rawX:rawY,d=Math.hypot(dx,dy),scale=Math.min(1,28/Math.max(d,1));joy.x=dx*scale/28;joy.y=dy*scale/28;knob.style.transform=`translate(${dx*scale}px,${dy*scale}px)`;}
 joystick.addEventListener('pointerdown',e=>{joyPointer=e.pointerId;joystick.setPointerCapture(e.pointerId);moveJoy(e);});joystick.addEventListener('pointermove',e=>{if(joyPointer===e.pointerId)moveJoy(e);});
 function resetJoy(){joyPointer=null;joy.x=joy.y=0;knob.style.transform='';}joystick.addEventListener('pointerup',resetJoy);joystick.addEventListener('pointercancel',resetJoy);
 let lookPointer=null,lookLast={x:0,y:0};const touchLook=$('#touch-look');touchLook.addEventListener('pointerdown',e=>{lookPointer=e.pointerId;lookLast={x:e.clientX,y:e.clientY};touchLook.setPointerCapture(e.pointerId);});touchLook.addEventListener('pointermove',e=>{if(e.pointerId===lookPointer){look(e.clientX-lookLast.x,e.clientY-lookLast.y);lookLast={x:e.clientX,y:e.clientY};}});touchLook.addEventListener('pointerup',()=>lookPointer=null);touchLook.addEventListener('pointercancel',()=>lookPointer=null);
 function blocked(x,z){
-  if(Math.abs(x)>6.5||z<-7.4||z>7.3)return true;
+  if(z<-7.4||z>34)return true;
+  // Passage from inside the bay to the yard, physical front wall to either side.
+  if(z<7.9&&Math.abs(x)>6.5)return true;
+  if(z>=7.6&&z<=8.35&&Math.abs(x)>2.48)return true;
+  if(z>=7.6&&z<=8.35&&world.door.position.y<3.15)return true;
+  if(z>8.35&&Math.abs(x)>7.5)return true;
   if(world.car.position.z<5&&Math.abs(x)<1.18&&Math.abs(z-world.car.position.z)<2.44&&session.lift===0)return true;
   if(x>3.55&&x<6.7&&z>-4.35&&z<-2.4)return true;
-  if(x<-3.15&&x>-4.6&&z>-2.35&&z<-1.1)return true;
+  if(x<-3.15&&x>-4.5&&z>-2.35&&z<-1.1)return true;
   if(x<-5.35&&z>1.2&&z<4.1)return true;
   if(Math.abs(x-2.7)<.35&&Math.abs(z-.5)<.5||Math.abs(x+2.7)<.35&&Math.abs(z-.5)<.5)return true;
   return false;
 }
+let wasOutside=false;
 function movePlayer(dt){
   if(!session.started||modalOpen||traveling||busy||held)return;
   let x=+(keys.has('KeyD')||keys.has('ArrowRight'))-+(keys.has('KeyA')||keys.has('ArrowLeft'))+joy.x;
@@ -459,7 +574,8 @@ function movePlayer(dt){
   const dx=(x*Math.cos(yaw)+z*Math.sin(yaw))*speed,dz=(-x*Math.sin(yaw)+z*Math.cos(yaw))*speed;
   if(!blocked(camera.position.x+dx,camera.position.z))camera.position.x+=dx;
   if(!blocked(camera.position.x,camera.position.z+dz))camera.position.z+=dz;
-  camera.position.y=THREE.MathUtils.damp(camera.position.y,1.7,7,dt);updateActionButton();
+  camera.position.y=THREE.MathUtils.damp(camera.position.y,1.7,7,dt);
+  const outside=camera.position.z>8.6;if(outside&&!wasOutside){toast('Ты на улице! Пройдись и возвращайся в гараж.');}wasOutside=outside;updateActionButton();
 }
 function updateTarget(){
   const s=session.step;if(!session.arrived||busy||traveling||session.completed||modalOpen||!s){world.highlight.visible=false;$('#world-marker').classList.add('hidden');return;}
@@ -467,11 +583,11 @@ function updateTarget(){
   const visible=p.z<1&&p.z>-1&&Math.abs(p.x)<.93&&Math.abs(p.y)<.86;
   if(canReach()&&obj?.visible){world.highlight.setFromObject(obj);world.highlight.visible=true;}else world.highlight.visible=false;
   $('#world-marker').classList.toggle('hidden',!visible||document.pointerLockElement===canvas);
-  if(visible){$('#world-marker').style.left=`${(p.x*.5+.5)*innerWidth}px`;$('#world-marker').style.top=`${(-p.y*.5+.5)*innerHeight-28}px`;}
+  if(visible){$('#world-marker').style.left=`${(p.x*.5+.5)*gameWidth()}px`;$('#world-marker').style.top=`${(-p.y*.5+.5)*gameHeight()-28}px`;}
   if(document.pointerLockElement===canvas){raycaster.setFromCamera(center,camera);const hits=obj?raycaster.intersectObjects([obj],true):[];$('#crosshair').style.borderColor=hits.length?'#efa16a':'#f5f5e744';}
   $('#scene-mode').textContent=focused?'РАБОТА С ДЕТАЛЬЮ':'СВОБОДНЫЙ ОСМОТР';
 }
-let lastRatchet=0;
+let lastRatchet=0,lastModalRender=0;
 function frame(time){
   requestAnimationFrame(frame);const elapsed=clock.getDelta(),dt=Math.min(elapsed,.05);if(document.hidden||gpuLost)return;tweens.update(activeClock(),false);
   if(session.started&&!session.completed&&!modalOpen&&!document.hidden){gameElapsed+=elapsed;$('#session-time').textContent=formatTime(gameElapsed);}
@@ -488,15 +604,20 @@ function frame(time){
   handRig.visible=session.started&&session.arrived&&!modalOpen&&!traveling&&!session.completed;
   handRig.position.y=-.28+Math.sin(time*.002)*.002+(held?Math.sin(time*.017)*.012:0);
   handRig.rotation.z=-.12+(held&&session.tool==='ratchet'?Math.sin(time*.024)*.18:0);
-  updateTarget();renderer.render(scene,camera);frameCount++;fpsElapsed+=elapsed;
-  if(fpsElapsed>=.8){$('#fps').textContent=`${Math.round(frameCount/fpsElapsed)} FPS`;if($('#render-stats'))$('#render-stats').textContent=`${renderer.info.render.calls} draw calls · ${renderer.info.render.triangles} triangles`;frameCount=0;fpsElapsed=0;}
+  updateTarget();if(modalOpen&&time-lastModalRender<160)return;lastModalRender=time;renderer.render(scene,camera);frameCount++;fpsElapsed+=elapsed;
+  if(fpsElapsed>=.8){const measuredFps=frameCount/fpsElapsed;$('#fps').textContent=`${Math.round(measuredFps)} FPS`;
+    if(autoResolution&&session.started&&!modalOpen){
+      slowWindows=measuredFps<43?slowWindows+1:0;fastWindows=measuredFps>55?fastWindows+1:0;
+      if(slowWindows>=4&&renderScale>.65){renderScale=Math.max(.65,Math.round((renderScale-.1)*100)/100);applyResolution();slowWindows=fastWindows=0;}
+      else if(fastWindows>=9&&renderScale<1){renderScale=Math.min(1,Math.round((renderScale+.05)*100)/100);applyResolution();slowWindows=fastWindows=0;}
+    }if($('#render-stats'))$('#render-stats').textContent=`${renderer.info.render.calls} draw calls · ${renderer.info.render.triangles} triangles`;frameCount=0;fpsElapsed=0;}
 }
 requestAnimationFrame(frame);
-window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+window.addEventListener('resize',()=>{applyResolution();});
 canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();stopHold();saveGame('auto',true);gpuLost=true;toast('Потерян WebGL. Прогресс сохранён; после восстановления игра перезапустится.',true);});
 canvas.addEventListener('webglcontextrestored',()=>{gpuLost=false;location.reload();});
 // Read-only inspection surface for development and accessibility checks; no skip/cheat API.
-Object.defineProperty(window,'garageLife',{value:Object.freeze({getState:()=>({index:session.index,total:session.steps.length,step:session.step?.id,tool:session.tool,started:session.started,arrived:session.arrived,completed:session.completed,removed:[...session.removed],busy,traveling,modalOpen,canReach:canReach(),camera:camera.position.toArray(),quality,assets:{...world.assetStatus},render:{calls:renderer.info.render.calls,triangles:renderer.info.render.triangles},mode:session.mode,jobId:session.jobId,saveBackend:saveStore.backend})}),writable:false});
+Object.defineProperty(window,'garageLife',{value:Object.freeze({getState:()=>({index:session.index,total:session.steps.length,step:session.step?.id,tool:session.tool,started:session.started,arrived:session.arrived,completed:session.completed,removed:[...session.removed],busy,traveling,modalOpen,canReach:canReach(),camera:camera.position.toArray(),quality,autoResolution,renderScale,telemetry:session.telemetry,assets:{...world.assetStatus},render:{calls:renderer.info.render.calls,triangles:renderer.info.render.triangles},mode:session.mode,jobId:session.jobId,saveBackend:saveStore.backend})}),writable:false});
 updateTask();
 showTool('hands',true);
 world.assetsReady.finally(()=>{const loader=$('#loader');loader.style.opacity='0';setTimeout(()=>loader.classList.add('hidden'),600);});

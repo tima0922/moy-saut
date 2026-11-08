@@ -2,6 +2,7 @@
 // Safe to call after interrupted animations, on resume, and after GPU recovery.
 import * as THREE from 'three';
 import {PARTS,JOBS} from './game-state.js';
+import {CRANE,projectCrane} from './crane-route.js';
 
 function benchPosition(id){const index=PARTS.findIndex(p=>p.id===id);const column=index%6,row=Math.floor(index/6);
   return new THREE.Vector3(4.05+column*.39,1.17+row*.08,-3.83+row*.24);}
@@ -15,17 +16,15 @@ export function applyCommittedState(world,session){
   world.arms.position.y=session.lift;
   world.hood.rotation.x=session.hoodOpen?1.13:.02;
   world.door.position.y=4.5;
-  world.crane.position.set(3.7,0,2.7);
-  if(session.done.has('crane_move')&&!session.done.has('engine_stand'))world.crane.position.set(0,0,0);
-  if(session.engineLocation==='stand')world.crane.position.set(4.4,0,1.8);
-  if(session.done.has('engine_return')&&!session.done.has('engine_install'))world.crane.position.set(0,0,0);
+  projectCrane(world,session);
+  if(session.hoodOpen&&session.done.has('crane_move')&&!session.done.has('engine_install'))world.hood.rotation.x=1.57;
   world.car.attach(world.engine);
   world.engine.position.set(0,.61,-1.28);
   if(session.engineLocation!=='car'){
     world.scene.attach(world.engine);
-    if(session.engineLocation==='stand')world.engine.position.set(3.55,1.32,-1.03);
-    else if(session.done.has('engine_return'))world.engine.position.set(0,1.95,-1.28);
-    else world.engine.position.set(0,1.95,-1.28);
+    const location=session.engineLocation==='stand'?CRANE.engineStand:{...CRANE.engineBay,y:CRANE.high};
+    world.engine.position.set(location.x,location.y,location.z);
+    if(session.engineLocation==='crane')world.hood.rotation.x=1.57;
   }
   const replacementPart=JOBS[session.jobId].replacementPart;
   for(const [id,rec] of world.partObjects){

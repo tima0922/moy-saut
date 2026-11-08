@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {Group as TweenGroup,Tween,Easing} from '@tweenjs/tween.js';
 import {createWorld} from './world.js';
+import {CRANE,positionChain} from './crane-route.js';
 import {RepairSession,TOOLS,PARTS,STEPS,CHAPTERS,JOBS,MODES} from './game-state.js';
 import {SaveStore,createSave,SAVE_SLOTS} from './save-store.js';
 import {applyCommittedState} from './world-state.js';
@@ -379,6 +380,22 @@ async function fluidsAnimation(p,color){
   const geo=new THREE.CylinderGeometry(.013,.02,.6,8),mat=new THREE.MeshBasicMaterial({color,transparent:true,opacity:.8});const stream=new THREE.Mesh(geo,mat);stream.position.copy(p);stream.position.y-=.3;scene.add(stream);
   await anim(stream.scale,{y:.04},550);scene.remove(stream);geo.dispose();mat.dispose();
 }
+async function rollCrane(to,duration,carrying=false){
+  return anim(world.crane.position,to,duration,()=>{
+    if(!carrying)return;
+    world.engine.position.x=world.crane.position.x;
+    world.engine.position.z=world.crane.position.z+CRANE.reach;
+  });
+}
+async function raiseEngine(y,duration){
+  positionChain(world,world.engine.position.y);
+  return anim(world.engine.position,{y},duration,()=>positionChain(world,world.engine.position.y));
+}
+async function parkCrane(from){
+  positionChain(world);
+  await rollCrane({x:CRANE.park.x,z:from.z},760);
+  await rollCrane(CRANE.park,560);
+}
 async function animateStep(s){
   if(s.operation==='remove'||s.operation==='install')return animatePart(s);
   if(['unbolt','bolt','mount_out','mount_in'].includes(s.operation))return animateBolt(s);
@@ -389,17 +406,36 @@ async function animateStep(s){
   }
   if(s.id==='oil_drain'||s.id==='coolant_drain')return fluidsAnimation(targetPosition(s),s.id==='oil_drain'?0x6b4e2b:0x67b5a2);
   if(s.id==='refill')return fluidsAnimation(new THREE.Vector3(.05,1.65,-1.28),0xcabf86);
-  if(s.id==='crane_move')return anim(world.crane.position,{x:0,z:0},1400);
-  if(s.id==='engine_out'){scene.attach(world.engine);await anim(world.engine.position,{y:1.95},1400);}
+  if(s.id==='crane_move'){
+    await anim(world.hood.rotation,{x:1.57},450);
+    await rollCrane({x:0,z:CRANE.park.z},800);
+    return rollCrane(CRANE.bay,900);
+  }
+  if(s.id==='engine_out'){
+    scene.attach(world.engine);
+    return raiseEngine(CRANE.high,1400);
+  }
   if(s.id==='engine_stand'){
-    await Promise.all([anim(world.crane.position,{x:3.55,z:.25},1500),anim(world.engine.position,{x:3.55,z:-1.03},1500)]);await anim(world.engine.position,{y:1.32},650);await anim(world.crane.position,{x:4.4,z:1.8},700);
+    await rollCrane(CRANE.clear,1450,true);
+    await rollCrane(CRANE.dock,1050,true);
+    await raiseEngine(CRANE.engineStand.y,700);
+    return parkCrane(CRANE.dock);
   }
   if(s.id==='new_gasket'){world.newPart.visible=false;toast('Новая прокладка готова к установке.');}
   if(s.id==='engine_return'){
-    await anim(world.crane.position,{x:3.55,z:.25},700);await anim(world.engine.position,{y:1.95},700);await Promise.all([anim(world.crane.position,{x:0,z:0},1400),anim(world.engine.position,{x:0,z:-1.28},1400)]);
+    await rollCrane({x:CRANE.park.x,z:CRANE.dock.z},650);
+    await rollCrane(CRANE.dock,1050);
+    await raiseEngine(CRANE.high,720);
+    await rollCrane(CRANE.clear,1050,true);
+    return rollCrane(CRANE.bay,1450,true);
   }
   if(s.id==='engine_install'){
-    await anim(world.engine.position,{x:0,y:.61,z:-1.28},1200);world.car.attach(world.engine);world.engine.position.set(0,.61,-1.28);await anim(world.crane.position,{x:3.7,z:2.7},900);
+    await raiseEngine(CRANE.engineBay.y,1050);
+    world.car.attach(world.engine);
+    world.engine.position.set(CRANE.engineBay.x,CRANE.engineBay.y,CRANE.engineBay.z);
+    positionChain(world);
+    await rollCrane({x:0,z:CRANE.park.z},850);
+    return rollCrane(CRANE.park,850);
   }
   if(s.id==='test'){motorSound(4);const rumble={x:0};await anim(rumble,{x:1},1100,()=>world.car.rotation.z=Math.sin(rumble.x*90)*.0007);world.car.rotation.z=0;}
   if(s.id==='deliver'){

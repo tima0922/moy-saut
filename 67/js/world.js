@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {PARTS} from './game-state.js';
+import {CRANE} from './crane-route.js';
 
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
-export function createWorld(renderer){
+export function createWorld(renderer,{districtMode=false}={}){
   const scene=new THREE.Scene();scene.background=new THREE.Color('#5e8193');scene.fog=new THREE.Fog('#688899',28,72);
   const env=new RoomEnvironment();const pmrem=new THREE.PMREMGenerator(renderer);scene.environment=pmrem.fromScene(env,0.05).texture;env.dispose();pmrem.dispose();
   const mats={
@@ -111,6 +112,7 @@ export function createWorld(renderer){
   for(const z of [-5,0,5]){box(scene,[14,.2,.16],[0,5.1,z],mats.steel);for(const x of [-3.5,3.5]){box(scene,[.48,.09,3],[x,4.95,z],mats.black);box(scene,[.32,.025,2.8],[x,4.89,z],mats.light);}}
   // High windows and a diffused exterior, no imported background images.
   for(let z=-5.6;z<6;z+=2.8){box(scene,[.06,1.15,2.35],[-6.82,3.55,z],mats.black);box(scene,[.065,.94,2.12],[-6.77,3.55,z],new THREE.MeshBasicMaterial({color:0x9fbabf}));box(scene,[.08,1.1,.06],[-6.70,3.55,z],mats.steel);}
+  if(!districtMode){
   const pavement=new THREE.MeshStandardMaterial({color:0x9ca3a2,roughness:.98});
   const asphalt=new THREE.MeshStandardMaterial({color:0x363e45,roughness:1});
   const grass=new THREE.MeshStandardMaterial({color:0x53735f,roughness:1});
@@ -165,6 +167,7 @@ export function createWorld(renderer){
   const backdrop=new THREE.Mesh(new THREE.PlaneGeometry(120,40),new THREE.MeshBasicMaterial({color:0x96b7c9}));backdrop.position.set(0,15,39);backdrop.rotation.y=Math.PI;scene.add(backdrop);
   for(let x=-26;x<=26;x+=5){
     box(scene,[4.8,6+(Math.abs(x)%4)*1.2,2],[x,3,37],distant).castShadow=false;
+  }
   }
   // Garage portal remains the ONLY traversable passage through solid front wall.
 
@@ -242,10 +245,10 @@ export function createWorld(renderer){
   }
   // Body glass is an extruded cabin silhouette, with separate posts and roof.
   const cabinShape=new THREE.Shape();cabinShape.moveTo(-.85,1.09);cabinShape.lineTo(-.38,1.72);cabinShape.lineTo(.76,1.72);cabinShape.lineTo(1.34,1.12);cabinShape.closePath();
-  const cabinGeo=new THREE.ExtrudeGeometry(cabinShape,{depth:1.65,bevelEnabled:false});const cabin=new THREE.Mesh(cabinGeo,mats.glass);cabin.rotation.y=-Math.PI/2;cabin.position.x=.825;car.add(cabin);
+  const cabinGeo=new THREE.ExtrudeGeometry(cabinShape,{depth:1.65,bevelEnabled:false});const cabin=new THREE.Mesh(cabinGeo,mats.glass);cabin.rotation.y=-Math.PI/2;cabin.position.x=.825;car.add(cabin);cabin.visible=!districtMode;
   rounded(car,[1.68,.08,1.18],[0,1.74,.18],mats.paint,.06);
   for(const x of [-.84,.84]){
-    box(car,[.075,.73,.065],[x,1.4,-.61],mats.paint,[-.64,0,0]);box(car,[.08,.7,.065],[x,1.4,1.04],mats.paint,[.72,0,0]);box(car,[.07,.62,.07],[x,1.4,.32],mats.black);box(car,[.09,.05,1.9],[x,1.1,.21],mats.paint);
+    if(!districtMode){box(car,[.075,.73,.065],[x,1.4,-.61],mats.paint,[-.64,0,0]);box(car,[.08,.7,.065],[x,1.4,1.04],mats.paint,[.72,0,0]);box(car,[.07,.62,.07],[x,1.4,.32],mats.black);box(car,[.09,.05,1.9],[x,1.1,.21],mats.paint);}
     const mirror=rounded(car,[.24,.15,.24],[x*1.2,1.22,-.58],mats.paint,.04);box(car,[.15,.035,.07],[x*1.12,1.18,-.56],mats.black);
     rounded(car,[.13,.09,.16],[x*1.22,1.23,-.47],mats.metal,.02);
   }
@@ -253,7 +256,7 @@ export function createWorld(renderer){
   rounded(car,[1.88,.23,.16],[0,.76,-2.18],mats.paint,.05);box(car,[1.87,.1,.16],[0,.49,-2.14],mats.black);
   box(car,[.64,.21,.05],[0,.86,-2.28],mats.dark);for(let i=0;i<6;i++)box(car,[.61,.012,.016],[0,.78+i*.03,-2.315],mats.metal);
   for(const x of [-.65,.65]){rounded(car,[.53,.2,.08],[x,.93,-2.23],mats.dark,.018);rounded(car,[.43,.15,.085],[x,.94,-2.28],mats.light,.012);box(car,[.075,.15,.09],[x+Math.sign(x)*.25,.94,-2.24],mats.amber);rounded(car,[.58,.17,.07],[x,.93,2.23],mats.red,.02);}
-  textPlane(car,'KOVA',.33,.08,[0,1,2.27],[0,Math.PI,0]);textPlane(car,'GL • 001',.48,.12,[0,.66,-2.29],[0,Math.PI,0],'#283336','#e9eee7');
+  if(!districtMode)textPlane(car,'KOVA',.33,.08,[0,1,2.27],[0,Math.PI,0]);textPlane(car,'GL • 001',.48,.12,[0,.66,-2.29],[0,Math.PI,0],'#283336','#e9eee7');
   cylinder(car,.045,.045,.24,[-.55,.4,2.2],mats.metal,[Math.PI/2,0,0]);
   // Interior visible through windows.
   for(const x of [-.43,.43]){rounded(car,[.55,.18,.55],[x,.82,.1],mats.dark,.08);const seat=rounded(car,[.55,.63,.16],[x,1.07,.42],mats.dark,.08);seat.rotation.x=-.12;rounded(car,[.31,.2,.14],[x,1.5,.45],mats.dark,.05);}
@@ -268,7 +271,7 @@ export function createWorld(renderer){
     const leaf=box(pivot,[.065,.69,.93],[0,-.08,.47],mats.paint);
     box(pivot,[.02,.12,.26],[side*.045,-.06,.43],mats.black);
     box(pivot,[.025,.035,.18],[side*.065,.14,.51],mats.metal);
-    const glass=box(pivot,[.04,.3,.78],[0,.40,.48],mats.glass);glass.castShadow=false;
+    if(!districtMode){const glass=box(pivot,[.04,.3,.78],[0,.40,.48],mats.glass);glass.castShadow=false;}
     target(sideName+'_car_door',leaf);
     carDoors[sideName]=pivot;
   }
@@ -349,15 +352,17 @@ export function createWorld(renderer){
   const tray=box(cart,[.86,.025,.4],[0,1.06,0],mats.steel);for(let i=0;i<4;i++){cylinder(cart,.025,.025,.29,[-.3+i*.17,1.1,0],mats.metal,[Math.PI/2,0,0],8);}
   const cabinet=group(scene,[-6.25,0,2.7]);box(cabinet,[1.1,2.2,2.4],[0,1.1,0],mats.dark);for(const z of [-.61,.61]){box(cabinet,[.03,2.05,1.12],[.57,1.1,z],mats.steel);box(cabinet,[.055,.24,.035],[.62,1.12,z-.37],mats.metal);}
   // Engine stand.
-  const stand=group(scene,[3.55,0,-.8]);box(stand,[1.2,.09,.85],[0,.13,0],mats.orange);box(stand,[.15,1.05,.15],[0,.66,.18],mats.orange);cylinder(stand,.14,.14,.28,[0,1.2,.18],mats.dark,[Math.PI/2,0,0]);box(stand,[.63,.08,.35],[0,1.08,-.08],mats.metal);
+  const stand=group(scene,[CRANE.engineStand.x,0,CRANE.engineStand.z+.23]);box(stand,[1.2,.09,.85],[0,.13,0],mats.orange);box(stand,[.15,1.05,.15],[0,.66,.18],mats.orange);cylinder(stand,.14,.14,.28,[0,1.2,.18],mats.dark,[Math.PI/2,0,0]);box(stand,[.63,.08,.35],[0,1.08,-.08],mats.metal);
   for(const x of [-.5,.5])for(const z of [-.32,.32])cylinder(stand,.085,.085,.07,[x,.09,z],mats.rubber,[0,0,Math.PI/2]);target('stand',stand);
-  const standEnginePosition=V(3.55,1.32,-1.03);
+  const standEnginePosition=V(CRANE.engineStand.x,CRANE.engineStand.y,CRANE.engineStand.z);
   // Mobile engine crane, with hydraulics and a chain.
-  const crane=group(scene,[3.7,0,2.7]);for(const x of [-.5,.5]){box(crane,[.12,.1,1.9],[x,.16,-.35],mats.orange);for(const z of [-1.17,.5])cylinder(crane,.08,.08,.06,[x,.08,z],mats.rubber,[0,0,Math.PI/2]);}
-  box(crane,[1.12,.12,.16],[0,.17,.48],mats.orange);box(crane,[.15,2.5,.15],[0,1.4,.5],mats.orange,[.1,0,0]);box(crane,[.15,.15,1.85],[0,2.66,-.37],mats.orange,[-.16,0,0]);cylinder(crane,.06,.06,1.05,[0,1.65,.16],mats.metal,[-.4,0,0]);cylinder(crane,.095,.095,.55,[0,1.2,.34],mats.dark,[-.4,0,0]);
-  const chain=group(crane,[0,2.45,-1.25]);for(let i=0;i<9;i++){const link=new THREE.Mesh(new THREE.TorusGeometry(.025,.007,5,8),mats.metal);link.position.y=-i*.042;link.rotation.y=i%2*Math.PI/2;chain.add(link);}target('crane',crane);
-  const hookLight=new THREE.PointLight(0xfaa15a,2,3);hookLight.position.set(0,2,-1.25);crane.add(hookLight);
-  target('exit',textPlane(scene,'ВЫЕЗД →',1.2,.35,[2,1.6,7.65],[0,Math.PI,0],'#dfe5d6','#263b36'));
+  const crane=group(scene,[CRANE.park.x,0,CRANE.park.z]);crane.rotation.y=CRANE.yaw;for(const x of [-.5,.5]){box(crane,[.12,.1,1.9],[x,.16,-.35],mats.orange);for(const z of [-1.17,.5])cylinder(crane,.08,.08,.06,[x,.08,z],mats.rubber,[0,0,Math.PI/2]);}
+  box(crane,[1.12,.12,.16],[0,.17,.48],mats.orange);box(crane,[.15,2.5,.15],[0,1.4,.5],mats.orange,[.1,0,0]);box(crane,[.15,.15,2.72],[0,2.66,-.80],mats.orange);cylinder(crane,.06,.06,1.05,[0,1.65,.16],mats.metal,[-.4,0,0]);cylinder(crane,.095,.095,.55,[0,1.2,.34],mats.dark,[-.4,0,0]);
+  const chain=group(crane,[0,2.58,-CRANE.reach]);for(let i=0;i<9;i++){const link=new THREE.Mesh(new THREE.TorusGeometry(.025,.007,5,8),mats.metal);link.position.y=-i*.042;link.rotation.y=i%2*Math.PI/2;chain.add(link);}target('crane',crane);
+  const hookLight=new THREE.PointLight(0xfaa15a,2,3);hookLight.position.set(0,2,-CRANE.reach);crane.add(hookLight);
+  const exitSign = textPlane(scene,'ВЫЕЗД  →',1.44,.38,[4.65,1.37,7.85],[0,Math.PI,0],'#e7f2de','#25423b');
+  exitSign.material.side=THREE.FrontSide;
+  target('exit',exitSign);
   // A real GLB prop pack, local and licensed CC0. Failures never block the repair.
   const loader=new GLTFLoader();const assetStatus={loaded:0,failed:0};
   async function addProp(name,pos,height,rotation=0){try{const gltf=await loader.loadAsync(`./assets/kenney/${name}.glb`);const model=gltf.scene;const bounds=new THREE.Box3().setFromObject(model),size=bounds.getSize(V());model.scale.setScalar(height/Math.max(size.y,.01));const b=new THREE.Box3().setFromObject(model),center=b.getCenter(V());model.position.set(-center.x,-b.min.y,-center.z);const root=group(scene,pos);root.rotation.y=rotation;root.add(model);model.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});assetStatus.loaded++;}catch(e){assetStatus.failed++;console.warn(`Optional prop ${name} unavailable`,e.message);}}
@@ -377,5 +382,5 @@ export function createWorld(renderer){
     const anisotropy=q==='low'?1:q==='balanced'?4:8;
     for(const t of loadedTextures){t.anisotropy=Math.min(anisotropy,renderer.capabilities.getMaxAnisotropy());t.needsUpdate=true;}
   }
-  return {scene,mats,car,engine,hood,door,carDoors,wheels,lift,arms,crane,chain,stand,standEnginePosition,targets,partObjects,bolts,installSlots,partsTray,newPart,contact,highlight,key,dust,assetsReady,assetStatus,rayTargets,box,cylinder,textPlane,setTextureQuality};
+  return {scene,mats,car,engine,hood,door,carDoors,wheels,floor,steering,batteryCase:batt,lift,arms,crane,chain,stand,standEnginePosition,targets,partObjects,bolts,installSlots,partsTray,newPart,contact,highlight,key,dust,assetsReady,assetStatus,rayTargets,box,cylinder,textPlane,setTextureQuality};
 }

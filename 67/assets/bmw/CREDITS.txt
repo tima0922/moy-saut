@@ -1,0 +1,8 @@
+BMW E39 Free by Black Snow (@BlackSnow02)
+Source: https://sketchfab.com/3d-models/bmw-e39-free-531a5a93da5d493d9918eb36f011c20d
+Author: https://sketchfab.com/BlackSnow02
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+Download of the attributed, compressed GLB: https://gameuzb.uz/models/bmw_e39_free.glb
+Changes for GARAGE LIFE: separated body panels, configured hinges and wheel groups,
+adjusted appearance and added playable engine bay and luggage compartment details.

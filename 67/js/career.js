@@ -26,12 +26,12 @@ const KEY = 'garage-life-district-1';
 const PHASES = ['offer', 'diagnose', 'parts', 'repair', 'verify', 'return'];
 
 export function loadCareer(storage) {
-  const fresh = { completed: 0, money: 0, scanner: false, phase: 'offer', high: true, muted: false };
+  const fresh = { completed: 0, money: 0, scanner: false, phase: 'offer', high: true, muted: false, driftBest: 0 };
   try {
     const value = JSON.parse(storage.getItem(KEY));
     if (!value || !Number.isSafeInteger(value.completed) || value.completed < 0 ||
       !Number.isSafeInteger(value.money) || value.money < 0 || !PHASES.includes(value.phase)) return fresh;
-    return { ...fresh, ...value };
+    return { ...fresh, ...value, driftBest: Number.isSafeInteger(value.driftBest) && value.driftBest > 0 ? value.driftBest : 0 };
   } catch {
     return fresh;
   }

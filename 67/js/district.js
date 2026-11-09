@@ -194,5 +194,5 @@ export function createDistrict(world, renderer) {
   marker.position.y = .025;
   marker.visible = false;
   scene.add(marker);
-  return { obstacles, marker, sky, sunlight };
+  return { obstacles, marker, sky, sunlight, asphalt };
 }

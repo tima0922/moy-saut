@@ -1,32 +1,47 @@
 import * as THREE from 'three';
 import { createWorld } from './world.js';
 import { batchSharedMeshes } from './garage-visuals.js';
-import { fitE39 } from './bmw.js';
-import { createDistrict, SHOP, TRACK } from './district.js';
-import { createPhysics, MODELS, STEP } from './vehicle.js';
-import { JOBS, advance, loadCareer, saveCareer, makeRoadTest } from './career.js';
+import { BATTERY, fitE39 } from './bmw.js?v=08';
+import { ARENA, createLayout, createRun } from './drift.js';
+import { createDriftWorld } from './drift-world.js';
+import { createDistrict, SHOP, TRACK } from './district.js?v=08';
+import { createPhysics, MODELS, STEP } from './vehicle.js?v=08';
+import { JOBS, advance, loadCareer, saveCareer, makeRoadTest } from './career.js?v=08';
 
 const $ = selector => document.querySelector(selector);
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const damp = THREE.MathUtils.damp;
 const canvas = $('#scene');
-const career = loadCareer(window.localStorage);
+let storage;
+try { storage = window.localStorage; } catch { /* The game can run without persistent storage. */ }
+const career = loadCareer(storage);
 const controls = new Set();
-const key = (...codes) => codes.some(code => controls.has(code));
-const saved = () => saveCareer(window.localStorage, career);
+const touchControls = new Map();
+const key = (...codes) => codes.some(code => controls.has(code) ||
+  [...touchControls.values()].some(button => button.dataset.drive === code));
+const saved = () => saveCareer(storage, career);
+
+function clearControls() {
+  controls.clear();
+  for (const button of touchControls.values()) delete button.dataset.active;
+  touchControls.clear();
+}
 let renderer;
 try {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   await boot();
 } catch (error) {
   console.error(error);
-  $('#loading').textContent = 'Не удалось загрузить 3D. Открой игру через веб-сервер в Chrome или Edge с включённым WebGL 2.';
+  $('#loading').textContent = renderer
+    ? 'Не удалось загрузить файлы игры. Обнови страницу и попробуй ещё раз.'
+    : 'В этом браузере недоступен WebGL 2. Включи аппаратное ускорение или открой игру в другом браузере.';
 }
 
 async function boot() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.04;
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  const touchScreen = matchMedia('(pointer: coarse)');
   const camera = new THREE.PerspectiveCamera(62, 1, .035, 155);
   camera.rotation.order = 'YXZ';
   const world = createWorld(renderer, { districtMode: true });
@@ -35,9 +50,13 @@ async function boot() {
   for (const object of [world.scene, world.car, world.engine, world.lift, world.arms]) {
     batchSharedMeshes(object);
   }
-  const physics = await createPhysics(district.obstacles);
+  const layout = createLayout();
+  const arena = createDriftWorld(world, layout, district.asphalt);
+  const physics = await createPhysics([...district.obstacles, ...arena.obstacles], ARENA);
   const { car, scene, door, key: workLight } = world;
-  const { hood, trunk, carDoors, wheels, hubs, steering, paints, brakeLamps, lampMeshes } = bmw;
+  const garageScenery = new THREE.Group();
+  scene.add(garageScenery);
+  const { hood, trunk, batteryHatch, bayLight, cargoLight, carDoors, wheels, hubs, steering, paints, brakeLamps, lampMeshes } = bmw;
   world.arms.position.y = -.17;
   const wheelMark = new THREE.Mesh(new THREE.TorusGeometry(.344, .013, 8, 36),
     new THREE.MeshBasicMaterial({ color: 0xffb066, transparent: true, opacity: .68 }));
@@ -61,6 +80,7 @@ async function boot() {
   let hoodOpen = false;
   let hoodReleased = false;
   let trunkOpen = false;
+  let hatchOpen = false;
   let leaving = false;
   let doorSide = 'left';
   const walkVelocity = V(0, 0, 0);
@@ -79,6 +99,9 @@ async function boot() {
   let audio;
 
   let brakeResult;
+  let driftRun;
+  const heading = new THREE.Quaternion();
+  const carEuler = new THREE.Euler(0, 0, 0, 'YXZ');
   const jobs = $('#job-text');
   const action = $('#action');
   const notice = $('#notice');
@@ -90,6 +113,31 @@ async function boot() {
   const engineText = $('#engine');
   const gear = $('#gear');
   const rev = $('#rev');
+  const driftHud = $('#drift-hud');
+  const driftTime = $('#drift-time');
+  const driftScore = $('#drift-score');
+  const driftCombo = $('#drift-combo');
+  const driftStatus = $('#drift-status');
+  const driftSector = $('#drift-sector');
+  const driftAngle = $('#drift-angle');
+  const driftLaps = $('#drift-laps');
+  const driftBest = $('#drift-best');
+  const driftReset = $('#drift-reset');
+  const mapGate = $('#map-gate');
+  const number = new Intl.NumberFormat('ru-RU');
+  const path = layout.road.map(p => `${p.x.toFixed(2)} ${(-p.z).toFixed(2)}`).join(' L ');
+  $('#map-course').setAttribute('d', 'M ' + path + ' Z');
+
+  function resetDrift() {
+    clearControls();
+    const { x, z, yaw } = layout.spawn;
+    physics.reset(x, z, yaw);
+    physics.running = true;
+    driftRun = createRun(layout);
+    arena.fx.reset();
+    arena.markGate(0);
+    cameraCut = true;
+  }
 
   const job = () => JOBS[career.completed % JOBS.length];
   const phase = () => career.phase;
@@ -108,7 +156,9 @@ async function boot() {
   }
 
   function quality() {
-    renderer.setPixelRatio(Math.min(career.high ? 1.75 : 1.25, window.devicePixelRatio));
+    const touch = touchScreen.matches;
+    const scale = career.high ? (touch ? 1.25 : 1.75) : (touch ? 1 : 1.25);
+    renderer.setPixelRatio(Math.min(scale, window.devicePixelRatio));
     renderer.setSize(innerWidth, innerHeight, false);
     camera.aspect = innerWidth / innerHeight;
     camera.updateProjectionMatrix();
@@ -134,10 +184,10 @@ async function boot() {
     title.textContent = current.title;
     const tasks = {
       offer: current.complaint + ' Подойди к столу приёмки.',
-      diagnose: current.id === 'battery' ? 'Подойди к багажнику, открой его (B) и замерь напряжение справа.'
+      diagnose: current.id === 'battery' ? 'Подойди к багажнику, открой его (B) и подними лючок в полу (E) и замерь напряжение.'
         : 'Подойди к переднему левому колесу. Проверь его клавишей E.',
       parts: `Забери в магазине деталь «${current.part}». Точка выдачи отмечена на карте.`,
-      repair: current.id === 'battery' ? 'Открой багажник (B), затем установи аккумулятор справа.'
+      repair: current.id === 'battery' ? 'Открой багажник (B) и лючок в полу (E), затем замени аккумулятор.'
         : current.id === 'brakes' ? 'Поставь машину в бокс. У переднего левого колеса замени колодки.'
           : 'Подойди к переднему левому колесу и подкачай его.',
       verify: current.test + (current.id === 'battery' ? '' : ' Едь в сторону дальнего забора.'),
@@ -158,7 +208,9 @@ async function boot() {
   function updateControls() {
     $('#dash').hidden = !seated;
     $('#crosshair').hidden = seated;
-    const hints = seated
+    const hints = state === 'drift'
+      ? [['W', 'газ'], ['S', 'тормоз'], ['A / D', 'руль'], ['Space', 'ручник'], ['C', 'камера'], ['T', 'новый заезд']]
+      : seated
       ? [['W', 'газ'], ['S', 'тормоз / задний ход'], ['A', 'влево'], ['D', 'вправо'], ['Space', 'ручник'], ['R', 'зажигание'], ['G', 'ворота'], ['C', 'камера'], ['H', 'замок капота'], ['B', 'багажник'], ['E', 'выйти'], ['T', 'эвакуатор']]
       : [['WASD', 'ходьба'], ['Мышь', 'осмотр'], ['Shift', 'бег'], ['E', 'действие'], ['H', 'капот'], ['B', 'багажник'], ['G', 'ворота'], ['L', 'подъёмник'], ['T', 'эвакуатор']];
     $('#keys').innerHTML = hints.map(([button, description]) => `<span><kbd>${button}</kbd> ${description}</span>`).join('');
@@ -169,8 +221,8 @@ async function boot() {
     physics.setModel(model);
     car.scale.z = model.length;
     for (const paint of paints) paint.color.set(model.color);
-    hoodOpen = hoodReleased = trunkOpen = lifted = leaving = false;
-    hood.rotation.x = trunk.rotation.x = 0;
+    hoodOpen = hoodReleased = trunkOpen = hatchOpen = lifted = leaving = false;
+    hood.rotation.x = trunk.rotation.x = batteryHatch.rotation.x = 0;
     world.arms.position.y = -.17;
     carDoors.left.rotation.y = carDoors.right.rotation.y = 0;
     leftDoorTimer = 0;
@@ -184,7 +236,7 @@ async function boot() {
   }
 
   function show(next) {
-    controls.clear();
+    clearControls();
     if (document.pointerLockElement === canvas) document.exitPointerLock();
     state = next;
     seated = cockpit = false;
@@ -192,9 +244,33 @@ async function boot() {
     walkVelocity.set(0,0,0);
     gateOpen = false;
     door.position.y = 0;
-    setCar(state === 'roam' ? 'sedan' : job().car);
-    camera.position.copy(player);
-    camera.lookAt(0, 1.2, next === 'roam' ? .48 : .4);
+    const drifting = next === 'drift';
+    arena.group.visible = drifting;
+    garageScenery.visible = !drifting;
+    $('#location-area').textContent = drifting ? 'КОНТУР 67' : 'БОКС 01';
+    $('#location-mode').textContent = drifting ? 'ДРИФТ' : 'ПРОМЗОНА';
+    const lightZ = drifting ? ARENA.z : 23;
+    district.sunlight.position.z = lightZ + 13;
+    district.sunlight.target.position.z = lightZ;
+    setCar(next === 'shift' ? job().car : 'sedan');
+    if (drifting) {
+      seated = true;
+      resetDrift();
+    } else {
+      camera.position.copy(player);
+      camera.lookAt(0, 1.2, next === 'roam' ? .48 : .4);
+    }
+    hud.classList.toggle('is-drift', drifting);
+    $('.job').hidden = drifting;
+    driftHud.hidden = !drifting;
+    $('#drift-touch').hidden = !drifting;
+    // SVG elements have no hidden property. Set their visibility explicitly.
+    $('#map-district').style.display = drifting ? 'none' : '';
+    $('#map-arena').toggleAttribute('hidden', !drifting);
+    $('#map-legend').hidden = drifting;
+    $('#map-svg').setAttribute('viewBox', drifting ? '-59 -230 118 118' : '-39 -94 78 114');
+    $('#map-svg').setAttribute('aria-label', drifting ? 'Трасса и следующий створ' : 'Гараж, тестовая полоса и магазин');
+    $('#map-title').textContent = drifting ? 'ТРАССА' : 'РАЙОН 01';
     $('#welcome').hidden = state !== 'menu';
     hud.hidden = state === 'menu';
     $('#menu').hidden = state === 'menu';
@@ -203,6 +279,7 @@ async function boot() {
     updateJob();
     updateControls();
     if (state !== 'menu') resumeAudio();
+    if (drifting) renderDrift();
   }
 
   function completePhase(expected) {
@@ -212,13 +289,21 @@ async function boot() {
   }
 
   function repairZone() {
-    return job().id === 'battery' ? carPoint(.54, .74, 2.49) : carPoint(-1.15, .5, -1.52);
+    return job().id === 'battery' ? carPoint(BATTERY.x, BATTERY.y, 2.46) : carPoint(-1.15, .5, -1.52);
   }
 
   const desk = V(-4.7, .08, -4.4);
 
   function interaction() {
-    if (repairTime > 0) return null;
+    if (state === 'drift' || repairTime > 0) return null;
+    if (!seated && trunkOpen && !hatchOpen && physics.totalSpeed < .55 &&
+      near(carPoint(BATTERY.x, BATTERY.y, 2.46), 1.4)) {
+      return { label: 'Поднять лючок аккумулятора', run() {
+        hatchOpen = true;
+        camera.lookAt(carPoint(BATTERY.x, BATTERY.y, BATTERY.z));
+        tell('Аккумулятор 12 В · под полом багажника', 1.8);
+      } };
+    }
     if (seated) return { label: leaving ? 'Отменить выход' : physics.totalSpeed > .12 ? 'Остановиться и выйти' : 'Выйти из машины', run: requestExit };
     if (state === 'shift') {
       if (near(desk, 1.7)) {
@@ -249,7 +334,8 @@ async function boot() {
       if (['diagnose', 'repair'].includes(phase()) && near(repairZone(), 1.25) && physics.totalSpeed < .55) {
         const diagnosis = phase() === 'diagnose';
         return { label: diagnosis ? 'Проверить деталь' : job().repair, run() {
-          if (job().id === 'battery' && !trunkOpen) return tell('Сначала открой багажник · B.');
+          if (job().id === 'battery' && !trunkOpen) return toggleTrunk();
+          if (job().id === 'battery' && !hatchOpen) return tell('Подними лючок в полу багажника · E.');
           if (!diagnosis && !insideBay()) return tell('Для ремонта верни машину в бокс.');
           if (!diagnosis && physics.running) return tell('Перед ремонтом заглуши двигатель · R.');
           if (!diagnosis) {
@@ -293,12 +379,13 @@ async function boot() {
     cameraCut = true;
     leftDoorTimer = .62;
     if (document.pointerLockElement === canvas) document.exitPointerLock();
-    controls.clear();
+    clearControls();
     updateControls();
     tell('R — завести двигатель. G — открыть ворота. E — выйти.');
   }
 
-  const shutter = { x: 0, z: 7.95, w: 5.12, d: .25 };
+  const shutter = { x: 0, z: 7.95, w: 5.12, d: .25, h: 4.35 };
+  const garageWithShutter = [...district.obstacles, shutter];
   function hitsRectangle(x, z, radius, box) {
     return Math.hypot(Math.max(0,Math.abs(x-box.x)-box.w/2),
       Math.max(0,Math.abs(z-box.z)-box.d/2)) < radius;
@@ -322,7 +409,7 @@ async function boot() {
       exitCar();
     } else {
       leaving = true;
-      controls.clear();
+      clearControls();
       tell('Останавливаем машину перед выходом.');
     }
   }
@@ -343,7 +430,7 @@ async function boot() {
     walkVelocity.set(0,0,0);
     camera.position.copy(player);
     camera.lookAt(carPoint(0, 1.14, -.34));
-    controls.clear();
+    clearControls();
     updateControls();
   }
 
@@ -366,6 +453,7 @@ async function boot() {
     if (!near(carPoint(0, 0, -2.37), 2.65)) return tell('Подойди к переднему бамперу · H.');
     hoodOpen = !hoodOpen;
     hoodReleased = false;
+    if (hoodOpen) camera.lookAt(carPoint(0, .77, -1.43));
     tell(hoodOpen ? 'Капот открыт' : 'Капот закрыт', 1.35);
   }
 
@@ -373,6 +461,7 @@ async function boot() {
     if (physics.totalSpeed > .5) return tell('Остановись, чтобы открыть багажник.');
     if (!seated && !near(carPoint(0, 0, 2.36), 2.55)) return tell('Подойди к заднему бамперу · B.');
     trunkOpen = !trunkOpen;
+    if (!trunkOpen) hatchOpen = false;
     tell(trunkOpen ? 'Багажник открыт' : 'Багажник закрыт', 1.35);
   }
 
@@ -396,11 +485,12 @@ async function boot() {
   }
 
   function recover() {
+    if (state === 'drift') return resetDrift();
     if (physics.totalSpeed > 2 && V(0, 1, 0).applyQuaternion(physics.rotation).y > .5) {
       return tell('Остановись перед вызовом эвакуатора.');
     }
     physics.reset();
-    hoodOpen = hoodReleased = trunkOpen = lifted = leaving = false;
+    hoodOpen = hoodReleased = trunkOpen = hatchOpen = lifted = leaving = false;
     parked = true;
     cameraCut = true;
     roadTest = makeRoadTest(job().id, TRACK);
@@ -443,15 +533,16 @@ async function boot() {
   document.addEventListener('mousemove', event => {
     if (document.pointerLockElement === canvas || mouseDown) look(event.movementX, event.movementY);
   });
-  document.addEventListener('pointerlockchange', () => { mouseDown = false; controls.clear(); });
-  window.addEventListener('blur', () => { controls.clear(); mouseDown = false; });
-  document.addEventListener('visibilitychange', () => { controls.clear(); });
+  document.addEventListener('pointerlockchange', () => { mouseDown = false; clearControls(); });
+  window.addEventListener('blur', () => { clearControls(); mouseDown = false; });
+  document.addEventListener('visibilitychange', clearControls);
 
   document.addEventListener('keydown', event => {
     if (state === 'menu' || event.ctrlKey || event.metaKey || event.altKey || event.target instanceof Element && event.target.matches('button,a,input')) return;
     if (/^(Key[WASDEBHRGCLT]|Arrow(Up|Down|Left|Right)|Space)$/.test(event.code)) event.preventDefault();
     controls.add(event.code);
     if (event.repeat || repairTime > 0) return;
+    if (state === 'drift' && !['KeyC', 'KeyT'].includes(event.code)) return;
     switch (event.code) {
       case 'KeyE': interaction()?.run(); break;
       case 'KeyR': toggleIgnition(); break;
@@ -466,6 +557,22 @@ async function boot() {
   document.addEventListener('keyup', event => controls.delete(event.code));
   action.onclick = () => { action.blur(); interaction()?.run(); };
   $('#start').onclick = () => { $('#start').blur(); show('shift'); };
+  $('#drift').onclick = () => { $('#drift').blur(); show('drift'); };
+  driftReset.onclick = () => { driftReset.blur(); resetDrift(); };
+  for (const button of document.querySelectorAll('[data-drive]')) {
+    button.addEventListener('pointerdown', event => {
+      if (state !== 'drift' || event.button !== 0) return;
+      event.preventDefault();
+      button.setPointerCapture(event.pointerId);
+      touchControls.set(event.pointerId, button);
+      button.dataset.active = '';
+    });
+    function release(event) {
+      touchControls.delete(event.pointerId);
+      if (![...touchControls.values()].includes(button)) delete button.dataset.active;
+    }
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, release);
+  }
   $('#roam').onclick = () => { $('#roam').blur(); show('roam'); };
   $('#menu').onclick = () => { $('#menu').blur(); show('menu'); };
   $('#graphics').onclick = () => { $('#graphics').blur(); career.high = !career.high; quality(); saved(); };
@@ -496,7 +603,21 @@ async function boot() {
         filter.connect(volume).connect(context.destination);
         engine.start();
         second.start();
-        audio = { context, engine, second, filter, volume };
+        const noise = context.createBufferSource();
+        const buffer = context.createBuffer(1, context.sampleRate, context.sampleRate);
+        const samples = buffer.getChannelData(0);
+        for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+        const tireFilter = context.createBiquadFilter();
+        tireFilter.type = 'bandpass';
+        tireFilter.frequency.value = 1090;
+        tireFilter.Q.value = .72;
+        const tireVolume = context.createGain();
+        tireVolume.gain.value = 0;
+        noise.buffer = buffer;
+        noise.loop = true;
+        noise.connect(tireFilter).connect(tireVolume).connect(context.destination);
+        noise.start();
+        audio = { context, engine, second, filter, volume, tireVolume };
       }
       audio.context.resume().catch(() => {});
     } catch { /* The game also plays without an audio device. */ }
@@ -504,17 +625,20 @@ async function boot() {
 
   function sound(now) {
     if (!audio) return;
-    const { context, engine, second, filter, volume } = audio;
+    const { context, engine, second, filter, volume, tireVolume } = audio;
     const time = context.currentTime;
-    const motor = physics.rpm / 30;
+    const motor = physics.rpm / 15;
     const movingGate = Math.abs(door.position.y - (gateOpen ? 4.5 : 0)) > .08;
     const tool = now < repairSoundUntil;
     engine.frequency.setTargetAtTime(tool ? 95 : movingGate && !physics.running ? 43 : Math.max(22, motor), time, .055);
-    second.frequency.setTargetAtTime(Math.max(30, motor * 2.01), time, .06);
+    second.frequency.setTargetAtTime(Math.max(22, motor * .5), time, .06);
     filter.frequency.setTargetAtTime(cockpit ? 290 : 470 + motor * 3, time, .1);
     const loudness = physics.running ? (seated ? .045 : .031 / (1 + player.distanceTo(car.position) * .15))
       : tool ? .026 : movingGate ? .02 : 0;
     volume.gain.setTargetAtTime(career.muted || state === 'menu' ? 0 : loudness, time, .08);
+    const skidding = !career.muted && state === 'drift' && physics.grounded && physics.totalSpeed > 4;
+    const skid = skidding ? Math.min(.16, Math.abs(physics.slip) * .21 + (key('Space') ? .045 : 0)) : 0;
+    tireVolume.gain.setTargetAtTime(skid, time, .075);
   }
 
   function assessDrive() {
@@ -555,9 +679,11 @@ async function boot() {
     }
     door.position.y = damp(door.position.y, gateOpen ? 4.5 : 0, 4.5, STEP);
     for (const slat of door.children) slat.visible = slat.position.y + door.position.y < 4.35;
-    world.engine.visible = hood.rotation.x > .11;
     hood.rotation.x = damp(hood.rotation.x, hoodOpen ? 1.16 : hoodReleased ? .04 : 0, 8, STEP);
-    trunk.rotation.x = damp(trunk.rotation.x, trunkOpen ? -1.03 : 0, 8, STEP);
+    trunk.rotation.x = damp(trunk.rotation.x, trunkOpen ? -1.18 : 0, 8, STEP);
+    batteryHatch.rotation.x = damp(batteryHatch.rotation.x, hatchOpen ? -1.29 : 0, 10, STEP);
+    bayLight.visible = world.engine.visible = hood.rotation.x > .11;
+    cargoLight.visible = trunk.rotation.x < -.14;
     leftDoorTimer = Math.max(0, leftDoorTimer - STEP);
     for (const [side, door] of Object.entries(carDoors)) {
       door.rotation.y = damp(door.rotation.y, leftDoorTimer && side === doorSide ? (side === 'left' ? -.95 : .95) : 0, 10, STEP);
@@ -567,13 +693,29 @@ async function boot() {
     if (seated && unsecured && key('KeyW','ArrowUp','KeyS','ArrowDown') && !leaving && noticeUntil < performance.now()) {
       tell('Перед выездом закрой капот и багажник.');
     }
+    const handbrake = seated && key('Space');
+    const drifting = state === 'drift';
     physics.tick({
       gas: seated && !unsecured && key('KeyW', 'ArrowUp'),
       reverse: seated && !unsecured && key('KeyS', 'ArrowDown'),
-      turn: seated ? Number(key('KeyA', 'ArrowLeft')) - Number(key('KeyD', 'ArrowRight')) : 0,
-      handbrake: seated && key('Space'),
+      turn: seated ? Number(key('KeyD', 'ArrowRight')) - Number(key('KeyA', 'ArrowLeft')) : 0,
+      handbrake, drift: drifting,
       occupied: seated, parking: leaving || unsecured, fault: broken(), gateY: door.position.y,
     });
+    if (drifting) {
+      const { status } = driftRun.run;
+      driftRun.tick(STEP, {
+        position: physics.position, speed: physics.totalSpeed, slip: physics.slip,
+        grounded: physics.grounded, hit: physics.hit, up: physics.up,
+      });
+      if (status !== 'finished' && driftRun.run.status === 'finished' && driftRun.run.score > career.driftBest) {
+        career.driftBest = driftRun.run.score;
+        saved();
+      }
+      arena.markGate(driftRun.run.status === 'finished' ? -1 : driftRun.run.next);
+      arena.fx.tick(STEP, physics, career.high, handbrake);
+      return;
+    }
     if (leaving && physics.totalSpeed <= .12) exitCar();
     parked = insideBay() && physics.totalSpeed < .55;
     assessDrive();
@@ -584,9 +726,8 @@ async function boot() {
   function safeChase(lookAt, desired) {
     let fraction = 1;
     const delta = desired.clone().sub(lookAt);
-    const barriers = door.position.y < 3.6
-      ? [...district.obstacles, { x: 0, z: 7.95, w: 5.18, d: .23, h: 4.35 }]
-      : district.obstacles;
+    const barriers = state === 'drift' ? arena.obstacles
+      : door.position.y < 3.6 ? garageWithShutter : district.obstacles;
     for (const box of barriers) {
       let entry = 0;
       let exit = fraction;
@@ -627,8 +768,18 @@ async function boot() {
       camera.position.copy(eye);
       camera.quaternion.copy(car.quaternion);
     } else {
-      const desired = transform(eye.set(.05, 2.63, 5.6 + Math.min(physics.totalSpeed * .035, .9)));
-      const focus = transform(direction.set(0, 1.05, -.45));
+      let desired, focus;
+      if (state === 'drift') {
+        const yaw = carEuler.setFromQuaternion(car.quaternion).y;
+        const offset = THREE.MathUtils.clamp(physics.slip * .52, -.44, .44);
+        heading.setFromAxisAngle(direction.set(0, 1, 0), yaw - offset);
+        desired = eye.set(0, 3.20, 6.8 + Math.min(physics.totalSpeed * .045, 1.5))
+          .applyQuaternion(heading).add(car.position);
+        focus = direction.set(0, 1.05, -2.6).applyQuaternion(heading).add(car.position);
+      } else {
+        desired = transform(eye.set(.05, 2.63, 5.6 + Math.min(physics.totalSpeed * .035, .9)));
+        focus = transform(direction.set(0, 1.05, -.45));
+      }
       safeChase(focus, desired);
       if (cameraCut || camera.position.distanceTo(desired) > 9) chase.copy(desired);
       else chase.lerp(desired, 1 - Math.exp(-dt * 8.5));
@@ -646,13 +797,14 @@ async function boot() {
     if (noticeUntil < now) notice.hidden = true;
     if (!onFoot) {
       speedText.textContent = Math.round(physics.totalSpeed * 3.6);
-      gear.textContent = physics.speed < -.45 ? 'R' : physics.running ? 'D' : 'P';
-      engineText.textContent = physics.running ? 'МОТОР ВКЛ' : 'МОТОР ВЫКЛ · R';
-      rev.style.width = Math.min(100, physics.rpm / 52) + '%';
+      gear.textContent = physics.speed < -.45 ? 'R' : physics.running ? String(physics.gear) : 'P';
+      engineText.textContent = physics.running ? `${Math.round(physics.rpm / 100) * 100} ОБ/МИН` : 'МОТОР ВЫКЛ · R';
+      rev.style.width = Math.min(100, physics.rpm / 70) + '%';
     }
     const p = position();
-    const yaw = onFoot ? camera.rotation.y : new THREE.Euler().setFromQuaternion(car.quaternion, 'YXZ').y;
+    const yaw = onFoot ? camera.rotation.y : carEuler.setFromQuaternion(car.quaternion).y;
     mapPlayer.setAttribute('transform', `translate(${p.x.toFixed(2)} ${(-p.z).toFixed(2)}) rotate(${180 + THREE.MathUtils.radToDeg(yaw)})`);
+    if (state === 'drift') renderDrift();
     const target = activeTarget();
     mapTarget.style.display = target ? '' : 'none';
     district.marker.visible = Boolean(target);
@@ -669,6 +821,25 @@ async function boot() {
         roadPin.style.top = (-point.y * .5 + .5) * 100 + '%';
       }
     }
+  }
+
+  function renderDrift() {
+    const { run } = driftRun;
+    const seconds = Math.ceil(run.time);
+    driftTime.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    driftScore.textContent = number.format(run.score);
+    driftCombo.textContent = run.chain >= 1 ? `+${Math.floor(run.chain)} · ×${run.multiplier}` : '';
+    driftStatus.textContent = run.status === 'ready' ? 'Разгонись до 35–45 км/ч. На дуге коротко дёрни ручник и поймай машину контррулём.'
+      : run.status === 'finished' ? 'Заезд завершён. Нажми T для рестарта.' : run.warning ? `${run.warning} · серия сброшена`
+        : run.sliding ? 'Занос · держи угол и тягу' : 'Держись асфальта и следуй к зелёному створу.';
+    driftSector.textContent = `Створ ${run.next + 1} / ${layout.gates.length}`;
+    driftAngle.textContent = `Угол ${Math.round(run.angle)}°`;
+    driftLaps.textContent = `Круги ${run.lap}`;
+    driftBest.textContent = `Рекорд ${number.format(career.driftBest)}`;
+    driftReset.hidden = !touchScreen.matches && run.status === 'running' && physics.up > .5;
+    mapGate.style.display = run.status === 'finished' ? 'none' : '';
+    const gate = layout.gates[run.next].position;
+    markerPosition(mapGate, gate.x, gate.z);
   }
 
   function frame(now) {
@@ -692,7 +863,7 @@ async function boot() {
     const inWorkshop = position().z < 8.4 && position().z > -8.3 && Math.abs(position().x) < 7.3;
     workLight.castShadow = inWorkshop;
     district.sunlight.castShadow = !inWorkshop;
-    district.sunlight.intensity = damp(district.sunlight.intensity, inWorkshop ? .55 : 2.05, 6, dt);
+    district.sunlight.intensity = damp(district.sunlight.intensity, inWorkshop ? .55 : state === 'drift' ? 2.6 : 2.05, 6, dt);
     view(dt, now);
     camera.updateMatrixWorld();
     district.sky.position.copy(camera.position);
@@ -711,13 +882,18 @@ async function boot() {
   $('#audio').textContent = career.muted ? 'Звук: выкл' : 'Звук: вкл';
   show('menu');
   await world.assetsReady;
+  const shared = new Set([garageScenery, arena.group, car, world.contact, district.sky,
+    district.sunlight, district.sunlight.target]);
+  for (const object of [...scene.children]) {
+    if (!shared.has(object) && !object.isHemisphereLight) garageScenery.add(object);
+  }
   $('#loading').textContent = '';
-  $('#start').disabled = $('#roam').disabled = false;
+  $('#start').disabled = $('#roam').disabled = $('#drift').disabled = false;
   Object.defineProperty(window, 'garageLife', { value: Object.freeze({
     getState: () => ({
       mode: state, seated, cockpit, running: physics.running, speed: physics.speed * 3.6,
       car: physics.position.toArray(), player: player.toArray(), yaw: camera.rotation.y, gate: door.position.y, lifted,
-      hood: hoodOpen, trunk: trunkOpen, leaving, phase: phase(), job: job().id, money: career.money, completed: career.completed,
+      hood: hoodOpen, trunk: trunkOpen, batteryHatch: hatchOpen, drift: state === 'drift' ? { ...driftRun.run } : null, leaving, phase: phase(), job: job().id, money: career.money, completed: career.completed,
       assets: { ...world.assetStatus }, render: { ...renderer.info.render }, graphics: career.high ? 'high' : 'standard',
     }),
   }) });

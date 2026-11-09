@@ -7,16 +7,16 @@
   <meta name="description" content="GARAGE LIFE — гараж, короткие ремонты и тест-драйвы в браузере.">
   <title>GARAGE LIFE / Гараж и тест-драйв</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231a252b'/%3E%3Cpath d='M12 48V24l20-12 20 12v24H42V29H22v19Z' fill='%23ffad69'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./drive.css">
+  <link rel="stylesheet" href="./drive.css?v=08">
   <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/addons/"}}</script>
 </head>
 <body>
   <canvas id="scene" aria-label="Трёхмерная игра GARAGE LIFE"></canvas>
   <header>
     <a class="brand" href="./index.html"><span class="logo" aria-hidden="true">⌂</span> GARAGE<span>LIFE</span></a>
-    <div class="location" id="location"><i></i> БОКС 01 <span> / </span> ПРОМЗОНА</div>
+    <div class="location"><i></i> <b id="location-area">БОКС 01</b> <span> / </span> <b id="location-mode">ПРОМЗОНА</b></div>
     <nav>
-      <span class="version">BETA 0.7</span>
+      <span class="version">BETA 0.8</span>
       <button type="button" id="graphics" title="Качество графики">Графика: высокая</button>
       <button type="button" id="audio">Звук: вкл</button>
       <button type="button" id="menu" hidden>Меню</button>
@@ -30,6 +30,7 @@
       <p class="lead">Диагностируй неисправность, сделай ремонт и проверь машину за рулём.</p>
       <div class="hero-buttons">
         <button class="primary" id="start" disabled>Начать смену <b>↗</b></button>
+        <button class="drift-button" id="drift" disabled>Дрифт · Контур 67</button>
         <button class="secondary" id="roam" disabled>Свободная поездка</button>
       </div>
       <p id="loading" class="label" aria-live="polite">ЗАГРУЖАЕМ МАСТЕРСКУЮ…</p>
@@ -39,7 +40,7 @@
       <p class="label"><span>01 /</span> ПРОМЗОНА</p>
       <h2>Твоя смена</h2>
       <p>Мастерская, магазин деталей и испытательная полоса за воротами.</p>
-      <div><strong>E39</strong> BMW M5 <strong>03</strong> заказа</div>
+      <div><strong>E39</strong> BMW M5 <strong>S62</strong> V8</div>
     </div>
     <footer><span>WASD · МЫШЬ · КЛАВИАТУРА</span><a href="./credits.html">Авторы и материалы ↗</a></footer>
   </main>
@@ -53,8 +54,9 @@
       <div class="job-footer"><span id="model"></span><strong id="money"></strong></div>
     </aside>
     <aside class="map hud-card" aria-label="Карта района">
-      <p class="label"><i></i> РАЙОН 01 <span id="fps"></span></p>
-      <svg viewBox="-39 -94 78 114" role="img" aria-label="Гараж, тестовая полоса и магазин">
+      <p class="label"><i></i> <span id="map-title">РАЙОН 01</span> <span id="fps"></span></p>
+      <svg id="map-svg" viewBox="-39 -94 78 114" role="img" aria-label="Гараж, тестовая полоса и магазин">
+        <g id="map-district">
         <rect x="-36" y="-89" width="72" height="104" rx="2" fill="#24323a" stroke="#667780" stroke-width=".4"/>
         <path d="M-35-21h70M6-22v-64M-21-24v-61" stroke="#53666d" stroke-width="5" fill="none" stroke-dasharray="1 1"/>
         <path d="M-11-45h14v-14h-14zM-11.5-67h15v-12h-15zM14.5-36.5h17v-9h-17zM14.5-57.5h17v-11h-17zM-33.5-18h9v-12h-9z" fill="#334952"/>
@@ -62,10 +64,24 @@
         <path d="M-4-3h8v6h-8zM-2-1h4v4h-4z" fill="#cfdfdb" fill-rule="evenodd"/>
         <path d="M-21-43v-35" stroke="#e5ae5d" stroke-width="4" opacity=".67"/>
         <rect x="21" y="-31" width="4" height="4" rx="1" fill="#c5d1cc"/>
+        </g>
+        <g id="map-arena" hidden>
+          <rect x="-56" y="-227" width="112" height="112" rx="4" fill="#24323a" stroke="#667780" stroke-width=".65"/>
+          <path id="map-course" stroke="#62757d" stroke-width="10" fill="none" stroke-linejoin="round"/>
+          <circle id="map-gate" r="4" fill="#d5f69c" stroke="#18232b" stroke-width="1.2"/>
+        </g>
         <circle id="map-target" r="3.5" stroke="#ffb168" stroke-width=".8" fill="none"/>
         <path id="map-player" d="M0-3 2.4 2 0 1.2-2.4 2Z" fill="#f7f3e5" stroke="#192228" stroke-width=".4"/>
       </svg>
-      <p class="map-legend"><span>■ Гараж</span><span>■ Полоса</span><span>■ Детали</span></p>
+      <p class="map-legend" id="map-legend"><span>■ Гараж</span><span>■ Полоса</span><span>■ Детали</span></p>
+    </aside>
+    <aside id="drift-hud" class="hud-card" hidden aria-label="Результат дрифта">
+      <p class="label"><i></i> КОНТУР 67 <span id="drift-time">1:30</span></p>
+      <div class="drift-score"><strong id="drift-score">0</strong><span class="label">ОЧКИ</span><span id="drift-combo"></span></div>
+      <p class="drift-status" id="drift-status"></p>
+      <div class="drift-data"><span id="drift-sector"></span><span id="drift-angle"></span></div>
+      <div class="drift-data"><span id="drift-laps"></span><span id="drift-best"></span></div>
+      <button type="button" class="drift-button" id="drift-reset" hidden>Новый заезд · T</button>
     </aside>
     <div id="crosshair" aria-hidden="true">+</div>
     <div id="world-pin" hidden aria-hidden="true">◆</div>
@@ -76,8 +92,19 @@
       <div class="rev"><span id="rev"></span></div>
       <span id="engine" class="label"></span>
     </div>
+    <div id="drift-touch" hidden aria-label="Сенсорное управление">
+      <div class="touch-steer">
+        <button type="button" data-drive="KeyA" aria-label="Поворот влево">←</button>
+        <button type="button" data-drive="KeyD" aria-label="Поворот вправо">→</button>
+      </div>
+      <div class="touch-pedals">
+        <button type="button" data-drive="Space">Ручник</button>
+        <button type="button" data-drive="KeyS">Тормоз</button>
+        <button type="button" data-drive="KeyW">Газ</button>
+      </div>
+    </div>
     <div class="keys" id="keys"></div>
   </section>
-  <script type="module" src="./js/drive.js"></script>
+  <script type="module" src="./js/drive.js?v=08"></script>
 </body>
 </html>

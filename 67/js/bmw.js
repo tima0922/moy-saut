@@ -40,6 +40,37 @@ function buildS62(world) {
   box(engine, [.16, .13, .15], [.60, .025, .09], mats.cover);
 }
 
+function openCompartments(shell, hood, trunk) {
+  const liner = shell.getObjectByName('Object_25_black_0');
+  const frame = shell.getObjectByName('Object_43_frame_0');
+  if (!liner?.geometry.index || !frame?.geometry.index) return;
+  // The source GLB combines both lid liners with the fixed black trim.
+  // These triangle ranges are the connected liner components in e39.glb.
+  const rearFaces = [[170, 198], [279, 306], [1195, 1336], [1519, 1520], [1523, 1523]];
+  const fixed = [], front = [], rear = [];
+  const indices = liner.geometry.index.array;
+  for (let i = 0; i < indices.length; i += 3) {
+    const face = i / 3;
+    const target = face >= 1337 && face <= 1518 ? front
+      : rearFaces.some(([start, end]) => face >= start && face <= end) ? rear : fixed;
+    target.push(indices[i], indices[i + 1], indices[i + 2]);
+  }
+  for (const [hinge, panel] of [[hood, front], [trunk, rear]]) {
+    const geometry = new THREE.BufferGeometry();
+    for (const [name, attribute] of Object.entries(liner.geometry.attributes)) geometry.setAttribute(name, attribute);
+    geometry.setIndex(panel);
+    const lining = liner.clone();
+    lining.geometry = geometry;
+    liner.parent.add(lining);
+    hinge.attach(lining);
+  }
+  liner.geometry.setIndex(fixed);
+
+  // Remove the double-sided sheet over the engine while retaining the front frame and trunk floor.
+  const bayCover = new Set([95, 105, 139, 140, 150, 151, 152, 153, 165, 166, 167, 168, 169, 170, 175, 203]);
+  frame.geometry.setIndex(Array.from(frame.geometry.index.array).filter((_, i) => !bayCover.has(Math.floor(i / 3))));
+}
+
 export async function fitE39(world) {
   const { car, engine, box, mats } = world;
   const draco = new DRACOLoader().setDecoderPath('./vendor/draco/').setWorkerLimit(2);
@@ -79,6 +110,7 @@ export async function fitE39(world) {
 
   const hood = pivot('hood', 0, .984, -.985);
   const trunk = pivot('trunk', 0, 1.069, 1.766);
+  openCompartments(shell, hood, trunk);
   const carDoors = {
     left: pivot('left', -.84, .80, -.866),
     right: pivot('right', .84, .80, -.866),

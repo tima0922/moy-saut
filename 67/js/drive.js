@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createWorld } from './world.js';
 import { batchSharedMeshes } from './garage-visuals.js';
-import { BATTERY, fitE39 } from './bmw.js?v=08';
+import { BATTERY, fitE39 } from './bmw.js?v=081';
 import { ARENA, createLayout, createRun } from './drift.js';
 import { createDriftWorld } from './drift-world.js';
 import { createDistrict, SHOP, TRACK } from './district.js?v=08';

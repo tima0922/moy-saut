@@ -4,19 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#182228">
-  <meta name="description" content="GARAGE LIFE — гараж, короткие ремонты и тест-драйвы в браузере.">
-  <title>GARAGE LIFE / Гараж и тест-драйв</title>
+  <meta name="description" content="GARAGE LIFE — дрифт на Контуре 67, тюнинг и свой гараж.">
+  <title>GARAGE LIFE / Контур 67</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231a252b'/%3E%3Cpath d='M12 48V24l20-12 20 12v24H42V29H22v19Z' fill='%23ffad69'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./drive.css?v=08">
+  <link rel="stylesheet" href="./drive.css?v=09">
   <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/addons/"}}</script>
 </head>
 <body>
   <canvas id="scene" aria-label="Трёхмерная игра GARAGE LIFE"></canvas>
   <header>
     <a class="brand" href="./index.html"><span class="logo" aria-hidden="true">⌂</span> GARAGE<span>LIFE</span></a>
-    <div class="location"><i></i> <b id="location-area">БОКС 01</b> <span> / </span> <b id="location-mode">ПРОМЗОНА</b></div>
+    <div class="location"><i></i> <b id="location-area">БОКС 01</b> <span> / </span> <b id="location-mode">ДРИФТ-КЛУБ</b></div>
     <nav>
-      <span class="version">BETA 0.8</span>
+      <span class="version">BETA 0.9</span>
       <button type="button" id="graphics" title="Качество графики">Графика: высокая</button>
       <button type="button" id="audio">Звук: вкл</button>
       <button type="button" id="menu" hidden>Меню</button>
@@ -25,22 +25,21 @@
 
   <main id="welcome">
     <div class="hero">
-      <p class="label"><i></i> СИМУЛЯТОР АВТОМЕХАНИКА / ПК</p>
-      <h1>ИЗ ГАРАЖА<br><em>НА ДОРОГУ.</em></h1>
-      <p class="lead">Диагностируй неисправность, сделай ремонт и проверь машину за рулём.</p>
+      <p class="label"><i></i> ДРИФТ-КЛУБ / КОНТУР 67</p>
+      <h1>КОНТУР<br><em>67.</em></h1>
+      <p class="lead">Твой бокс на дрифт-трассе. Открой ворота, выезжай на заезд и возвращайся за свежими шинами и настройками.</p>
       <div class="hero-buttons">
-        <button class="primary" id="start" disabled>Начать смену <b>↗</b></button>
-        <button class="drift-button" id="drift" disabled>Дрифт · Контур 67</button>
-        <button class="secondary" id="roam" disabled>Свободная поездка</button>
+        <button class="primary" id="start" disabled>Войти в бокс <b>↗</b></button>
+        <button class="secondary" id="shift" disabled>Заказы мастерской</button>
       </div>
-      <p id="loading" class="label" aria-live="polite">ЗАГРУЖАЕМ МАСТЕРСКУЮ…</p>
+      <p id="loading" class="label" aria-live="polite">ГОТОВИМ БОКС…</p>
       <a class="classic" href="./classic.html">Подробный ремонт · классический режим ↗</a>
     </div>
     <div class="intro-card">
-      <p class="label"><span>01 /</span> ПРОМЗОНА</p>
-      <h2>Твоя смена</h2>
-      <p>Мастерская, магазин деталей и испытательная полоса за воротами.</p>
-      <div><strong>E39</strong> BMW M5 <strong>S62</strong> V8</div>
+      <p class="label"><span>01 /</span> ПАДДОК</p>
+      <h2>Твой гараж</h2>
+      <p>Три заднеприводные машины. Настройки и состояние каждой сохраняются между заездами.</p>
+      <div><strong>E39</strong> · <strong>F90</strong> · <strong>C219</strong></div>
     </div>
     <footer><span>WASD · МЫШЬ · КЛАВИАТУРА</span><a href="./credits.html">Авторы и материалы ↗</a></footer>
   </main>
@@ -51,6 +50,7 @@
       <h2 id="job-title"></h2>
       <p id="job-text"></p>
       <div id="job-reading" hidden></div>
+      <button type="button" class="secondary" id="pit-open" hidden>Гараж и тюнинг <kbd>P</kbd></button>
       <div class="job-footer"><span id="model"></span><strong id="money"></strong></div>
     </aside>
     <aside class="map hud-card" aria-label="Карта района">
@@ -59,11 +59,15 @@
         <g id="map-district">
         <rect x="-36" y="-89" width="72" height="104" rx="2" fill="#24323a" stroke="#667780" stroke-width=".4"/>
         <path d="M-35-21h70M6-22v-64M-21-24v-61" stroke="#53666d" stroke-width="5" fill="none" stroke-dasharray="1 1"/>
-        <path d="M-11-45h14v-14h-14zM-11.5-67h15v-12h-15zM14.5-36.5h17v-9h-17zM14.5-57.5h17v-11h-17zM-33.5-18h9v-12h-9z" fill="#334952"/>
+        <path d="M-17-45h14v-14h-14zM-17.5-67h15v-12h-15zM14.5-36.5h17v-9h-17zM14.5-57.5h17v-11h-17zM-33.5-18h9v-12h-9z" fill="#334952"/>
         <rect x="-7" y="-8" width="14" height="16" fill="#526b72"/>
         <path d="M-4-3h8v6h-8zM-2-1h4v4h-4z" fill="#cfdfdb" fill-rule="evenodd"/>
         <path d="M-21-43v-35" stroke="#e5ae5d" stroke-width="4" opacity=".67"/>
         <rect x="21" y="-31" width="4" height="4" rx="1" fill="#c5d1cc"/>
+        </g>
+        <g id="map-pit" hidden>
+          <path d="M0-8V-125Q0-135 14-135" stroke="#ffc580" stroke-width="3" stroke-dasharray="4 2"/>
+          <rect x="-7" y="-8" width="14" height="16" rx="1" fill="#b88255"/>
         </g>
         <g id="map-arena" hidden>
           <rect x="-56" y="-227" width="112" height="112" rx="4" fill="#24323a" stroke="#667780" stroke-width=".65"/>
@@ -81,7 +85,7 @@
       <p class="drift-status" id="drift-status"></p>
       <div class="drift-data"><span id="drift-sector"></span><span id="drift-angle"></span></div>
       <div class="drift-data"><span id="drift-laps"></span><span id="drift-best"></span></div>
-      <button type="button" class="drift-button" id="drift-reset" hidden>Новый заезд · T</button>
+
     </aside>
     <div id="crosshair" aria-hidden="true">+</div>
     <div id="world-pin" hidden aria-hidden="true">◆</div>
@@ -92,19 +96,23 @@
       <div class="rev"><span id="rev"></span></div>
       <span id="engine" class="label"></span>
     </div>
-    <div id="drift-touch" hidden aria-label="Сенсорное управление">
-      <div class="touch-steer">
-        <button type="button" data-drive="KeyA" aria-label="Поворот влево">←</button>
-        <button type="button" data-drive="KeyD" aria-label="Поворот вправо">→</button>
-      </div>
-      <div class="touch-pedals">
-        <button type="button" data-drive="Space">Ручник</button>
-        <button type="button" data-drive="KeyS">Тормоз</button>
-        <button type="button" data-drive="KeyW">Газ</button>
-      </div>
-    </div>
     <div class="keys" id="keys"></div>
   </section>
-  <script type="module" src="./js/drive.js?v=081"></script>
+  <dialog id="pit-panel" aria-labelledby="pit-title">
+    <form method="dialog" class="pit-header">
+      <div><p class="label"><i></i> КОНТУР 67 / БОКС 01</p><h2 id="pit-title">Твой гараж</h2></div>
+      <button class="secondary" autofocus>Назад к машине <kbd>Esc</kbd></button>
+    </form>
+    <div id="pit-fleet" aria-label="Выбор машины"></div>
+    <div class="pit-grid">
+      <section><p class="label">СОСТОЯНИЕ МАШИНЫ</p><div id="pit-parts"></div></section>
+      <section>
+        <p class="label">НАСТРОЙКИ ДЛЯ ЗАЕЗДА</p>
+        <div id="pit-tune"></div>
+        <label class="pit-row" for="pit-color">Цвет кузова <input id="pit-color" type="color"></label>
+      </section>
+    </div>
+  </dialog>
+  <script type="module" src="./js/drive.js?v=09"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { batchSharedMeshes } from './garage-visuals.js';
-import { ARENA, ENTRY_ANGLE, ROAD_HALF } from './drift.js';
+import { ARENA, ENTRY_ANGLE, PIT_MERGE, ROAD_HALF } from './drift.js?v=09';
 
 export function createDriftWorld(world, layout, asphalt) {
   const { scene, box, textPlane } = world;
@@ -74,7 +74,32 @@ export function createDriftWorld(world, layout, asphalt) {
     box(group, [w + .06, .15, d + .06], [x, .91, z], dark);
   }
   for (const x of [-55.5, 55.5]) barrier(x, ARENA.z, .55, 110);
-  for (const z of [ARENA.z - 55.5, ARENA.z + 55.5]) barrier(0, z, 112, .55);
+  barrier(0, ARENA.z + 55.5, 112, .55);
+  for (const x of [-30.5, 30.5]) barrier(x, ARENA.z - 55.5, 51, .55);
+
+  const approach = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, .007, 116), new THREE.Vector3(0, .007, 125),
+    new THREE.Vector3(2.1, .007, 130), new THREE.Vector3(7.4, .007, 134.2),
+    new THREE.Vector3(14, .007, 135.2),
+  ]);
+  const guide = approach.getSpacedPoints(16);
+  for (let i = 0; i < guide.length - 1; i += 2) {
+    const point = guide[i].clone().lerp(guide[i + 1], .5);
+    const delta = guide[i + 1].clone().sub(guide[i]);
+    const dash = box(group, [.18, .009, delta.length()], point.toArray(), lime,
+      [0, Math.atan2(delta.x, delta.z), 0]);
+    dash.castShadow = false;
+  }
+  box(group, [9.4, .012, .29], [0, .006, PIT_MERGE], lime);
+  for (const x of [-5.15, 5.15]) {
+    box(group, [.27, 2.55, .27], [x, 1.275, PIT_MERGE], dark);
+    box(group, [.31, .80, .31], [x, 1.88, PIT_MERGE], lime);
+    obstacles.push({ x, z: PIT_MERGE, w: .3, d: .3, h: 2.55 });
+  }
+  textPlane(group, 'КОНТУР 67  /  НАЧАЛО ЗАЕЗДА  ↖', 8.2, .65,
+    [0, 3.35, PIT_MERGE], [0, Math.PI, 0], '#dff3bc', '#202a31');
+  textPlane(group, 'БОКС 01  /  ВОЗВРАТ', 5.5, .55,
+    [0, 3.35, PIT_MERGE + .04], [0, 0, 0], '#ffca90', '#202a31');
 
   const markers = [];
   for (const [index, gate] of gates.entries()) {
@@ -123,7 +148,7 @@ export function createDriftWorld(world, layout, asphalt) {
   }
 
   // Exterior silhouettes give the arena a horizon without adding collision geometry.
-  for (const [x, z, w, h] of [[-45, 103, 25, 6], [-13, 105, 29, 8], [22, 105, 31, 5],
+  for (const [x, z, w, h] of [[-45, 103, 25, 6], [-22, 105, 23, 8], [22, 105, 25, 5],
     [65, 132, 19, 8], [65, 166, 23, 12], [63, 201, 18, 6], [32, 238, 25, 9],
     [-4, 241, 32, 5], [-42, 239, 24, 11], [-66, 183, 15, 7], [-66, 143, 14, 9]]) {
     const structure = box(group, [w, h, 10], [x, h / 2 - .08, z], h > 7 ? ridge : ridgeShade);

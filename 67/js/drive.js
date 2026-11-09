@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { createWorld } from './world.js';
 import { batchSharedMeshes } from './garage-visuals.js';
-import { BATTERY, fitE39 } from './bmw.js?v=081';
-import { ARENA, createLayout, createRun } from './drift.js';
-import { createDriftWorld } from './drift-world.js';
-import { createDistrict, SHOP, TRACK } from './district.js?v=08';
-import { createPhysics, MODELS, STEP } from './vehicle.js?v=08';
+import { BATTERY, fitE39 } from './bmw.js?v=09';
+import { ARENA, PIT_EXIT, PIT_LANE_HALF, PIT_MERGE, createLayout, createRun } from './drift.js?v=09';
+import { createDriftWorld } from './drift-world.js?v=09';
+import { createDistrict, SHOP, TRACK } from './district.js?v=09';
+import { createPhysics, MODELS, STEP } from './vehicle.js?v=09';
+import { buildPitCar } from './pit-cars.js?v=09';
+import { FLEET, SETUPS, loadPit, savePit, setupFor } from './pit-save.js?v=09';
 import { JOBS, advance, loadCareer, saveCareer, makeRoadTest } from './career.js?v=08';
 
 const $ = selector => document.querySelector(selector);
@@ -15,16 +17,13 @@ const canvas = $('#scene');
 let storage;
 try { storage = window.localStorage; } catch { /* The game can run without persistent storage. */ }
 const career = loadCareer(storage);
+const pit = loadPit(storage, career.driftBest);
 const controls = new Set();
-const touchControls = new Map();
-const key = (...codes) => codes.some(code => controls.has(code) ||
-  [...touchControls.values()].some(button => button.dataset.drive === code));
+const key = (...codes) => codes.some(code => controls.has(code));
 const saved = () => saveCareer(storage, career);
 
 function clearControls() {
   controls.clear();
-  for (const button of touchControls.values()) delete button.dataset.active;
-  touchControls.clear();
 }
 let renderer;
 try {
@@ -42,27 +41,31 @@ async function boot() {
   renderer.toneMappingExposure = 1.04;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   const touchScreen = matchMedia('(pointer: coarse)');
-  const camera = new THREE.PerspectiveCamera(62, 1, .035, 155);
+  const camera = new THREE.PerspectiveCamera(62, 1, .035, 185);
   camera.rotation.order = 'YXZ';
   const world = createWorld(renderer, { districtMode: true });
   const district = createDistrict(world, renderer);
   const bmw = await fitE39(world);
+  bmw.engine = world.engine;
+  bmw.root = new THREE.Group();
+  for (const object of [...world.car.children]) bmw.root.add(object);
+  world.car.add(bmw.root);
+  const visuals = { sedan: bmw, touring: bmw };
+  let rig = bmw;
   for (const object of [world.scene, world.car, world.engine, world.lift, world.arms]) {
     batchSharedMeshes(object);
   }
   const layout = createLayout();
   const arena = createDriftWorld(world, layout, district.asphalt);
-  const physics = await createPhysics([...district.obstacles, ...arena.obstacles], ARENA);
+  const barriers = [...district.obstacles, ...arena.obstacles];
+  const physics = await createPhysics(barriers, ARENA);
   const { car, scene, door, key: workLight } = world;
-  const garageScenery = new THREE.Group();
-  scene.add(garageScenery);
-  const { hood, trunk, batteryHatch, bayLight, cargoLight, carDoors, wheels, hubs, steering, paints, brakeLamps, lampMeshes } = bmw;
   world.arms.position.y = -.17;
   const wheelMark = new THREE.Mesh(new THREE.TorusGeometry(.344, .013, 8, 36),
     new THREE.MeshBasicMaterial({ color: 0xffb066, transparent: true, opacity: .68 }));
   wheelMark.position.x = -.15;
   wheelMark.rotation.y = Math.PI / 2;
-  hubs[0].add(wheelMark);
+  bmw.hubs[0].add(wheelMark);
 
   const startPose = V(-4.2, 1.68, -3.6);
   const player = startPose.clone();
@@ -73,6 +76,12 @@ async function boot() {
   clock.connect(document);
   let state = 'menu';
   let model = MODELS.sedan;
+  let modelId = 'sedan';
+  let damageCooldown = 0;
+  let saveElapsed = 0;
+  let dirty = false;
+  let wasInBay = false;
+  let onCircuit = false;
   let seated = false;
   let cockpit = false;
   let lifted = false;
@@ -90,6 +99,8 @@ async function boot() {
   let accumulated = 0;
   let fpsTime = 0;
   let fpsFrames = 0;
+  let nextPitHud = 0;
+  let raceCamera = 0;
   let roadTest;
   let ignitionSeconds = 0;
   let parked = true;
@@ -100,6 +111,7 @@ async function boot() {
 
   let brakeResult;
   let driftRun;
+  let lastScore;
   const heading = new THREE.Quaternion();
   const carEuler = new THREE.Euler(0, 0, 0, 'YXZ');
   const jobs = $('#job-text');
@@ -122,21 +134,93 @@ async function boot() {
   const driftAngle = $('#drift-angle');
   const driftLaps = $('#drift-laps');
   const driftBest = $('#drift-best');
-  const driftReset = $('#drift-reset');
+  const pitPanel = $('#pit-panel');
+  const pitOpen = $('#pit-open');
   const mapGate = $('#map-gate');
   const number = new Intl.NumberFormat('ru-RU');
   const path = layout.road.map(p => `${p.x.toFixed(2)} ${(-p.z).toFixed(2)}`).join(' L ');
   $('#map-course').setAttribute('d', 'M ' + path + ' Z');
 
-  function resetDrift() {
-    clearControls();
-    const { x, z, yaw } = layout.spawn;
-    physics.reset(x, z, yaw);
-    physics.running = true;
-    driftRun = createRun(layout);
-    arena.fx.reset();
-    arena.markGate(0);
-    cameraCut = true;
+  const condition = () => pit.cars[modelId];
+  const garageMode = () => state === 'pit';
+  const canTune = () => garageMode() && insideBay() && physics.totalSpeed < .28 && physics.up > .8 && !lifted;
+  function persistPit() {
+    savePit(storage, pit);
+    dirty = false;
+    saveElapsed = 0;
+  }
+
+  function finishRun(bank = true) {
+    if (!driftRun) return;
+    driftRun.finish(bank);
+    if (bank) {
+      lastScore = driftRun.run.score;
+      condition().best = Math.max(condition().best, lastScore);
+    }
+    persistPit();
+    arena.markGate(-1);
+  }
+
+  function updatePitHud() {
+    const showRun = onCircuit && Boolean(driftRun);
+    $('.job').hidden = showRun;
+    driftHud.hidden = !showRun;
+    $('#location-area').textContent = onCircuit ? 'КОНТУР 67' : insideBay() ? 'БОКС 01' : 'ПИТ-ЛЕЙН';
+    $('#location-mode').textContent = showRun && driftRun.run.status !== 'finished' ? 'ЗАЕЗД' : 'ДРИФТ-КЛУБ';
+    $('#map-title').textContent = onCircuit ? 'КОНТУР 67' : 'ПИТ-ЛЕЙН';
+    $('#map-svg').setAttribute('viewBox', onCircuit ? '-59 -230 118 118' : '-34 -141 68 157');
+    updateJob();
+  }
+
+  function updateSession(previousZ) {
+    const { x, z } = physics.position;
+    const inBay = insideBay();
+    if (inBay && !wasInBay) {
+      driftRun = null;
+      arena.markGate(-1);
+      persistPit();
+    }
+    wasInBay = inBay;
+    const circuit = z > ARENA.z - ARENA.d / 2 + .6;
+    const crossing = seated && Math.abs(x) < PIT_LANE_HALF;
+    if (crossing && previousZ < PIT_MERGE && z >= PIT_MERGE && !driftRun) {
+      driftRun = createRun(layout, { startImmediately: true });
+      arena.fx.reset();
+      arena.markGate(0);
+      tell('Заезд начался. Налево по трассе к зелёному створу.', 4);
+      updatePitHud();
+    }
+    if (crossing && previousZ >= PIT_EXIT && z < PIT_EXIT && driftRun?.run.status === 'running') finishRun();
+    if (circuit !== onCircuit) {
+      onCircuit = circuit;
+      updatePitHud();
+    }
+  }
+
+  function updateCondition(handbrake) {
+    const wear = condition();
+    damageCooldown = Math.max(0, damageCooldown - STEP);
+    if ((physics.hit || physics.up < .45) && !damageCooldown) {
+      wear.body = Math.max(0, wear.body - Math.min(16, 2.5 + physics.totalSpeed * .55));
+      damageCooldown = .65;
+      dirty = true;
+    }
+    if (onCircuit && physics.grounded && physics.totalSpeed > 5) {
+      const slip = Math.min(1, Math.abs(physics.slip));
+      if (slip > .18 || handbrake) {
+        wear.tires = Math.max(0, wear.tires - (slip * .85 + Number(handbrake) * .24) * STEP);
+        dirty = true;
+      }
+      if (physics.braking && !handbrake) {
+        wear.brakes = Math.max(0, wear.brakes - .42 * STEP);
+        dirty = true;
+      }
+    }
+    if (dirty) {
+      physics.setSetup(setupFor(wear));
+      saveElapsed += STEP;
+      if (saveElapsed > 2) persistPit();
+    }
   }
 
   const job = () => JOBS[career.completed % JOBS.length];
@@ -174,10 +258,20 @@ async function boot() {
     reading.hidden = true;
     $('#model').textContent = model.name;
     $('#money').textContent = `${career.money.toLocaleString('ru-RU')} кр.`;
-    if (state === 'roam') {
-      $('#job-label').textContent = 'СВОБОДНАЯ ПОЕЗДКА';
-      title.textContent = 'Промзона открыта';
-      jobs.textContent = 'Садись за руль, выезжай и исследуй район. Попробуй тест-полосу или парковку у магазина.';
+    pitOpen.hidden = !garageMode() || !insideBay();
+    if (garageMode()) {
+      const wear = condition();
+      $('#job-label').textContent = 'КОНТУР 67 / ' + (insideBay() ? 'БОКС 01' : 'ПИТ-ЛЕЙН');
+      title.textContent = insideBay() ? 'Твой бокс' : 'Проезд к трассе';
+      jobs.textContent = insideBay()
+        ? 'G — ворота, R — мотор. Выезжай прямо по жёлтой разметке. P открывает гараж и настройки.'
+        : driftRun?.run.status === 'finished'
+          ? `Заезд завершён · ${number.format(driftRun.run.score)} очков. Вернись в бокс по жёлтой разметке.`
+          : 'Езжай по жёлтой разметке. Таймер запустится у зелёных стоек.';
+      reading.hidden = false;
+      reading.textContent = `Кузов ${Math.round(wear.body)}% · Шины ${Math.round(wear.tires)}% · Тормоза ${Math.round(wear.brakes)}%`;
+      if (insideBay() && lastScore !== undefined) title.textContent = `Заезд · ${number.format(lastScore)} очков`;
+      $('#money').textContent = `Рекорд ${number.format(wear.best)}`;
       return;
     }
     $('#job-label').textContent = `ЗАКАЗ ${String(career.completed + 1).padStart(2, '0')} · ${career.scanner ? 'СКАНЕР КУПЛЕН' : 'БОКС 01'}`;
@@ -208,23 +302,34 @@ async function boot() {
   function updateControls() {
     $('#dash').hidden = !seated;
     $('#crosshair').hidden = seated;
-    const hints = state === 'drift'
-      ? [['W', 'газ'], ['S', 'тормоз'], ['A / D', 'руль'], ['Space', 'ручник'], ['C', 'камера'], ['T', 'новый заезд']]
-      : seated
-      ? [['W', 'газ'], ['S', 'тормоз / задний ход'], ['A', 'влево'], ['D', 'вправо'], ['Space', 'ручник'], ['R', 'зажигание'], ['G', 'ворота'], ['C', 'камера'], ['H', 'замок капота'], ['B', 'багажник'], ['E', 'выйти'], ['T', 'эвакуатор']]
-      : [['WASD', 'ходьба'], ['Мышь', 'осмотр'], ['Shift', 'бег'], ['E', 'действие'], ['H', 'капот'], ['B', 'багажник'], ['G', 'ворота'], ['L', 'подъёмник'], ['T', 'эвакуатор']];
+    const hints = seated
+      ? [['W', 'газ'], ['S', 'тормоз / назад'], ['A / D', 'руль'], ['Space', 'ручник'], ['R', 'мотор'], ['G', 'ворота'], ['C', 'камера'], ['E', 'выйти'], ['T', 'эвакуатор']]
+      : [['WASD', 'ходьба'], ['Мышь', 'осмотр'], ['E', 'действие'], ['H', 'капот'], ['B', 'багажник'], ['G', 'ворота'], ['L', 'подъёмник'], ['T', 'эвакуатор']];
+    if (garageMode()) hints.push(['P', 'тюнинг в боксе']);
     $('#keys').innerHTML = hints.map(([button, description]) => `<span><kbd>${button}</kbd> ${description}</span>`).join('');
   }
 
   function setCar(id) {
+    if (!visuals[id]) {
+      visuals[id] = buildPitCar(world, id);
+      car.add(visuals[id].root);
+    }
+    rig.root.visible = false;
+    rig = visuals[id];
+    rig.root.visible = true;
     model = MODELS[id];
+    modelId = id;
     physics.setModel(model);
     car.scale.z = model.length;
-    for (const paint of paints) paint.color.set(model.color);
+    for (const paint of rig.paints) paint.color.set(garageMode() ? condition().color : model.color);
+    if (garageMode()) physics.setSetup(setupFor(condition()));
+    cockpit = false;
+    raceCamera = 0;
+    damageCooldown = 0;
     hoodOpen = hoodReleased = trunkOpen = hatchOpen = lifted = leaving = false;
-    hood.rotation.x = trunk.rotation.x = batteryHatch.rotation.x = 0;
+    rig.hood.rotation.x = rig.trunk.rotation.x = rig.batteryHatch.rotation.x = 0;
     world.arms.position.y = -.17;
-    carDoors.left.rotation.y = carDoors.right.rotation.y = 0;
+    for (const panel of Object.values(rig.carDoors)) panel.rotation.y = 0;
     leftDoorTimer = 0;
     repairTime = 0;
     brakeResult = null;
@@ -232,54 +337,128 @@ async function boot() {
     roadTest = makeRoadTest(job().id, TRACK);
     parked = true;
     cameraCut = true;
-    physics.render(car, wheels, 1, hubs);
+    physics.render(car, rig.wheels, 1, rig.hubs);
   }
 
+  function openPitPanel() {
+    if (!canTune()) return tell('Поставь машину в центр бокса и остановись.');
+    physics.running = false;
+    clearControls();
+    if (document.pointerLockElement === canvas) document.exitPointerLock();
+    renderPitPanel();
+    pitPanel.showModal();
+  }
+
+  const partLabels = {
+    tires: ['Шины', 'Заменить'],
+    body: ['Кузов', 'Починить'],
+    brakes: ['Тормоза', 'Обслужить'],
+  };
+  $('#pit-fleet').innerHTML = Object.entries(FLEET).map(([id, details]) => `
+    <button type="button" class="pit-car" data-car="${id}">
+      <span class="label">${details.code}</span><strong>${MODELS[id].name}</strong>
+      <small>${details.engine}</small><small>${details.feel}</small>
+    </button>`).join('');
+  $('#pit-parts').innerHTML = Object.entries(partLabels).map(([part, [label, action]]) => `
+    <div class="pit-row"><span>${label} <small data-condition="${part}"></small></span>
+    <button type="button" data-service="${part}">${action}</button></div>`).join('');
+  $('#pit-tune').innerHTML = Object.entries(SETUPS).map(([name, option]) => `
+    <label class="pit-row">${option.label}<select data-setup="${name}">
+    ${option.options.map((text, index) => `<option value="${index}">${text}</option>`).join('')}
+    </select></label>`).join('');
+
+  function renderPitPanel() {
+    const wear = condition();
+    for (const button of $('#pit-fleet').querySelectorAll('button')) {
+      button.setAttribute('aria-pressed', String(button.dataset.car === modelId));
+    }
+    for (const part of Object.keys(partLabels)) {
+      const value = wear[part] === 100 ? 100 : Math.floor(wear[part]);
+      $(`[data-condition="${part}"]`).textContent = `${value}%`;
+      $(`[data-service="${part}"]`).disabled = wear[part] === 100;
+    }
+    for (const select of $('#pit-tune').querySelectorAll('select')) select.value = wear[select.dataset.setup];
+    $('#pit-color').value = wear.color;
+  }
+
+  function applyGarageChanges() {
+    physics.setSetup(setupFor(condition()));
+    persistPit();
+    renderPitPanel();
+    updateJob();
+  }
+
+  $('#pit-fleet').addEventListener('click', event => {
+    const id = event.target.closest('button')?.dataset.car;
+    if (!canTune() || !Object.hasOwn(FLEET, id) || id === modelId) return;
+    pit.selected = id;
+    lastScore = undefined;
+    setCar(id);
+    if (!seated) {
+      player.copy(startPose);
+      camera.position.copy(player);
+      camera.lookAt(0, 1.1, .4);
+    }
+    applyGarageChanges();
+  });
+  $('#pit-parts').addEventListener('click', event => {
+    const part = event.target.closest('button')?.dataset.service;
+    if (!canTune() || !Object.hasOwn(partLabels, part)) return;
+    condition()[part] = 100;
+    repairSoundUntil = performance.now() + 600;
+    applyGarageChanges();
+  });
+  $('#pit-tune').addEventListener('change', event => {
+    const name = event.target.dataset.setup;
+    if (!canTune() || !Object.hasOwn(SETUPS, name)) return;
+    condition()[name] = event.target.value === '1' ? 1 : 0;
+    applyGarageChanges();
+  });
+  $('#pit-color').addEventListener('input', event => {
+    if (!canTune()) return;
+    condition().color = event.target.value;
+    for (const paint of rig.paints) paint.color.set(event.target.value);
+    persistPit();
+  });
+
   function show(next) {
+    if (garageMode()) persistPit();
     clearControls();
     if (document.pointerLockElement === canvas) document.exitPointerLock();
     state = next;
-    seated = cockpit = false;
-    player.copy(next === 'roam' ? V(1.62, 1.68, .10) : startPose);
-    walkVelocity.set(0,0,0);
+    seated = garageMode();
+    cockpit = false;
+    player.copy(startPose);
+    walkVelocity.set(0, 0, 0);
     gateOpen = false;
     door.position.y = 0;
-    const drifting = next === 'drift';
-    arena.group.visible = drifting;
-    garageScenery.visible = !drifting;
-    $('#location-area').textContent = drifting ? 'КОНТУР 67' : 'БОКС 01';
-    $('#location-mode').textContent = drifting ? 'ДРИФТ' : 'ПРОМЗОНА';
-    const lightZ = drifting ? ARENA.z : 23;
-    district.sunlight.position.z = lightZ + 13;
-    district.sunlight.target.position.z = lightZ;
-    setCar(next === 'shift' ? job().car : 'sedan');
-    if (drifting) {
-      seated = true;
-      resetDrift();
-    } else {
-      camera.position.copy(player);
-      camera.lookAt(0, 1.2, next === 'roam' ? .48 : .4);
-    }
-    hud.classList.toggle('is-drift', drifting);
-    $('.job').hidden = drifting;
-    driftHud.hidden = !drifting;
-    $('#drift-touch').hidden = !drifting;
-    // SVG elements have no hidden property. Set their visibility explicitly.
-    $('#map-district').style.display = drifting ? 'none' : '';
-    $('#map-arena').toggleAttribute('hidden', !drifting);
-    $('#map-legend').hidden = drifting;
-    $('#map-svg').setAttribute('viewBox', drifting ? '-59 -230 118 118' : '-39 -94 78 114');
-    $('#map-svg').setAttribute('aria-label', drifting ? 'Трасса и следующий створ' : 'Гараж, тестовая полоса и магазин');
-    $('#map-title').textContent = drifting ? 'ТРАССА' : 'РАЙОН 01';
+    driftRun = null;
+    lastScore = undefined;
+    onCircuit = false;
+    wasInBay = true;
+    arena.markGate(-1);
+    arena.fx.reset();
+    setCar(garageMode() ? pit.selected : next === 'shift' ? job().car : 'sedan');
+    camera.position.copy(player);
+    camera.lookAt(0, 1.2, .4);
+    $('.job').hidden = false;
+    driftHud.hidden = true;
+    $('#map-district').style.display = garageMode() ? 'none' : '';
+    $('#map-pit').toggleAttribute('hidden', !garageMode());
+    $('#map-arena').toggleAttribute('hidden', !garageMode());
+    $('#map-legend').hidden = garageMode();
+    $('#map-svg').setAttribute('viewBox', '-39 -94 78 114');
+    $('#map-title').textContent = 'РАЙОН 01';
+    $('#location-area').textContent = 'БОКС 01';
+    $('#location-mode').textContent = next === 'shift' ? 'МАСТЕРСКАЯ' : 'ДРИФТ-КЛУБ';
     $('#welcome').hidden = state !== 'menu';
     hud.hidden = state === 'menu';
     $('#menu').hidden = state === 'menu';
     notice.hidden = true;
-    $('#start').innerHTML = phase() === 'offer' ? 'Начать смену <b>↗</b>' : 'Продолжить смену <b>↗</b>';
-    updateJob();
+    if (garageMode()) updatePitHud();
+    else updateJob();
     updateControls();
     if (state !== 'menu') resumeAudio();
-    if (drifting) renderDrift();
   }
 
   function completePhase(expected) {
@@ -295,7 +474,7 @@ async function boot() {
   const desk = V(-4.7, .08, -4.4);
 
   function interaction() {
-    if (state === 'drift' || repairTime > 0) return null;
+    if (pitPanel.open || repairTime > 0) return null;
     if (!seated && trunkOpen && !hatchOpen && physics.totalSpeed < .55 &&
       near(carPoint(BATTERY.x, BATTERY.y, 2.46), 1.4)) {
       return { label: 'Поднять лючок аккумулятора', run() {
@@ -359,7 +538,13 @@ async function boot() {
   }
 
   function activeTarget() {
-    if (state !== 'shift') return seated ? null : carPoint(-1.43, 0, -.4);
+    if (garageMode()) {
+      if (!seated) return carPoint(-1.43, 0, -.4);
+      if (insideBay()) return null;
+      if (onCircuit) return driftRun?.run.status === 'finished' ? { x: 0, z: PIT_MERGE } : null;
+      return driftRun?.run.status === 'finished' ? { x: 0, z: 0 } : { x: 0, z: PIT_MERGE };
+    }
+    if (state !== 'shift') return null;
     switch (phase()) {
       case 'offer': return desk;
       case 'diagnose':
@@ -385,20 +570,20 @@ async function boot() {
   }
 
   const shutter = { x: 0, z: 7.95, w: 5.12, d: .25, h: 4.35 };
-  const garageWithShutter = [...district.obstacles, shutter];
+  const garageWithShutter = [...barriers, shutter];
   function hitsRectangle(x, z, radius, box) {
     return Math.hypot(Math.max(0,Math.abs(x-box.x)-box.w/2),
       Math.max(0,Math.abs(z-box.z)-box.d/2)) < radius;
   }
   function blocked(x, z, radius = .27) {
-    if (district.obstacles.some(box => hitsRectangle(x,z,radius,box))) return true;
+    if (barriers.some(box => hitsRectangle(x,z,radius,box))) return true;
     if (door.position.y < 1.79 && hitsRectangle(x,z,radius,shutter)) return true;
     const forward = V(0,0,-1).applyQuaternion(physics.rotation);
     const yaw = Math.atan2(-forward.x,-forward.z);
     const dx = x-physics.position.x, dz = z-physics.position.z;
     const localX = dx*Math.cos(yaw)-dz*Math.sin(yaw);
     const localZ = dx*Math.sin(yaw)+dz*Math.cos(yaw);
-    return hitsRectangle(localX,localZ,radius,{x:0,z:0,w:1.98,d:4.76});
+    return hitsRectangle(localX,localZ,radius,{x:0,z:0,w:1.98,d:4.76 * model.length});
   }
 
   function requestExit() {
@@ -485,11 +670,16 @@ async function boot() {
   }
 
   function recover() {
-    if (state === 'drift') return resetDrift();
     if (physics.totalSpeed > 2 && V(0, 1, 0).applyQuaternion(physics.rotation).y > .5) {
       return tell('Остановись перед вызовом эвакуатора.');
     }
+    if (garageMode()) {
+      finishRun(false);
+      driftRun = null;
+      onCircuit = false;
+    }
     physics.reset();
+    if (garageMode()) updatePitHud();
     hoodOpen = hoodReleased = trunkOpen = hatchOpen = lifted = leaving = false;
     parked = true;
     cameraCut = true;
@@ -519,7 +709,7 @@ async function boot() {
   }
 
   function look(dx, dy) {
-    if (state === 'menu' || seated) return;
+    if (state === 'menu' || seated || pitPanel.open) return;
     camera.rotation.y -= dx * .002;
     camera.rotation.x = THREE.MathUtils.clamp(camera.rotation.x - dy * .002, -1.35, 1.35);
   }
@@ -538,11 +728,10 @@ async function boot() {
   document.addEventListener('visibilitychange', clearControls);
 
   document.addEventListener('keydown', event => {
-    if (state === 'menu' || event.ctrlKey || event.metaKey || event.altKey || event.target instanceof Element && event.target.matches('button,a,input')) return;
-    if (/^(Key[WASDEBHRGCLT]|Arrow(Up|Down|Left|Right)|Space)$/.test(event.code)) event.preventDefault();
+    if (state === 'menu' || pitPanel.open || event.ctrlKey || event.metaKey || event.altKey || event.target instanceof Element && event.target.matches('button,a,input')) return;
+    if (/^(Key[WASDEBHRGCLTP]|Arrow(Up|Down|Left|Right)|Space)$/.test(event.code)) event.preventDefault();
     controls.add(event.code);
     if (event.repeat || repairTime > 0) return;
-    if (state === 'drift' && !['KeyC', 'KeyT'].includes(event.code)) return;
     switch (event.code) {
       case 'KeyE': interaction()?.run(); break;
       case 'KeyR': toggleIgnition(); break;
@@ -550,30 +739,31 @@ async function boot() {
       case 'KeyH': toggleHood(); break;
       case 'KeyB': toggleTrunk(); break;
       case 'KeyL': toggleLift(); break;
-      case 'KeyC': if (seated) { cockpit = !cockpit; cameraCut = true; } break;
+      case 'KeyC':
+        if (seated) {
+          if (rig === bmw) cockpit = !cockpit;
+          else raceCamera = 1 - raceCamera;
+          cameraCut = true;
+        }
+        break;
+      case 'KeyP': if (garageMode()) openPitPanel(); break;
       case 'KeyT': recover(); break;
     }
   });
-  document.addEventListener('keyup', event => controls.delete(event.code));
+  document.addEventListener('keyup', event => {
+    controls.delete(event.code);
+    if (['KeyS', 'ArrowDown'].includes(event.code) && !key('KeyS', 'ArrowDown')) physics.releasePedal('brake');
+    if (['KeyW', 'ArrowUp'].includes(event.code) && !key('KeyW', 'ArrowUp')) physics.releasePedal('gas');
+  });
   action.onclick = () => { action.blur(); interaction()?.run(); };
-  $('#start').onclick = () => { $('#start').blur(); show('shift'); };
-  $('#drift').onclick = () => { $('#drift').blur(); show('drift'); };
-  driftReset.onclick = () => { driftReset.blur(); resetDrift(); };
-  for (const button of document.querySelectorAll('[data-drive]')) {
-    button.addEventListener('pointerdown', event => {
-      if (state !== 'drift' || event.button !== 0) return;
-      event.preventDefault();
-      button.setPointerCapture(event.pointerId);
-      touchControls.set(event.pointerId, button);
-      button.dataset.active = '';
-    });
-    function release(event) {
-      touchControls.delete(event.pointerId);
-      if (![...touchControls.values()].includes(button)) delete button.dataset.active;
-    }
-    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, release);
-  }
-  $('#roam').onclick = () => { $('#roam').blur(); show('roam'); };
+  $('#start').onclick = () => { $('#start').blur(); show('pit'); };
+  $('#shift').onclick = () => { $('#shift').blur(); show('shift'); };
+  pitOpen.onclick = () => { pitOpen.blur(); openPitPanel(); };
+  pitPanel.addEventListener('close', () => { clearControls(); pitOpen.blur(); });
+  window.addEventListener('pagehide', () => { if (dirty) persistPit(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && dirty) persistPit();
+  });
   $('#menu').onclick = () => { $('#menu').blur(); show('menu'); };
   $('#graphics').onclick = () => { $('#graphics').blur(); career.high = !career.high; quality(); saved(); };
   $('#audio').onclick = () => {
@@ -627,7 +817,7 @@ async function boot() {
     if (!audio) return;
     const { context, engine, second, filter, volume, tireVolume } = audio;
     const time = context.currentTime;
-    const motor = physics.rpm / 15;
+    const motor = physics.rpm / (modelId === 'cls' ? 17 : modelId === 'f90' ? 14 : 15);
     const movingGate = Math.abs(door.position.y - (gateOpen ? 4.5 : 0)) > .08;
     const tool = now < repairSoundUntil;
     engine.frequency.setTargetAtTime(tool ? 95 : movingGate && !physics.running ? 43 : Math.max(22, motor), time, .055);
@@ -636,7 +826,7 @@ async function boot() {
     const loudness = physics.running ? (seated ? .045 : .031 / (1 + player.distanceTo(car.position) * .15))
       : tool ? .026 : movingGate ? .02 : 0;
     volume.gain.setTargetAtTime(career.muted || state === 'menu' ? 0 : loudness, time, .08);
-    const skidding = !career.muted && state === 'drift' && physics.grounded && physics.totalSpeed > 4;
+    const skidding = !career.muted && onCircuit && physics.grounded && physics.totalSpeed > 4;
     const skid = skidding ? Math.min(.16, Math.abs(physics.slip) * .21 + (key('Space') ? .045 : 0)) : 0;
     tireVolume.gain.setTargetAtTime(skid, time, .075);
   }
@@ -670,6 +860,9 @@ async function boot() {
   }
 
   function step() {
+    if (pitPanel.open) return;
+    const previousZ = physics.position.z;
+    const { hood, trunk, batteryHatch, bayLight, cargoLight, carDoors, engine } = rig;
     if (repairTime > 0) {
       repairTime = Math.max(0, repairTime - STEP);
       if (repairTime === 0) {
@@ -682,7 +875,7 @@ async function boot() {
     hood.rotation.x = damp(hood.rotation.x, hoodOpen ? 1.16 : hoodReleased ? .04 : 0, 8, STEP);
     trunk.rotation.x = damp(trunk.rotation.x, trunkOpen ? -1.18 : 0, 8, STEP);
     batteryHatch.rotation.x = damp(batteryHatch.rotation.x, hatchOpen ? -1.29 : 0, 10, STEP);
-    bayLight.visible = world.engine.visible = hood.rotation.x > .11;
+    bayLight.visible = engine.visible = hood.rotation.x > .11;
     cargoLight.visible = trunk.rotation.x < -.14;
     leftDoorTimer = Math.max(0, leftDoorTimer - STEP);
     for (const [side, door] of Object.entries(carDoors)) {
@@ -694,27 +887,27 @@ async function boot() {
       tell('Перед выездом закрой капот и багажник.');
     }
     const handbrake = seated && key('Space');
-    const drifting = state === 'drift';
+    const drifting = garageMode() && onCircuit;
     physics.tick({
       gas: seated && !unsecured && key('KeyW', 'ArrowUp'),
       reverse: seated && !unsecured && key('KeyS', 'ArrowDown'),
       turn: seated ? Number(key('KeyD', 'ArrowRight')) - Number(key('KeyA', 'ArrowLeft')) : 0,
       handbrake, drift: drifting,
       occupied: seated, parking: leaving || unsecured, fault: broken(), gateY: door.position.y,
+      speedLimit: garageMode() && (!driftRun || !onCircuit) && physics.position.z < PIT_MERGE ? 43 : undefined,
     });
-    if (drifting) {
-      const { status } = driftRun.run;
-      driftRun.tick(STEP, {
-        position: physics.position, speed: physics.totalSpeed, slip: physics.slip,
-        grounded: physics.grounded, hit: physics.hit, up: physics.up,
-      });
-      if (status !== 'finished' && driftRun.run.status === 'finished' && driftRun.run.score > career.driftBest) {
-        career.driftBest = driftRun.run.score;
-        saved();
+    if (garageMode()) {
+      updateSession(previousZ);
+      updateCondition(handbrake);
+      if (onCircuit) arena.fx.tick(STEP, physics, career.high, handbrake);
+      if (onCircuit && driftRun && driftRun.run.status !== 'finished') {
+        driftRun.tick(STEP, {
+          position: physics.position, speed: physics.totalSpeed, slip: physics.slip,
+          grounded: physics.grounded, hit: physics.hit, up: physics.up,
+        });
+        if (driftRun.run.status === 'finished') finishRun();
+        else arena.markGate(driftRun.run.next);
       }
-      arena.markGate(driftRun.run.status === 'finished' ? -1 : driftRun.run.next);
-      arena.fx.tick(STEP, physics, career.high, handbrake);
-      return;
     }
     if (leaving && physics.totalSpeed <= .12) exitCar();
     parked = insideBay() && physics.totalSpeed < .55;
@@ -726,9 +919,8 @@ async function boot() {
   function safeChase(lookAt, desired) {
     let fraction = 1;
     const delta = desired.clone().sub(lookAt);
-    const barriers = state === 'drift' ? arena.obstacles
-      : door.position.y < 3.6 ? garageWithShutter : district.obstacles;
-    for (const box of barriers) {
+    const cameraBarriers = door.position.y < 3.6 ? garageWithShutter : barriers;
+    for (const box of cameraBarriers) {
       let entry = 0;
       let exit = fraction;
       const ranges = [
@@ -769,15 +961,15 @@ async function boot() {
       camera.quaternion.copy(car.quaternion);
     } else {
       let desired, focus;
-      if (state === 'drift') {
+      if (onCircuit) {
         const yaw = carEuler.setFromQuaternion(car.quaternion).y;
         const offset = THREE.MathUtils.clamp(physics.slip * .52, -.44, .44);
         heading.setFromAxisAngle(direction.set(0, 1, 0), yaw - offset);
-        desired = eye.set(0, 3.20, 6.8 + Math.min(physics.totalSpeed * .045, 1.5))
+        desired = eye.set(0, raceCamera ? 1.7 : 3.20, (raceCamera ? 4.4 : 6.8) + Math.min(physics.totalSpeed * .045, 1.5))
           .applyQuaternion(heading).add(car.position);
         focus = direction.set(0, 1.05, -2.6).applyQuaternion(heading).add(car.position);
       } else {
-        desired = transform(eye.set(.05, 2.63, 5.6 + Math.min(physics.totalSpeed * .035, .9)));
+        desired = transform(eye.set(.05, raceCamera ? 1.60 : 2.63, (raceCamera ? 4.1 : 5.6) + Math.min(physics.totalSpeed * .035, .9)));
         focus = transform(direction.set(0, 1.05, -.45));
       }
       safeChase(focus, desired);
@@ -792,19 +984,26 @@ async function boot() {
   function renderHud(now) {
     const onFoot = !seated;
     const prompt = interaction();
-    action.hidden = !prompt;
+    action.hidden = !prompt || seated && onCircuit && physics.totalSpeed > 1;
     if (prompt) action.lastElementChild.textContent = prompt.label;
     if (noticeUntil < now) notice.hidden = true;
     if (!onFoot) {
       speedText.textContent = Math.round(physics.totalSpeed * 3.6);
       gear.textContent = physics.speed < -.45 ? 'R' : physics.running ? String(physics.gear) : 'P';
       engineText.textContent = physics.running ? `${Math.round(physics.rpm / 100) * 100} ОБ/МИН` : 'МОТОР ВЫКЛ · R';
-      rev.style.width = Math.min(100, physics.rpm / 70) + '%';
+      rev.style.width = Math.min(100, physics.rpm * 100 / (model.redline ?? 7000)) + '%';
     }
     const p = position();
     const yaw = onFoot ? camera.rotation.y : carEuler.setFromQuaternion(car.quaternion).y;
     mapPlayer.setAttribute('transform', `translate(${p.x.toFixed(2)} ${(-p.z).toFixed(2)}) rotate(${180 + THREE.MathUtils.radToDeg(yaw)})`);
-    if (state === 'drift') renderDrift();
+    if (garageMode()) {
+      pitOpen.hidden = !insideBay();
+      if (onCircuit && driftRun) renderDrift();
+      else if (now >= nextPitHud) {
+        updatePitHud();
+        nextPitHud = now + 250;
+      }
+    }
     const target = activeTarget();
     mapTarget.style.display = target ? '' : 'none';
     district.marker.visible = Boolean(target);
@@ -829,14 +1028,12 @@ async function boot() {
     driftTime.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
     driftScore.textContent = number.format(run.score);
     driftCombo.textContent = run.chain >= 1 ? `+${Math.floor(run.chain)} · ×${run.multiplier}` : '';
-    driftStatus.textContent = run.status === 'ready' ? 'Разгонись до 35–45 км/ч. На дуге коротко дёрни ручник и поймай машину контррулём.'
-      : run.status === 'finished' ? 'Заезд завершён. Нажми T для рестарта.' : run.warning ? `${run.warning} · серия сброшена`
-        : run.sliding ? 'Занос · держи угол и тягу' : 'Держись асфальта и следуй к зелёному створу.';
+    driftStatus.textContent = run.status === 'finished' ? 'Заезд завершён. Вернись в бокс по жёлтой разметке для следующей попытки.' : run.warning ? `${run.warning} · серия сброшена`
+        : run.sliding ? 'Занос · держи угол и тягу' : 'На дуге коротко нажми пробел и поймай машину контррулём. Следуй к зелёному створу.';
     driftSector.textContent = `Створ ${run.next + 1} / ${layout.gates.length}`;
     driftAngle.textContent = `Угол ${Math.round(run.angle)}°`;
     driftLaps.textContent = `Круги ${run.lap}`;
-    driftBest.textContent = `Рекорд ${number.format(career.driftBest)}`;
-    driftReset.hidden = !touchScreen.matches && run.status === 'running' && physics.up > .5;
+    driftBest.textContent = `Рекорд ${number.format(condition().best)}`;
     mapGate.style.display = run.status === 'finished' ? 'none' : '';
     const gate = layout.gates[run.next].position;
     markerPosition(mapGate, gate.x, gate.z);
@@ -853,17 +1050,20 @@ async function boot() {
       step();
       accumulated -= STEP;
     }
-    physics.render(car, wheels, accumulated / STEP, hubs);
+    physics.render(car, rig.wheels, accumulated / STEP, rig.hubs);
     car.updateMatrixWorld(true);
     world.contact.position.set(car.position.x, .023, car.position.z);
     world.contact.visible = !lifted;
-    for (const lamp of lampMeshes) lamp.visible = physics.braking;
-    brakeLamps.emissiveIntensity = physics.braking ? 1.2 : 0;
-    steering.rotation.z = -hubs[0].rotation.y * 4;
+    for (const lamp of rig.lampMeshes) lamp.visible = physics.braking;
+    rig.brakeLamps.emissiveIntensity = physics.braking ? 1.2 : rig === bmw ? 0 : .22;
+    if (rig.steering) rig.steering.rotation.z = -rig.hubs[0].rotation.y * 4;
     const inWorkshop = position().z < 8.4 && position().z > -8.3 && Math.abs(position().x) < 7.3;
     workLight.castShadow = inWorkshop;
     district.sunlight.castShadow = !inWorkshop;
-    district.sunlight.intensity = damp(district.sunlight.intensity, inWorkshop ? .55 : state === 'drift' ? 2.6 : 2.05, 6, dt);
+    district.sunlight.intensity = damp(district.sunlight.intensity, inWorkshop ? .55 : onCircuit ? 2.6 : 2.05, 6, dt);
+    const lightZ = Math.max(23, position().z);
+    district.sunlight.position.z = lightZ + 13;
+    district.sunlight.target.position.z = lightZ;
     view(dt, now);
     camera.updateMatrixWorld();
     district.sky.position.copy(camera.position);
@@ -882,18 +1082,15 @@ async function boot() {
   $('#audio').textContent = career.muted ? 'Звук: выкл' : 'Звук: вкл';
   show('menu');
   await world.assetsReady;
-  const shared = new Set([garageScenery, arena.group, car, world.contact, district.sky,
-    district.sunlight, district.sunlight.target]);
-  for (const object of [...scene.children]) {
-    if (!shared.has(object) && !object.isHemisphereLight) garageScenery.add(object);
-  }
+  arena.group.visible = true;
   $('#loading').textContent = '';
-  $('#start').disabled = $('#roam').disabled = $('#drift').disabled = false;
+  $('#start').disabled = $('#shift').disabled = false;
   Object.defineProperty(window, 'garageLife', { value: Object.freeze({
     getState: () => ({
       mode: state, seated, cockpit, running: physics.running, speed: physics.speed * 3.6,
       car: physics.position.toArray(), player: player.toArray(), yaw: camera.rotation.y, gate: door.position.y, lifted,
-      hood: hoodOpen, trunk: trunkOpen, batteryHatch: hatchOpen, drift: state === 'drift' ? { ...driftRun.run } : null, leaving, phase: phase(), job: job().id, money: career.money, completed: career.completed,
+      hood: hoodOpen, trunk: trunkOpen, batteryHatch: hatchOpen, drift: driftRun ? { ...driftRun.run } : null, leaving, phase: phase(), job: job().id, money: career.money, completed: career.completed,
+      model: modelId, onCircuit, setup: garageMode() ? { ...condition() } : null,
       assets: { ...world.assetStatus }, render: { ...renderer.info.render }, graphics: career.high ? 'high' : 'standard',
     }),
   }) });

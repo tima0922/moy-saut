@@ -5,13 +5,23 @@ export const STEP = 1 / 60;
 export const MODELS = {
   sedan: { name: 'BMW M5 E39', mass: 1795, length: 1, force: 7600, color: 0x273f62 },
   touring: { name: 'BMW M5 E39 · Sport', mass: 1795, length: 1, force: 8050, color: 0x596064 },
+  f90: {
+    name: 'BMW M5 F90', mass: 1930, length: 1.045, force: 10900, color: 0x225b9b,
+    ratios: [5, 3.2, 2.14, 1.72, 1.31, 1, .82, .64], final: 3.15, redline: 7200,
+    steer: .70, rearGrip: 1.20, frontGrip: 1.26, slide: .72, assist: .72, spring: 37, driveMultiplier: 1.06, traction: 1.17, yawDamping: .86,
+  },
+  cls: {
+    name: 'Mercedes CLS 63 AMG', mass: 1905, length: 1.034, force: 9550, color: 0x6b5f54,
+    ratios: [4.38, 2.86, 1.92, 1.37, 1, .82, .73], final: 2.82, redline: 6800,
+    steer: .68, rearGrip: 1.10, frontGrip: 1.18, slide: .67, assist: .69, spring: 32, driveMultiplier: 1.01, traction: 1.075, yawDamping: 1.08,
+  },
 };
 
 export const WHEEL_X = [-.77, -.77, .77, .77];
 export const WHEEL_Z = [-1.52, 1.313, -1.52, 1.313];
 const clamp = THREE.MathUtils.clamp;
 const damp = THREE.MathUtils.damp;
-const ratios = [4.23, 2.53, 1.67, 1.23, 1, .83];
+const defaultRatios = [4.23, 2.53, 1.67, 1.23, 1, .83];
 const rest = .22;
 const anchorY = .52;
 const down = { x: 0, y: -1, z: 0 };
@@ -27,6 +37,8 @@ export async function createPhysics(obstacles, driftGround) {
   const arenaFloor = driftGround && physics.createCollider(
     RAPIER.ColliderDesc.cuboid(driftGround.w / 2, .3, driftGround.d / 2)
       .setTranslation(driftGround.x, -.3, driftGround.z));
+  const connectorFloor = driftGround && physics.createCollider(
+    RAPIER.ColliderDesc.cuboid(6, .3, 9).setTranslation(0, -.3, 109));
   const events = new RAPIER.EventQueue(true);
   for (const { x, z, w, d, h } of obstacles) {
     physics.createCollider(RAPIER.ColliderDesc.cuboid(w / 2, h / 2, d / 2).setTranslation(x, h / 2, z));
@@ -37,6 +49,7 @@ export async function createPhysics(obstacles, driftGround) {
   let hull;
   let suspension;
   let model;
+  let setup = {};
   let steer = 0;
   let rpm = 0;
   let running = false;
@@ -81,13 +94,16 @@ export async function createPhysics(obstacles, driftGround) {
 
     const load = model.mass * 9.81 * .5 * (wheelsDown / 2);
     const rearLocked = !front && handbrake;
-    const brakeForce = service ? (front ? 8300 : 5500) : rearLocked ? 3600 : throttle === 0 ? 190 : 0;
+    const brakeForce = service ? (front ? 8300 : 5500) * (setup.brakes ?? 1) : rearLocked ? 3600 : throttle === 0 ? 190 : 0;
     const driveForce = brakeForce
       ? -Math.sign(longitudinal) * Math.min(brakeForce, Math.abs(longitudinal) * model.mass * .5 / STEP)
       : front ? 0 : torque;
-    const grip = load * (front ? 1.22 : rearLocked ? .13 : 1.15 - rearSlide * .70);
-    const traction = clamp(driveForce, -load, load);
-    const remaining = Math.sqrt(Math.max(.10, 1 - (.68 * traction / load) ** 2));
+    const grip = load * (front ? (model.frontGrip ?? 1.22)
+      : rearLocked ? .13 : ((model.rearGrip ?? 1.15) - rearSlide * (model.slide ?? .70)) * (setup.grip ?? 1));
+    const tractionLimit = front || brakeForce ? load
+      : load * (model.traction ?? 1) * (1 + ((setup.grip ?? 1) - 1) * .45);
+    const traction = clamp(driveForce, -tractionLimit, tractionLimit);
+    const remaining = Math.sqrt(Math.max(.10, 1 - (.68 * traction / tractionLimit) ** 2));
     const sideForce = -grip * remaining * Math.tanh(slipAngle * (front ? 7 : 5));
     const center = body.translation();
     point.set(center.x + offset * forward.x, center.y + .22, center.z + offset * forward.z);
@@ -133,6 +149,8 @@ export async function createPhysics(obstacles, driftGround) {
     if (hull) physics.removeCollider(hull, true);
     if (suspension) physics.removeVehicleController(suspension);
     model = spec;
+    setup = {};
+    body.setAngularDamping(model.yawDamping ?? .8);
     hull = physics.createCollider(RAPIER.ColliderDesc.cuboid(.96, .31, 2.38 * model.length)
       .setTranslation(0, .70, 0).setMass(model.mass).setFriction(.45).setRestitution(.1)
       .setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS).setContactForceEventThreshold(7200), body);
@@ -141,7 +159,7 @@ export async function createPhysics(obstacles, driftGround) {
     suspension.setIndexForwardAxis = 2;
     for (let i = 0; i < 4; i++) {
       suspension.addWheel({ x: WHEEL_X[i], y: anchorY, z: WHEEL_Z[i] * model.length }, down, axle, rest, .333);
-      suspension.setWheelSuspensionStiffness(i, 31);
+      suspension.setWheelSuspensionStiffness(i, model.spring ?? 31);
       suspension.setWheelSuspensionCompression(i, 4.4);
       suspension.setWheelSuspensionRelaxation(i, 4.9);
       suspension.setWheelMaxSuspensionTravel(i, .23);
@@ -165,7 +183,7 @@ export async function createPhysics(obstacles, driftGround) {
     }
   }
 
-  function tick({ gas = false, reverse = false, turn = 0, handbrake = false, occupied = false, parking = false, fault = '', gateY = 0, drift = false } = {}) {
+  function tick({ gas = false, reverse = false, turn = 0, handbrake = false, occupied = false, parking = false, fault = '', gateY = 0, drift = false, speedLimit } = {}) {
     previousPose = currentPose;
     gate.setTranslation({ x: 0, y: gateY + 2.18, z: 7.95 });
     if (lifted) {
@@ -185,29 +203,32 @@ export async function createPhysics(obstacles, driftGround) {
     const throttle = moving && !serviceBrake && !parking ? Number(gas) - Number(reverse) : 0;
     const wheelRpm = Math.abs(speed) * 60 / (2 * Math.PI * .333);
     shiftTime = Math.max(0, shiftTime - STEP);
-    const gearRpm = wheelRpm * ratios[gear - 1] * 3.15;
+    const ratios = model.ratios ?? defaultRatios;
+    const final = model.final ?? 3.15;
+    const redline = model.redline ?? 7000;
+    const gearRpm = wheelRpm * ratios[gear - 1] * final;
     if (moving && speed > 0 && shiftTime === 0) {
-      const upshift = gear < ratios.length && gearRpm > (gas ? 6800 : 5500);
+      const upshift = gear < ratios.length && gearRpm > (gas ? redline - 200 : redline * .786);
       const downshift = gear > 1 && gearRpm < (gas ? 3100 : 2250);
       if (upshift || downshift) {
         gear += upshift ? 1 : -1;
         shiftTime = .24;
       }
     }
-    const engineRpm = wheelRpm * (throttle < 0 ? 3.75 : ratios[gear - 1]) * 3.15;
+    const engineRpm = wheelRpm * (throttle < 0 ? 3.75 : ratios[gear - 1]) * final;
     const freeRev = gas && !serviceBrake ? (drift ? 2200 + rearSlide * 1900 : 1800) : 780;
-    rpm = damp(rpm, running ? clamp(Math.max(freeRev, engineRpm), 780, 7000) : 0, 9, STEP);
+    rpm = damp(rpm, running ? clamp(Math.max(freeRev, engineRpm), 780, redline) : 0, 9, STEP);
 
-    const maxSpeed = throttle < 0 ? 22 : drift ? 120 : 145;
-    const drive = model.force * (drift ? 1.38 : 1) * Math.max(0, 1 - (kmh / maxSpeed) ** 2);
+    const maxSpeed = throttle < 0 ? 22 : speedLimit ?? (drift ? 120 : 145);
+    const drive = model.force * (setup.power ?? 1) * (drift ? model.driveMultiplier ?? 1.38 : 1) * Math.max(0, 1 - (kmh / maxSpeed) ** 2);
     const torque = handbrake ? 0 : drive * throttle * (throttle < 0 ? .46 : shiftTime > .10 ? .58 : 1);
     const slideSpeed = clamp((kmh - 12) / 15, 0, 1);
     const powerSlide = throttle > 0 ? clamp(Math.abs(turn) * .74 + Math.abs(slip) * 3.8, 0, 1) : 0;
     const slideTarget = drift && moving && grounded && speed > 1 ? slideSpeed * (handbrake ? 1 : powerSlide) : 0;
     rearSlide = damp(rearSlide, slideTarget, slideTarget > rearSlide ? 8 : throttle ? 3.6 : 7, STEP);
     const assist = drift && moving && grounded && speed > 3 && Math.abs(slip) > .10
-      ? clamp(slip * .65, -.52, .52) * (1 - Math.abs(turn) * .64) : 0;
-    const lock = drift ? .73 / (1 + kmh * .009) : .53 / (1 + kmh * .019);
+      ? clamp(slip * (model.assist ?? .65), -.52, .52) * (1 - Math.abs(turn) * .64) : 0;
+    const lock = drift ? (model.steer ?? .73) * (setup.lock ?? 1) / (1 + kmh * .009) : .53 / (1 + kmh * .019);
     steer = damp(steer, clamp(turn * lock + assist, -lock, lock), drift ? 9 : 8, STEP);
     const customTires = drift && moving && !parking;
     for (let i = 0; i < 4; i++) {
@@ -217,7 +238,7 @@ export async function createPhysics(obstacles, driftGround) {
       suspension.setWheelFrictionSlip(i, customTires ? 0 : handbrake && !front ? .55 : lowTire ? .77 : 1.32);
       suspension.setWheelSideFrictionStiffness(i, customTires ? 0 : lowTire ? .72 : 1.15);
       suspension.setWheelEngineForce(i, front || customTires ? 0 : torque / 2);
-      const service = serviceBrake ? (fault === 'brakes' ? 14 : front ? 63 : 39) : 0;
+      const service = serviceBrake ? (setup.brakes ?? 1) * (fault === 'brakes' ? 14 : front ? 63 : 39) : 0;
       suspension.setWheelBrake(i, customTires ? 0 : !moving || parking ? 155 : handbrake && !front ? 155 : service || (throttle === 0 ? 2.1 : 0));
     }
     if (customTires && grounded) {
@@ -246,7 +267,8 @@ export async function createPhysics(obstacles, driftGround) {
     hit = false;
     events.drainContactForceEvents(event => {
       const other = event.collider1() === hull.handle ? event.collider2() : event.collider1();
-      if (other !== floor.handle && other !== arenaFloor?.handle) hit = true;
+      if ((event.collider1() === hull.handle || event.collider2() === hull.handle) &&
+          other !== floor.handle && other !== arenaFloor?.handle && other !== connectorFloor?.handle) hit = true;
     });
     currentPose = readPose();
     const nextVelocity = body.linvel();
@@ -274,6 +296,11 @@ export async function createPhysics(obstacles, driftGround) {
   setModel(MODELS.sedan);
   return {
     setModel, setLift, tick, reset, render,
+    setSetup(values) { setup = values; },
+    releasePedal(pedal) {
+      if (pedal === 'brake') forwardBrake = false;
+      if (pedal === 'gas') reverseBrake = false;
+    },
     set running(value) { running = value && !lifted; },
     get running() { return running; },
     get speed() { return speed; },

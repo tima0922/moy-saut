@@ -6,6 +6,9 @@ export const RUN_TIME = 90;
 export const ENTRY_SPEED = 22;
 export const ENTRY_ANGLE = 11;
 const EXIT_ANGLE = 72;
+export const PIT_MERGE = 130;
+export const PIT_EXIT = 119;
+export const PIT_LANE_HALF = 4.7;
 const { clamp, radToDeg } = THREE.MathUtils;
 
 export function createLayout() {
@@ -47,9 +50,9 @@ function closestSegment(road, x, z) {
   return { onRoad: best <= ROAD_HALF ** 2, tangentX, tangentZ };
 }
 
-export function createRun({ road, gates }) {
+export function createRun({ road, gates }, { startImmediately = false } = {}) {
   const run = {
-    status: 'ready', time: RUN_TIME, score: 0, chain: 0, multiplier: 1,
+    status: startImmediately ? 'running' : 'ready', time: RUN_TIME, score: 0, chain: 0, multiplier: 1,
     next: 0, lap: 0, angle: 0, warning: '', sliding: false,
   };
   let lastPosition;
@@ -63,8 +66,15 @@ export function createRun({ road, gates }) {
     run.multiplier = 1;
   }
 
+  function finish(bank = true) {
+    if (run.status === 'finished') return;
+    endChain(bank && !penaltyTime);
+    run.sliding = false;
+    run.status = 'finished';
+  }
+
   return {
-    run,
+    run, finish,
     tick(dt, { position, speed, slip, grounded, hit, up }) {
       const { x, z } = position;
       const angle = Math.abs(radToDeg(slip));
@@ -115,11 +125,7 @@ export function createRun({ road, gates }) {
         run.next = (run.next + 1) % gates.length;
         if (!run.next) run.lap++;
       }
-      if (!run.time) {
-        endChain(!penaltyTime);
-        run.sliding = false;
-        run.status = 'finished';
-      }
+      if (!run.time) finish();
     },
   };
 }

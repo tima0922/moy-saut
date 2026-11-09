@@ -8,8 +8,9 @@ registerHooks({ resolve(specifier, context, next) {
 } });
 
 const { ARENA, RUN_TIME, createLayout, createRun } = await import('../js/drift.js');
-const { STEP, createPhysics } = await import('../js/vehicle.js');
+const { MODELS, STEP, createPhysics } = await import('../js/vehicle.js');
 const { advance, loadCareer, makeRoadTest } = await import('../js/career.js');
+const { loadPit, savePit, setupFor } = await import('../js/pit-save.js');
 const layout = createLayout();
 const physics = await createPhysics([{ x: 0, z: 146, w: 105, d: .3, h: 1.5 }], ARENA);
 
@@ -172,5 +173,87 @@ test('leaving the track or spinning cancels points in the current chain', () => 
     tick(session, position, input);
     assert.equal(session.run.chain, 0);
     assert.equal(session.run.warning, warning);
+  }
+});
+
+
+test('F90 and CLS can enter and catch a slide in either direction', async () => {
+  const car = await createPhysics([], ARENA);
+  const acceleration = {};
+  for (const id of ['f90', 'cls']) {
+    car.setModel(MODELS[id]);
+    for (const direction of [-1, 1]) {
+      car.reset(0, 219, 0);
+      car.running = true;
+      let start = -1;
+      let sliding = 0;
+      let peak = 0;
+      for (let frame = 0; frame < 460; frame++) {
+        if (start === -1 && car.speed * 3.6 >= 43) start = frame;
+        const age = start === -1 ? -1 : frame - start;
+        car.tick({
+          drift: true, occupied: true, gas: age < 103,
+          turn: age < 0 ? 0 : age < 44 ? direction : age < 103 ? -direction * .56 : 0,
+          handbrake: age >= 4 && age < 24,
+        });
+        const angle = Math.abs(car.slip) * 180 / Math.PI;
+        peak = Math.max(peak, angle);
+        if (car.grounded && angle >= 11 && car.totalSpeed * 3.6 >= 22) sliding += STEP;
+      }
+      assert.ok(peak > 24 && peak < 60, id + ' peak angle ' + peak);
+      assert.ok(sliding > 1, id + ' sustained slide');
+      assert.ok(Math.abs(car.slip) < .08 && car.up > .9, id + ' recovery');
+      acceleration[id] = start;
+    }
+  }
+  assert.ok(acceleration.f90 < acceleration.cls, 'F90 accelerates more quickly');
+});
+
+test('the pit lane joins the arena with suspension contact in both directions', async () => {
+  const car = await createPhysics([], ARENA);
+  for (const [start, yaw, finish] of [[92, Math.PI, 124], [124, 0, 92]]) {
+    car.reset(0, start, yaw);
+    car.running = true;
+    for (let frame = 0; frame < 360; frame++) {
+      car.tick({ occupied: true, gas: true, speedLimit: 43 });
+      assert.ok(car.position.y > -.35, 'the chassis stays on the pit lane');
+      assert.equal(car.hit, false);
+      if (Math.abs(car.position.z - start) >= Math.abs(finish - start)) break;
+    }
+    assert.ok(Math.abs(car.position.z - finish) < 1);
+    assert.ok(car.grounded);
+  }
+});
+
+test('pit saves keep separate tuning and wear per car and import the previous record', () => {
+  const values = new Map();
+  const storage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) };
+  const pit = loadPit(storage, 137);
+  assert.equal(pit.cars.sedan.best, 137);
+  pit.selected = 'cls';
+  Object.assign(pit.cars.cls, { power: 1, lock: 1, tires: 0, body: 40, brakes: 60 });
+  savePit(storage, pit);
+  const restored = loadPit(storage);
+  assert.deepEqual(restored, pit);
+  assert.equal(restored.cars.f90.tires, 100);
+  const worn = setupFor(restored.cars.cls);
+  assert.ok(worn.grip < 1 && worn.brakes < 1 && worn.lock > 1);
+  restored.cars.cls.body = 100;
+  assert.ok(setupFor(restored.cars.cls).power > worn.power);
+});
+
+test('a pit return banks the score once and an aborted run drops the active chain', () => {
+  for (const bank of [true, false]) {
+    const session = createRun(layout, { startImmediately: true });
+    for (let i = 0; i <= 30; i++) tick(session, layout.road[i]);
+    assert.ok(session.run.chain > 0);
+    session.finish(bank);
+    assert.equal(session.run.status, 'finished');
+    assert.equal(session.run.chain, 0);
+    assert.equal(session.run.score > 0, bank);
+    const score = session.run.score;
+    session.finish();
+    tick(session, layout.road[31]);
+    assert.equal(session.run.score, score);
   }
 });

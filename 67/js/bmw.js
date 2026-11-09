@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { WHEEL_X, WHEEL_Z } from './vehicle.js?v=08';
+import { WHEEL_X, WHEEL_Z } from './vehicle.js?v=09';
 
 export const BATTERY = { x: 0, y: .69, z: 1.99 };
 

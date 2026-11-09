@@ -125,8 +125,8 @@ export function createDistrict(world, renderer) {
   }
   warehouse(23, 41, 17, 9, 5.6, blue, 'KOVA · АВТОЗАПЧАСТИ');
   warehouse(23, 63, 17, 11, 6.4, pale, 'ПРИЁМКА  /  02');
-  warehouse(-4, 52, 14, 14, 7, pale, 'СКЛАД  /  01');
-  warehouse(-4, 73, 15, 12, 6, rust, 'ПРОМЗОНА · СЕВЕР');
+  warehouse(-10, 52, 14, 14, 7, pale, 'СКЛАД  /  01');
+  warehouse(-10, 73, 15, 12, 6, rust, 'ПРОМЗОНА · СЕВЕР');
   warehouse(-29, 24, 9, 12, 5, rust, 'ДЕПО');
 
   function sign(x, z, label) {
@@ -145,12 +145,34 @@ export function createDistrict(world, renderer) {
     add(roof, .09, .08, 104, x, 1.84, 37);
     add(roof, .09, .08, 104, x, 1.21, 37);
   }
-  for (const z of [-15, 89]) {
-    solid(0, z, 72, .28, 1.4);
-    add(concrete, 72, .57, .45, 0, .29, z);
-    for (let x = -35; x < 36; x += 4) add(roof, .14, 1.3, .14, x, .9, z);
-    add(roof, 72, .08, .08, 0, 1.52, z);
+  for (const [x, z, width] of [[0, -15, 72], [-20.5, 89, 31], [20.5, 89, 31]]) {
+    solid(x, z, width, .28, 1.4);
+    add(concrete, width, .57, .45, x, .29, z);
+    for (let dx = -width / 2 + 1; dx < width / 2; dx += 4) {
+      add(roof, .14, 1.3, .14, x + dx, .9, z);
+    }
+    add(roof, width, .08, .08, x, 1.52, z);
   }
+  const pitRoad = new THREE.Mesh(new THREE.PlaneGeometry(11, 29), asphalt.clone());
+  pitRoad.material.map = asphalt.map.clone();
+  pitRoad.material.map.repeat.set(2.2, 5.8);
+  pitRoad.rotation.x = -Math.PI / 2;
+  pitRoad.position.set(0, -.021, 114);
+  pitRoad.receiveShadow = true;
+  scene.add(pitRoad);
+  for (const x of [-5.5, 5.5]) {
+    solid(x, 103, .30, 27, .95);
+    add(concrete, .30, .95, 27, x, .475, 103);
+  }
+  for (const x of [-4.65, 4.65]) {
+    paint(amber, x, 68, .13, 116);
+  }
+  for (const z of [19, 37, 55, 73, 94, 108]) {
+    textPlane(scene, '▲', 1.6, 1.3, [0, .009, z], [-Math.PI / 2, 0, Math.PI], '#e5c080');
+  }
+  sign(4.45, 24, 'КОНТУР 67  ↑');
+  sign(4.45, 82, 'ВЪЕЗД НА ТРАССУ');
+  textPlane(scene, 'БОКС 01  ↓', 3.3, .5, [-4.45, 2.5, 80], [0, 0, 0], '#ffe5b5', '#294353');
   for (const [x, z] of [[-11, 12], [11, 13], [-12, 34], [10, 45], [-29, 45], [11, 75], [-29, 76], [31, 25]]) {
     add(concrete, 1.14, .17, 1.14, x, .085, z);
     add(roof, .12, 5.2, .12, x, 2.6, z);

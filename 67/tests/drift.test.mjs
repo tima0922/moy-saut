@@ -7,9 +7,10 @@ registerHooks({ resolve(specifier, context, next) {
   return next(specifier === 'three' ? three : specifier, context);
 } });
 
-const { ARENA, RUN_TIME, createLayout, createRun } = await import('../js/drift.js');
+const { ARENA, CLUB_ARENA, RUN_TIME, createClubLayout, createShortLayout, createLayout, createRun, safeCircuitStart } = await import('../js/drift.js');
 const { MODELS, STEP, createPhysics } = await import('../js/vehicle.js');
 const { advance, loadCareer, makeRoadTest } = await import('../js/career.js');
+const { circuitTerrain } = await import('../js/circuit-terrain.js');
 const { loadPit, savePit, setupFor } = await import('../js/pit-save.js');
 const layout = createLayout();
 const physics = await createPhysics([{ x: 0, z: 146, w: 105, d: .3, h: 1.5 }], ARENA);
@@ -54,26 +55,54 @@ test('handbrake initiates a sustained left or right slide and countersteer recov
   }
 });
 
-test('a keyboard drift on the first bend banks points and clears its first gate', async () => {
-  const course = await createPhysics([], ARENA);
-  const session = createRun(layout);
-  const { x, z, yaw } = layout.spawn;
-  course.reset(x, z, yaw);
-  course.running = true;
-  for (let frame = 0; frame < 341; frame++) {
-    course.tick({
-      occupied: true, drift: true, gas: frame < 296,
-      turn: frame < 185 ? 0 : frame < 224 ? 1 : frame < 296 ? -1 : 0,
-      handbrake: frame >= 191 && frame < 215,
-    });
-    tick(session, course.position, {
-      speed: course.totalSpeed, slip: course.slip,
-      grounded: course.grounded, hit: course.hit, up: course.up,
-    });
+test('each car banks a controlled slide on the first bend of Contour 67', async () => {
+  const course = createClubLayout();
+  const short = createShortLayout(course);
+  const car = await createPhysics([],CLUB_ARENA,undefined,circuitTerrain(course,short.connector));
+  const pit = loadPit();
+  const { Vector3 } = await import('three');
+  const heading = new Vector3();
+  for (const [id,speed,entry,hold,unwind] of [['sedan',43,34,30,30],['f90',43,37,23,30],['cls',37,34,30,30],['supra',43,34,30,30]]) {
+    const session = createRun(course);
+    const { x,z,yaw } = course.spawn;
+    car.setModel(MODELS[id]);
+    car.setSetup(setupFor(pit.cars[id]));
+    car.reset(x,z,yaw);
+    car.running = true;
+    let age = -1;
+    let nearest = 0;
+    let peak = 0;
+    for (let frame=0; frame<850 && nearest<71; frame++) {
+      let distance = Infinity;
+      for (let index=Math.max(0,nearest-3); index<Math.min(85,nearest+12); index++) {
+        const candidate = course.road[index].distanceToSquared(car.position);
+        if (candidate < distance) {
+          nearest = index;
+          distance = candidate;
+        }
+      }
+      if (nearest >= entry || age >= 0) age++;
+      heading.set(0,0,-1).applyQuaternion(car.rotation);
+      const goal = course.road[Math.min(nearest+4,85)].clone().sub(car.position);
+      const error = Math.atan2(goal.z,goal.x) - Math.atan2(heading.z,heading.x);
+      const steer = Math.max(-1,Math.min(1,Math.atan2(Math.sin(error),Math.cos(error))*2.5));
+      const counterEnd = hold + unwind;
+      car.tick({
+        occupied: true, drift: true,
+        turn: age < 0 || age >= counterEnd ? steer : age < hold ? 1 : -1,
+        gas: (age >= 0 && age < counterEnd) || car.speed * 3.6 < speed,
+        handbrake: age >= 1 && age < 5,
+      });
+      tick(session, car.position, {
+        speed: car.totalSpeed, slip: car.slip, grounded: car.grounded, hit: car.hit, up: car.up,
+      });
+      peak = Math.max(peak,session.run.angle);
+      if (session.run.next === 1 && session.run.score >= 100) break;
+    }
+    assert.ok(session.run.score >= 100, `${id}: ${session.run.score} points`);
+    assert.equal(session.run.next, 1);
+    assert.ok(peak < 60, `${id}: peak drift angle ${peak}`);
   }
-  assert.ok(session.run.score >= 25);
-  assert.equal(session.run.next, 1);
-  assert.equal(session.run.warning, '');
 });
 
 test('collisions are reported, and restarting clears speed, slip and collision state', () => {
@@ -231,15 +260,22 @@ test('pit saves keep separate tuning and wear per car and import the previous re
   const pit = loadPit(storage, 137);
   assert.equal(pit.cars.sedan.best, 137);
   pit.selected = 'cls';
-  Object.assign(pit.cars.cls, { power: 1, lock: 1, tires: 0, body: 40, brakes: 60 });
+  Object.assign(pit.cars.cls, { power:1,lock:3,diff:3,pressure:0,tires:0,body:40,brakes:60,shortBest:51 });
+  pit.keys[0].gas = 'KeyI';
   savePit(storage, pit);
   const restored = loadPit(storage);
   assert.deepEqual(restored, pit);
   assert.equal(restored.cars.f90.tires, 100);
   const worn = setupFor(restored.cars.cls);
-  assert.ok(worn.grip < 1 && worn.brakes < 1 && worn.lock > 1);
+  assert.ok(worn.grip < 1 && worn.brakes < 1);
+  assert.deepEqual([worn.steerAngle,worn.diff,worn.pressure],[62,.95,1.8]);
   restored.cars.cls.body = 100;
   assert.ok(setupFor(restored.cars.cls).power > worn.power);
+  values.set('garage-life-pit-1', JSON.stringify({ cars:{ sedan:{ lock:1 }, cls:{ lock:0,brakes:70 } } }));
+  const migrated = loadPit(storage);
+  assert.equal(setupFor(migrated.cars.sedan).steerAngle,57);
+  assert.equal(setupFor(migrated.cars.cls).steerAngle,52);
+  assert.equal(migrated.cars.cls.brakes,70);
 });
 
 test('a pit return banks the score once and an aborted run drops the active chain', () => {
@@ -255,5 +291,279 @@ test('a pit return banks the score once and an aborted run drops the active chai
     session.finish();
     tick(session, layout.road[31]);
     assert.equal(session.run.score, score);
+  }
+});
+
+test('a short handbrake tap at 35–45 km/h initiates drift on all four cars', async () => {
+  const car = await createPhysics([], { x: 0, z: 180, w: 178, d: 147 });
+  for (const id of ['sedan', 'f90', 'cls', 'supra']) {
+    car.setModel(MODELS[id]);
+    for (const direction of [-1, 1]) {
+      for (const targetSpeed of [35, 40, 45]) {
+        car.reset(0, 194, 0);
+        car.running = true;
+        for (let frame = 0; frame < 360 && car.speed * 3.6 < targetSpeed; frame++) {
+          car.tick({ occupied: true, drift: true, gas: true });
+        }
+        assert.ok(car.speed * 3.6 >= targetSpeed);
+        let entry;
+        for (let frame = 0; frame < 150; frame++) {
+          car.tick({
+            occupied: true, drift: true, gas: frame < 52,
+            turn: frame < 21 ? direction : frame < 52 ? -.5 * direction : 0,
+            handbrake: frame < 4,
+          });
+          if (car.grounded && car.totalSpeed * 3.6 >= 22 && Math.abs(car.slip) >= 11 * Math.PI / 180) {
+            entry ??= (frame + 1) * STEP;
+          }
+        }
+        assert.ok(entry <= .52, `${id} at ${targetSpeed} km/h: ${entry}`);
+        assert.ok(Math.abs(car.slip) < .08 && car.up > .9);
+      }
+    }
+  }
+});
+
+test('the drift camera follows across the angle wrap and returns from a mouse orbit', async () => {
+  const { createOrbitCamera } = await import('../js/orbit-camera.js');
+  const camera = createOrbitCamera();
+  camera.reset(Math.PI - .03);
+  const movedCar = camera.tick(-Math.PI + .03, STEP, 0, false);
+  assert.ok(movedCar.heading > 3, 'follow the shortest path across the wrap');
+  camera.move(240, 60, 1);
+  let view;
+  for (let frame = 0; frame < 20; frame++) view = camera.tick(-Math.PI + .03, STEP, frame * 16, true);
+  assert.ok(Math.abs(view.yaw) > 1 && view.pitch > .15);
+  for (let frame = 0; frame < 42; frame++) view = camera.tick(-Math.PI + .03, STEP, 1400 + frame * 16, false);
+  assert.ok(Math.abs(view.yaw) < .01 && Math.abs(view.pitch) < .01);
+});
+
+
+test('clipping bonus needs both the painted edge and a valid drift', () => {
+  const road = [new (layout.road[0].constructor)(-15,0,0),new (layout.road[0].constructor)(15,0,0),
+    new (layout.road[0].constructor)(15,0,24),new (layout.road[0].constructor)(-15,0,24)];
+  const gates = [{ position: { x:0,z:0 }, direction: { x:1,z:0 }, clip: { offset:5.7,width:1.7 } }];
+  for (const [z,slip,expected] of [[-5.7,.4,1],[5.7,.4,0],[-5.7,0,0]]) {
+    const session = createRun({road,gates});
+    for (let x=-5; x<3; x+=.18) tick(session,{x,z},{speed:10.8,slip});
+    assert.equal(session.run.lap,1);
+    assert.equal(session.run.clips,expected);
+  }
+});
+
+test('two controllers share the sloped surface and advance independently', async () => {
+  const course = createClubLayout();
+  const terrain = circuitTerrain(course);
+  assert.ok(Math.max(...course.road.map(p=>terrain.heightAt(p.x,p.z))) > 3);
+  const player = await createPhysics([],CLUB_ARENA,undefined,terrain);
+  const guest = player.addCar();
+  const { x,z,yaw } = course.spawn;
+  player.reset(x,z-2.5,yaw);
+  guest.reset(x,z+2.5,yaw);
+  player.running = guest.running = true;
+  for (let frame=0; frame<130; frame++) player.tick({occupied:true,drift:true},{occupied:true,drift:true,gas:true});
+  assert.ok(guest.totalSpeed > 5);
+  assert.ok(player.totalSpeed < .3);
+  assert.ok(guest.grounded);
+  guest.remove();
+  for (let frame=0; frame<130; frame++) player.tick({occupied:true,drift:true,gas:true});
+  assert.ok(player.totalSpeed > 5);
+  assert.ok(player.grounded);
+});
+
+test('practice has no clock, starts at the selected clip, and resets to its spawn', async () => {
+  const { PRACTICE_PAD, practiceStart } = await import('../js/drift-modes.js');
+  const course = createClubLayout();
+  const spawn = practiceStart(course,'4');
+  const session = createRun(course,{ free:true,startGate:spawn.gate });
+  assert.equal(session.run.next,4);
+  assert.equal(session.run.time,null);
+  for (let frame=0; frame<5500; frame++) tick(session,spawn,{speed:6,slip:0});
+  assert.equal(session.run.status,'running');
+  assert.equal(session.run.time,null);
+  const car = await createPhysics([],CLUB_ARENA,undefined,circuitTerrain(course),PRACTICE_PAD);
+  const pad = practiceStart(course,'pad');
+  car.reset(pad.x,pad.z,pad.yaw);
+  car.running = true;
+  for (let frame=0;frame<130;frame++) car.tick({gas:true,occupied:true,drift:true});
+  assert.ok(car.grounded && car.totalSpeed>5);
+  car.reset(pad.x,pad.z,pad.yaw);
+  assert.equal(car.position.x,pad.x);
+  assert.equal(car.position.z,pad.z);
+  assert.equal(car.totalSpeed,0);
+});
+
+test('tandem only rewards a synchronized chase and swaps roles between heats', async () => {
+  const { createTandem, tandemMatch } = await import('../js/drift-modes.js');
+  const leading = { position:{x:0,z:0}, velocity:{x:12,z:0}, up:1, slip:.5, sliding:true };
+  const chasing = { ...leading, position:{x:-5,z:.6} };
+  assert.ok(tandemMatch(leading,chasing)>.8);
+  assert.equal(tandemMatch(leading,{...chasing,slip:-.5}),0);
+  assert.equal(tandemMatch(leading,{...chasing,position:{x:5,z:0}}),0);
+  const tandem = createTandem();
+  for (let i=0;i<30;i++) tandem.tick(STEP,[leading,chasing]);
+  assert.ok(tandem.pending>0);
+  tandem.tick(STEP,[leading,{...chasing,hit:true}]);
+  assert.equal(tandem.pending,0);
+  for (let i=0;i<60;i++) tandem.tick(STEP,[leading,chasing]);
+  assert.ok(tandem.closeHeat([90,100]));
+  assert.equal(tandem.leader,1);
+  assert.equal(tandem.heat,2);
+  assert.ok(tandem.bonus[1]>0);
+  assert.equal(tandem.bonus[0],0);
+  for (let i=0;i<60;i++) tandem.tick(STEP,[chasing,leading]);
+  assert.equal(tandem.closeHeat([120,110]),false);
+  assert.ok(tandem.done && tandem.bonus[0]>0);
+  assert.deepEqual(tandem.totals,[210,210]);
+});
+
+test('replay retains the best banked chain and ignores lost or smaller chains', async () => {
+  const { createReplayRecorder } = await import('../js/drift-replay.js');
+  const { Vector3, Quaternion } = await import('three');
+  const recorder = createReplayRecorder();
+  const physics = { position:new Vector3(), rotation:new Quaternion(), totalSpeed:10, rpm:3000 };
+  const run = { chain:10, sliding:true, status:'running', events:[] };
+  const drive = () => {
+    run.sliding = true;
+    for (let i=0;i<35;i++) {
+      physics.position.x+=.5;
+      recorder.tick(.05,physics,run);
+    }
+    run.sliding = false;
+  };
+  drive();
+  run.events.push({id:1,kind:'loss',points:200});
+  recorder.tick(0,physics,run);
+  assert.equal(recorder.best,null);
+  drive();
+  run.events.push({id:2,kind:'bank',points:88});
+  recorder.tick(0,physics,run);
+  assert.equal(recorder.best.points,88);
+  drive();
+  run.events.push({id:3,kind:'bank',points:30});
+  recorder.tick(0,physics,run);
+  assert.equal(recorder.best.points,88);
+});
+
+test('contact between local cars is reported to both drivers', async () => {
+  const first = await createPhysics([],CLUB_ARENA);
+  const second = first.addCar();
+  first.reset(-7,180,-Math.PI/2);
+  second.reset(0,180,-Math.PI/2);
+  first.running = second.running = true;
+  let sharedContact = false;
+  for (let i=0; i<180; i++) {
+    first.tick({gas:true,occupied:true,drift:true},{occupied:true,drift:true});
+    if (first.hit && second.hit) {
+      sharedContact = true;
+      break;
+    }
+  }
+  assert.ok(sharedContact);
+});
+
+test('the short loop shares the long track and its asphalt shortcut has a continuous grade', () => {
+  const main = createClubLayout();
+  const short = createShortLayout(main);
+  const terrain = circuitTerrain(main,short.connector);
+  assert.ok(short.road.length < main.road.length * .6);
+  assert.ok(short.gates.length >= 3 && short.gates.every(gate => short.road.includes(gate.position)));
+  assert.equal(short.connector.at(-1),short.road[0]);
+  const heights = short.connector.map(p => terrain.heightAt(p.x,p.z));
+  assert.ok(heights.at(-1)-heights[0] > 3);
+  for (const [i,p] of short.connector.entries()) {
+    assert.ok(Number.isFinite(heights[i]));
+    assert.ok(!i || Math.abs(heights[i]-heights[i-1]) < .85);
+    assert.ok(terrain.gripAt(p.x,p.z) > .98);
+  }
+  assert.equal(terrain.surface.length,terrain.vertices.length);
+  const curbStyles = new Set();
+  for (let i=0; i<terrain.surface.length; i+=3) {
+    const [distance,pattern,branch] = terrain.surface.subarray(i,i+3);
+    assert.ok(Number.isFinite(distance) && Math.abs(pattern)<=1);
+    if (distance>=7.82 && distance<=8.62) {
+      assert.ok(terrain.curbAt(terrain.vertices[i],terrain.vertices[i+2]));
+      curbStyles.add(branch);
+    }
+  }
+  assert.deepEqual(curbStyles,new Set([0,1]));
+});
+
+test('banked sections and joins contain no abrupt ramps under the tyres', () => {
+  const course = createClubLayout();
+  const terrain = circuitTerrain(course,createShortLayout(course).connector);
+  const cols = Math.ceil(course.arena.w)+1;
+  for (let i=0; i<terrain.vertices.length; i+=3) {
+    if (terrain.surface[i] > 8.5) continue;
+    for (const j of [i% (cols*3) === (cols-1)*3 ? -1 : i+3,i+cols*3]) {
+      if (j<0 || j>=terrain.vertices.length) continue;
+      assert.ok(Math.abs(terrain.vertices[i+1]-terrain.vertices[j+1])<.18);
+    }
+  }
+});
+
+test('drift suspension raycasts contact the road below trackside props', async () => {
+  const car = await createPhysics([{x:.77,z:178.48,w:.5,d:.5,h:.25}],CLUB_ARENA);
+  car.reset(0,180,0);
+  car.running = true;
+  for (let i=0; i<45; i++) car.tick({occupied:true,drift:true});
+  const frontRight = car.wheelContact(2);
+  assert.ok(frontRight && Math.abs(frontRight.y)<.015);
+  assert.ok(car.grounded && !car.hit);
+});
+
+test('a personal recovery finds clear asphalt and keeps the timer and banked points', () => {
+  const short = createShortLayout(createClubLayout());
+  const other = short.road[20];
+  const start = safeCircuitStart(short,other,other);
+  assert.ok(Math.hypot(start.x-other.x,start.z-other.z) >= 9);
+  const run = createRun(short,{ startImmediately:true });
+  run.run.score = 200;
+  run.run.chain = 25;
+  run.run.next = 1;
+  run.recover();
+  assert.deepEqual([run.run.time,run.run.score,run.run.chain,run.run.next,run.run.status],[90,200,0,1,'running']);
+});
+
+test('ghost mode removes only car-to-car contact and leaves walls solid', async () => {
+  const first = await createPhysics([{ x:12,z:180,w:.35,d:10,h:2 }],CLUB_ARENA);
+  const second = first.addCar();
+  first.setCarContacts(false);
+  first.reset(-7,180,-Math.PI/2);
+  second.reset(0,180,-Math.PI/2);
+  first.running = second.running = true;
+  let wallHit = false;
+  for (let i=0; i<240; i++) {
+    first.tick({ gas:true,occupied:true,drift:true },{ occupied:true,drift:true });
+    assert.equal(second.hit,false);
+    assert.ok(Math.abs(second.position.x) < .1);
+    if (first.hit) {
+      assert.ok(first.position.x > 8);
+      wallHit = true;
+      break;
+    }
+  }
+  assert.ok(wallHit);
+});
+
+test('all default drift setups can link opposite angles and straighten when the gas is released', async () => {
+  const { PRACTICE_PAD } = await import('../js/drift-modes.js');
+  const main = createClubLayout();
+  const terrain = circuitTerrain(main,createShortLayout(main).connector);
+  const car = await createPhysics([],CLUB_ARENA,undefined,terrain,{ ...PRACTICE_PAD,d:110 });
+  const pit = loadPit();
+  const drive = (turn,gas,handbrake=false) => car.tick({ occupied:true,drift:true,turn,gas,handbrake });
+  for (const id of ['sedan','f90','cls']) {
+    car.setModel(MODELS[id]);
+    car.setSetup(setupFor(pit.cars[id]));
+    car.reset(PRACTICE_PAD.x,PRACTICE_PAD.z+18,0);
+    car.running = true;
+    for (let i=0; i<300 && car.totalSpeed*3.6<38; i++) drive(0,true);
+    for (let i=0; i<34; i++) drive(1,true,i<4);
+    assert.ok(car.slip<-.19, id);
+    for (let i=0; i<90 && car.slip<.23; i++) drive(-1,true);
+    assert.ok(car.slip>=.23 && car.grounded, id);
+    for (let i=0; i<140; i++) drive(0,false);
+    assert.ok(Math.abs(car.slip)<.08 && car.up>.9 && car.grounded && car.totalSpeed>6, id);
   }
 });

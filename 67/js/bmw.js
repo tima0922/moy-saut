@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import { windowTint } from './window-tint.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { WHEEL_X, WHEEL_Z } from './vehicle.js?v=09';
+import { WHEEL_X, WHEEL_Z } from './vehicle.js?v=013';
 
 export const BATTERY = { x: 0, y: .69, z: 1.99 };
 
@@ -84,6 +85,7 @@ export async function fitE39(world) {
   car.add(shell);
 
   const moving = new Map();
+  const windows = windowTint('E39 tinted glazing');
   shell.traverse(mesh => {
     if (!mesh.isMesh) return;
     mesh.castShadow = !mesh.material.transparent;
@@ -94,9 +96,8 @@ export async function fitE39(world) {
       moving.get(part).push(mesh);
     }
     if (mesh.material.name === 'window') {
-      mesh.material.transparent = true;
-      mesh.material.opacity = .46;
-      mesh.material.depthWrite = false;
+      mesh.material = windows;
+      mesh.castShadow = false;
     }
   });
 
@@ -160,5 +161,5 @@ export async function fitE39(world) {
   for (const panel of [hood,trunk,...Object.values(carDoors)]) panel.traverse(o => {
     if (o.isMesh && o.material.name === 'body') paints.add(o.material);
   });
-  return { hood, trunk, batteryHatch, cargoLight, bayLight, carDoors, wheels, hubs, steering, paints, brakeLamps, lampMeshes };
+  return { windows, hood, trunk, batteryHatch, cargoLight, bayLight, carDoors, wheels, hubs, steering, paints, brakeLamps, lampMeshes };
 }

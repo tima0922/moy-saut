@@ -7,7 +7,7 @@
   <meta name="description" content="GARAGE LIFE — дрифт на Контуре 67, тюнинг и свой гараж.">
   <title>GARAGE LIFE / Контур 67</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231a252b'/%3E%3Cpath d='M12 48V24l20-12 20 12v24H42V29H22v19Z' fill='%23ffad69'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./drive.css?v=09">
+  <link rel="stylesheet" href="./drive.css?v=018">
   <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/addons/"}}</script>
 </head>
 <body>
@@ -16,9 +16,18 @@
     <a class="brand" href="./index.html"><span class="logo" aria-hidden="true">⌂</span> GARAGE<span>LIFE</span></a>
     <div class="location"><i></i> <b id="location-area">БОКС 01</b> <span> / </span> <b id="location-mode">ДРИФТ-КЛУБ</b></div>
     <nav>
-      <span class="version">BETA 0.9</span>
-      <button type="button" id="graphics" title="Качество графики">Графика: высокая</button>
+      <span class="version">PREVIEW 0.18</span>
+      <select id="assist-level" aria-label="Помощь в дрифте">
+        <option value="guided">Дрифт: с помощью</option>
+        <option value="light">Дрифт: минимум помощи</option>
+      </select>
+      <select id="graphics" aria-label="Качество графики">
+        <option value="auto">Графика: авто</option>
+        <option value="ultra">Графика: ультра</option>
+        <option value="performance">Графика: производительность</option>
+      </select>
       <button type="button" id="audio">Звук: вкл</button>
+      <button type="button" id="bindings-open">Клавиши</button>
       <button type="button" id="menu" hidden>Меню</button>
     </nav>
   </header>
@@ -27,9 +36,11 @@
     <div class="hero">
       <p class="label"><i></i> ДРИФТ-КЛУБ / КОНТУР 67</p>
       <h1>КОНТУР<br><em>67.</em></h1>
-      <p class="lead">Твой бокс на дрифт-трассе. Открой ворота, выезжай на заезд и возвращайся за свежими шинами и настройками.</p>
+      <p class="lead">Четыре машины в одном гараже. Выбирай свою, выходи на старт «Контура 67» и возвращайся на тюнинг или обслуживание.</p>
       <div class="hero-buttons">
         <button class="primary" id="start" disabled>Войти в бокс <b>↗</b></button>
+        <button class="secondary" id="practice-open" disabled>Тренировка</button>
+        <button class="secondary" id="duo-open" disabled>Дрифт вдвоём</button>
         <button class="secondary" id="shift" disabled>Заказы мастерской</button>
       </div>
       <p id="loading" class="label" aria-live="polite">ГОТОВИМ БОКС…</p>
@@ -38,8 +49,8 @@
     <div class="intro-card">
       <p class="label"><span>01 /</span> ПАДДОК</p>
       <h2>Твой гараж</h2>
-      <p>Три заднеприводные машины. Настройки и состояние каждой сохраняются между заездами.</p>
-      <div><strong>E39</strong> · <strong>F90</strong> · <strong>C219</strong></div>
+      <p>Четыре заднеприводные машины. Настройки и состояние каждой сохраняются между заездами.</p>
+      <div><strong>E39</strong> · <strong>F90</strong> · <strong>C219</strong> · <strong>A80</strong></div>
     </div>
     <footer><span>WASD · МЫШЬ · КЛАВИАТУРА</span><a href="./credits.html">Авторы и материалы ↗</a></footer>
   </main>
@@ -50,6 +61,8 @@
       <h2 id="job-title"></h2>
       <p id="job-text"></p>
       <div id="job-reading" hidden></div>
+      <label id="solo-route-row" hidden>Маршрут <select id="solo-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option></select></label>
+      <button type="button" class="primary" id="race-start" hidden>На трассу <kbd>Enter</kbd></button>
       <button type="button" class="secondary" id="pit-open" hidden>Гараж и тюнинг <kbd>P</kbd></button>
       <div class="job-footer"><span id="model"></span><strong id="money"></strong></div>
     </aside>
@@ -66,11 +79,12 @@
         <rect x="21" y="-31" width="4" height="4" rx="1" fill="#c5d1cc"/>
         </g>
         <g id="map-pit" hidden>
-          <path d="M0-8V-125Q0-135 14-135" stroke="#ffc580" stroke-width="3" stroke-dasharray="4 2"/>
-          <rect x="-7" y="-8" width="14" height="16" rx="1" fill="#b88255"/>
+          <rect x="-14" y="46" width="28" height="20" rx="1" fill="#27383f" stroke="#6f8588" stroke-width=".32"/>
+          <path d="M-11.5 62v-8h5v8zM-5.5 62v-8h5v8zM.5 62v-8h5v8zM6.5 62v-8h5v8z" fill="#b88255"/>
+          <path d="M-9 60v-4M-3 60v-4M3 60v-4M9 60v-4" stroke="#e1e9e5" stroke-width="1.8" stroke-linecap="round"/>
         </g>
         <g id="map-arena" hidden>
-          <rect x="-56" y="-227" width="112" height="112" rx="4" fill="#24323a" stroke="#667780" stroke-width=".65"/>
+          <rect x="-89" y="-253.5" width="178" height="147" rx="4" fill="#24323a" stroke="#667780" stroke-width=".65"/>
           <path id="map-course" stroke="#62757d" stroke-width="10" fill="none" stroke-linejoin="round"/>
           <circle id="map-gate" r="4" fill="#d5f69c" stroke="#18232b" stroke-width="1.2"/>
         </g>
@@ -85,8 +99,29 @@
       <p class="drift-status" id="drift-status"></p>
       <div class="drift-data"><span id="drift-sector"></span><span id="drift-angle"></span></div>
       <div class="drift-data"><span id="drift-laps"></span><span id="drift-best"></span></div>
+      <ol id="drift-events" aria-label="За что начислены очки"></ol>
+      <div class="race-actions">
+        <button type="button" class="secondary" id="drift-finish" hidden>Финиш</button>
+        <button type="button" class="secondary" id="drift-replay" hidden>Лучшая связка</button>
+        <button type="button" class="drift-button" id="race-retry" hidden>Повторить</button>
+        <button type="button" class="secondary" id="race-return">В гараж</button>
+      </div>
 
     </aside>
+    <section id="duo-race" hidden aria-label="Дрифт на двоих">
+      <article class="duo-driver left"><b id="duo-label-1">01 / ИГРОК 1</b><strong id="duo-score-1">0</strong><span id="duo-info-1"></span></article>
+      <article class="duo-driver right"><b id="duo-label-2">02 / ИГРОК 2</b><strong id="duo-score-2">0</strong><span id="duo-info-2"></span></article>
+      <div class="duo-race-control">
+        <strong id="duo-time">1:30</strong>
+        <span id="duo-result"></span>
+        <div><button id="duo-replay" type="button" class="secondary" hidden>Лучшая связка</button>
+        <button id="duo-retry" type="button" class="secondary">Повтор · T</button>
+        <button id="duo-back" type="button" class="secondary">В гараж</button></div>
+      </div>
+    </section>
+    <div id="replay-banner" hidden><b>ПОВТОР ЛУЧШЕЙ СВЯЗКИ</b>
+      <button type="button" id="replay-close" class="secondary">Закрыть · Esc</button></div>
+    <div id="race-start-banner" hidden><span class="label">КОНТУР 67 / СТАРТ</span><strong><kbd>W</kbd> Начать заезд</strong></div>
     <div id="crosshair" aria-hidden="true">+</div>
     <div id="world-pin" hidden aria-hidden="true">◆</div>
     <button type="button" id="action" hidden><kbd>E</kbd><span></span></button>
@@ -97,7 +132,60 @@
       <span id="engine" class="label"></span>
     </div>
     <div class="keys" id="keys"></div>
+    <div id="touch-controls" aria-label="Сенсорное управление">
+      <div class="touch-group">
+        <button data-drive="left" aria-label="Влево">◀</button>
+        <button data-drive="right" aria-label="Вправо">▶</button>
+      </div>
+      <div class="touch-group">
+        <button data-drive="handbrake" hidden>Ручник</button>
+        <button data-drive="brake" aria-label="Назад">▼</button>
+        <button data-drive="gas" aria-label="Вперёд">▲</button>
+      </div>
+    </div>
+    <div id="touch-actions" aria-label="Управление машиной">
+      <button data-command="KeyR" data-shift>Мотор</button>
+      <button data-command="KeyG" data-shift>Ворота</button>
+      <button data-command="KeyH" data-shift>Капот</button>
+      <button data-command="KeyB" data-shift>Багажник</button>
+      <button data-command="KeyL" data-shift>Подъёмник</button>
+      <button data-command="KeyC" data-seated>Камера</button>
+      <button data-command="KeyT" data-seated>Сброс</button>
+    </div>
   </section>
+  <dialog id="practice-setup" aria-labelledby="practice-title">
+    <form id="practice-form">
+      <p class="label">КОНТУР 67 / СВОБОДНАЯ ТРЕНИРОВКА</p>
+      <h2 id="practice-title">Тренировка без таймера</h2>
+      <label>Машина <select id="practice-car"></select></label>
+      <label>Маршрут <select id="practice-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option></select></label>
+      <label>Участок <select id="practice-zone"></select></label>
+      <p>Пробел — ручник. T мгновенно возвращает на выбранный участок.</p>
+      <div class="race-actions"><button type="submit" class="primary">Начать</button>
+      <button id="practice-cancel" type="button" class="secondary">Назад</button></div>
+    </form>
+  </dialog>
+  <dialog id="duo-setup" aria-labelledby="duo-title">
+    <form id="duo-form">
+      <p class="label">КОНТУР 67 / РАЗДЕЛЁННЫЙ ЭКРАН</p>
+      <h2 id="duo-title">Дрифт вдвоём</h2>
+      <label>Игрок 1 <select id="duo-car-1"></select><small id="duo-bindings-1"></small></label>
+      <label>Игрок 2 <select id="duo-car-2"></select><small id="duo-bindings-2"></small></label>
+      <label>Режим <select id="duo-mode"><option value="free">Свободный заезд</option><option value="points">Битва за очки</option><option value="tandem">Тандем</option></select></label>
+      <label>Маршрут <select id="duo-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option></select></label>
+      <label id="duo-contact-row">Столкновения игроков <select id="duo-contact"><option value="on">Включены</option><option value="off">Выключены</option></select></label>
+      <p id="duo-rules">Катайтесь по трассе сколько хотите. T возвращает обе машины на старт.</p>
+      <div class="race-actions"><button type="submit" class="primary">На трассу</button>
+      <button id="duo-cancel" type="button" class="secondary">Назад</button></div>
+    </form>
+  </dialog>
+  <dialog id="bindings-panel" aria-labelledby="bindings-title">
+    <h2 id="bindings-title">Управление на трассе</h2>
+    <p id="bindings-status" aria-live="polite">Выбери действие и нажми новую клавишу.</p>
+    <div id="bindings-grid"></div>
+    <div class="race-actions"><button type="button" id="bindings-reset" class="secondary">По умолчанию</button>
+    <form method="dialog"><button class="primary">Готово</button></form></div>
+  </dialog>
   <dialog id="pit-panel" aria-labelledby="pit-title">
     <form method="dialog" class="pit-header">
       <div><p class="label"><i></i> КОНТУР 67 / БОКС 01</p><h2 id="pit-title">Твой гараж</h2></div>
@@ -109,10 +197,11 @@
       <section>
         <p class="label">НАСТРОЙКИ ДЛЯ ЗАЕЗДА</p>
         <div id="pit-tune"></div>
+        <button type="button" id="pit-drift-default" class="secondary">Вернуть дрифт-настройки</button>
         <label class="pit-row" for="pit-color">Цвет кузова <input id="pit-color" type="color"></label>
       </section>
     </div>
   </dialog>
-  <script type="module" src="./js/drive.js?v=09"></script>
+  <script type="module" src="./js/drive.js?v=018"></script>
 </body>
 </html>

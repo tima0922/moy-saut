@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import { WHEEL_X, WHEEL_Z } from './vehicle.js?v=09';
+import { windowTint } from './window-tint.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { WHEEL_X, WHEEL_Z } from './vehicle.js?v=013';
 
 const profiles = {
   f90: {
@@ -16,6 +19,12 @@ const profiles = {
     glass: [[-.88,.79,.92],[-.49,.69,1.22],[-.14,.65,1.35],[.35,.65,1.35],
       [.75,.68,1.25],[1.57,.81,.92]],
     engine: 'AMG · M156 6.2 V8',
+  },
+  supra: {
+    belt:[[-2.34,.75,.62],[-1.65,.90,.77],[-.86,.87,.83],[0,.87,.86],
+      [.81,.91,.84],[1.52,.92,.86],[2.18,.83,.79],[2.34,.71,.74]],
+    glass:[[-.98,.75,.83],[-.46,.62,1.18],[-.12,.56,1.27],[.48,.57,1.24],[.89,.64,1.13],[1.52,.74,.85]],
+    engine:'TOYOTA · 2JZ-GTE',
   },
 };
 
@@ -42,6 +51,7 @@ export function buildPitCar(world, id) {
   const { box, cylinder, textPlane, mats } = world;
   const { belt, glass, engine: engineLabel } = profiles[id];
   const cls = id === 'cls';
+  const supra = id === 'supra';
   const root = new THREE.Group();
   const group = (parent, x, y, z) => {
     const node = new THREE.Group();
@@ -138,8 +148,8 @@ export function buildPitCar(world, id) {
       box(emblem,[.008,.062,.009],[-Math.sin(angle)*.031,Math.cos(angle)*.031,0],mats.steel,[0,0,angle]);
     }
   }
-  for (const x of cls ? [0] : [-.18,.18]) {
-    const w = cls ? .67 : .31;
+  for (const x of cls || supra ? [0] : [-.18,.18]) {
+    const w = supra ? .83 : cls ? .67 : .31;
     box(root,[w,.17,.07],[x,.746,-2.327],mats.steel);
     box(root,[w-.03,.14,.074],[x,.746,-2.336],trim);
     if (cls) {
@@ -148,7 +158,7 @@ export function buildPitCar(world, id) {
       for (let i=0;i<6;i++) box(root,[.012,.135,.009],[x-.11+i*.044,.746,-2.379],mats.steel);
     }
   }
-  textPlane(root, cls ? 'CLS 63' : 'M5', .28, .097, [.49,.772,2.362],[0,0,0],'#e9e9df');
+  textPlane(root, supra ? 'Supra' : cls ? 'CLS 63' : 'M5', .28, .097, [.49,.772,2.362],[0,0,0],'#e9e9df');
   textPlane(root, 'DRIFT 67', .43, .105, [0,.585,2.364],[0,0,0],'#edf0dc','#151c21');
 
   const hubs = WHEEL_Z.map((z,i) => group(root,WHEEL_X[i],.33,z));
@@ -170,7 +180,16 @@ export function buildPitCar(world, id) {
 
   const engine = group(root,0,.49,-1.51);
   box(engine,[1.43,.06,1.23],[0,-.06,0],trim);
-  for (const side of [-1,1]) {
+  if (supra) {
+    box(engine,[.42,.16,1.08],[0,.11,0],mats.engine);
+    for (const x of [-.105,.105]) box(engine,[.16,.075,.91],[x,.217,-.03],mats.steel);
+    for (let i=0;i<6;i++) {
+      cylinder(engine,.031,.031,.13,[-.29,.11,-.39+i*.151],mats.metal,[0,0,Math.PI/2]);
+    }
+    cylinder(engine,.128,.128,.17,[.36,.14,-.37],mats.steel,[0,0,Math.PI/2]);
+    cylinder(engine,.071,.071,.25,[.45,.15,-.43],mats.metal,[0,0,Math.PI/2]);
+    box(engine,[.14,.06,.79],[0,.268,-.01],mats.black);
+  } else for (const side of [-1,1]) {
     box(engine,[.38,.18,.8],[side*.29,.105,0],mats.engine,[0,0,side*-.23]);
     box(engine,[.23,.07,.83],[side*.34,.21,0],mats.steel,[0,0,side*-.23]);
     box(engine,[.21,.15,.39],[side*.59,.04,-.30],mats.black);
@@ -179,11 +198,12 @@ export function buildPitCar(world, id) {
       cylinder(engine,.045,.045,.26,[side*.28,.165,-.43],mats.rubber,[0,0,Math.PI/2]);
     }
   }
-  box(engine,[cls ? .55 : .45,.09,.68],[0,.232,.04],mats.black);
-  textPlane(engine,engineLabel,.43,.09,[0,.28,.04],[-Math.PI/2,0,0],'#e6e7df');
-  box(root,[1.43,.055,.72],[0,.47,1.92],trim);
-  box(root,[.36,.16,.26],[0,.57,1.99],mats.black);
-  for (const side of [-1,1]) cylinder(root,.023,.026,.025,[side*.12,.66,2.04],side<0?mats.red:mats.steel);
+  if (!supra) box(engine,[cls ? .55 : .45,.09,.68],[0,.232,.04],mats.black);
+  textPlane(engine,engineLabel,supra ? .55 : .43,.09,[0,supra ? .301 : .28,.04],[-Math.PI/2,0,0],'#e6e7df');
+  const battery = group(root,0,0,0);
+  box(battery,[1.43,.055,.72],[0,.47,1.92],trim);
+  box(battery,[.36,.16,.26],[0,.57,1.99],mats.black);
+  for (const side of [-1,1]) cylinder(battery,.023,.026,.025,[side*.12,.66,2.04],side<0?mats.red:mats.steel);
   const batteryHatch = group(root,0,.702,1.58);
   box(batteryHatch,[1.35,.038,.70],[0,0,.35],trim);
   box(batteryHatch,[.14,.026,.039],[0,.027,.56],mats.steel);
@@ -193,6 +213,86 @@ export function buildPitCar(world, id) {
   cargoLight.position.set(.48,1.02,1.95);
   bayLight.visible = cargoLight.visible = engine.visible = false;
   root.add(bayLight,cargoLight);
-  return { root, engine, hood, trunk, batteryHatch, bayLight, cargoLight, hubs, wheels,
+  return { root, engine, hood, trunk, battery, batteryHatch, bayLight, cargoLight, hubs, wheels,
     paints:[paint], brakeLamps, lampMeshes:[], carDoors:{}, steering:null };
+}
+
+const externalRigs = {
+  f90: {
+    file: 'f90-m5.glb', windows: /^bM_Glass_WindowFront/i, paint: /^(bM_CarPaint_Max)/i,
+    hood: [0,.92,-.87], trunk: [0,1.0,1.61],
+    left: [-.81,.79,-.80], right: [.81,.79,-.80],
+  },
+  cls: {
+    file: 'cls-w219.glb', windows: /black_glass3_int/i, paint: /CLS500_body/i,
+    hood: [0,.93,-.87], trunk: [0,.93,1.77],
+    left: [-.79,.76,-.73], right: [.79,.76,-.73],
+  },
+  supra: {
+    file:'supra-a80.glb',windows:/^glass(?:\.|$)/i,paint:/^carpaint$/i,
+    hood:[0,.845,-1.04],trunk:[0,1.18,.76],
+    left:[-.77,.82,-1.03],right:[.77,.82,-1.03],
+  },
+};
+
+export async function loadPitCar(world, id) {
+  const visual = buildPitCar(world,id);
+  const spec = externalRigs[id];
+  if (!spec) return visual;
+  const draco = new DRACOLoader().setDecoderPath('./vendor/draco/');
+  const loader = new GLTFLoader().setDRACOLoader(draco);
+  try {
+    const { scene: shell } = await loader.loadAsync('./assets/club/' + spec.file);
+    const { root, hood, trunk, engine, battery, batteryHatch, bayLight, cargoLight, wheels, hubs } = visual;
+    const parts = [];
+    const paints = new Set();
+    const windows = windowTint(id + ' tinted glazing');
+    shell.traverse(object => {
+      if (object.userData.garagePart) parts.push(object);
+      if (!object.isMesh) return;
+      const materials = (Array.isArray(object.material) ? object.material : [object.material])
+        .map(mat => spec.windows.test(mat.name) ? windows : mat);
+      object.material = Array.isArray(object.material) ? materials : materials[0];
+      for (const mat of materials) {
+        if (spec.paint.test(mat.name)) paints.add(mat);
+        if (id === 'supra' && mat.name === 'a80 brake red') visual.brakeLamps = mat;
+      }
+      object.castShadow = materials.every(mat => !mat.transparent);
+      object.receiveShadow = true;
+    });
+    const named = new Set(parts.map(object => object.userData.garagePart));
+    if (!paints.size || !named.has('hood') || !named.has('trunk')) {
+      throw new Error('Missing paint or moving panels in ' + spec.file);
+    }
+    const keep = new Set([hood,trunk,engine,battery,batteryHatch,bayLight,cargoLight,...hubs]);
+    for (const child of [...root.children]) if (!keep.has(child)) child.removeFromParent();
+    root.add(shell);
+    hood.clear();
+    trunk.clear();
+    const pivots = { hood, trunk };
+    for (const side of ['left','right']) {
+      const pivot = new THREE.Group();
+      root.add(pivot);
+      pivots[side] = pivot;
+      visual.carDoors[side] = pivot;
+    }
+    for (const key of ['hood','trunk','left','right']) pivots[key].position.set(...spec[key]);
+    for (const [i, wheel] of wheels.entries()) {
+      if (named.has('wheel'+i)) wheel.clear();
+      hubs[i].position.y = .30;
+      pivots['wheel'+i] = wheel;
+      pivots['hub'+i] = hubs[i];
+    }
+    root.updateMatrixWorld(true);
+    for (const object of parts) pivots[object.userData.garagePart]?.attach(object);
+    visual.paints = [...paints];
+    visual.windows = windows;
+    visual.external = true;
+    return visual;
+  } catch (error) {
+    console.warn('Car model could not load', id, error);
+    return visual;
+  } finally {
+    draco.dispose();
+  }
 }

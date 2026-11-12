@@ -41,10 +41,11 @@ export function createDistrict(world, renderer) {
   scene.add(surface);
   scene.fog = new THREE.FogExp2(0xa2b6c4, .0085);
   const sky = new THREE.Mesh(new THREE.SphereGeometry(145, 24, 12), new THREE.ShaderMaterial({
+    uniforms: { circuit: { value: 0 } },
     side: THREE.BackSide,
     depthWrite: false,
     vertexShader: 'varying vec3 v; void main(){v=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader: `varying vec3 v; void main() {
+    fragmentShader: `uniform float circuit; varying vec3 v; void main() {
       float h=normalize(v).y;
       vec3 dir=normalize(v);
       vec3 c=mix(vec3(.66,.78,.86),vec3(.28,.49,.68),smoothstep(-.06,.66,h));
@@ -52,7 +53,13 @@ export function createDistrict(world, renderer) {
       float wisps=sin(p.x*2.5+p.y*.8)*cos(p.y*2.9)+.45*sin(p.y*7.1+p.x*4.8);
       float clouds=smoothstep(.6,1.25,wisps)*smoothstep(.08,.32,h)*(1.-smoothstep(.59,.84,h));
       c=mix(c,vec3(.83,.89,.94),clouds*.28);
-      gl_FragColor=vec4(c,1.);
+      vec3 sun=normalize(vec3(-.72,.19,.54));
+      float toward=clamp(dot(dir,sun),0.,1.);
+      vec3 sunset=mix(vec3(.98,.63,.43),vec3(.15,.27,.47),smoothstep(.01,.64,h));
+      sunset+=vec3(.35,.18,.055)*pow(toward,10.);
+      sunset=mix(sunset,vec3(1.,.92,.69),smoothstep(.9985,.9992,toward));
+      sunset=mix(sunset,vec3(.93,.75,.65),clouds*.48);
+      gl_FragColor=vec4(mix(c,sunset,circuit),1.);
     }`,
   }));
   sky.frustumCulled = false;

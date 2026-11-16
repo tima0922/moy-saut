@@ -7,7 +7,7 @@
   <meta name="description" content="GARAGE LIFE — дрифт на Контуре 67, тюнинг и свой гараж.">
   <title>GARAGE LIFE / Контур 67</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231a252b'/%3E%3Cpath d='M12 48V24l20-12 20 12v24H42V29H22v19Z' fill='%23ffad69'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./drive.css?v=019">
+  <link rel="stylesheet" href="./drive.css?v=020">
   <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/addons/"}}</script>
 </head>
 <body>
@@ -16,7 +16,7 @@
     <a class="brand" href="./index.html"><span class="logo" aria-hidden="true">⌂</span> GARAGE<span>LIFE</span></a>
     <div class="location"><i></i> <b id="location-area">БОКС 01</b> <span> / </span> <b id="location-mode">ДРИФТ-КЛУБ</b></div>
     <nav>
-      <span class="version">PREVIEW 0.19</span>
+      <span class="version">PREVIEW 0.20</span>
       <select id="assist-level" aria-label="Помощь в дрифте">
         <option value="guided">Дрифт: с помощью</option>
         <option value="light">Дрифт: минимум помощи</option>
@@ -31,6 +31,22 @@
       <button type="button" id="bindings-open">Клавиши</button>
       <button type="button" id="menu" hidden>Меню</button>
     </nav>
+    <div class="music">
+      <button type="button" id="music-toggle" aria-expanded="false" aria-controls="music-panel"
+        aria-label="Включить ЦУЕФА — Я тебя могну" title="Включить ЦУЕФА — Я тебя могну">
+        <span class="music-icon" aria-hidden="true"></span>
+        <span class="music-credit">Ali67</span>
+      </button>
+      <section class="music-panel" id="music-panel" aria-label="Музыка Ali67" hidden>
+        <div id="music-video"></div>
+        <a href="https://www.youtube.com/watch?v=BdrXawt2uAI" target="_blank" rel="noopener">Открыть на YouTube ↗</a>
+      </section>
+      <template id="music-embed">
+        <iframe src="https://www.youtube-nocookie.com/embed/BdrXawt2uAI?autoplay=1&amp;playsinline=1&amp;rel=0"
+          title="ЦУЕФА — Я тебя могну" allow="autoplay; encrypted-media"
+          referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+      </template>
+    </div>
   </header>
 
   <main id="welcome">
@@ -203,6 +219,7 @@
       </section>
     </div>
   </dialog>
+  <script src="./js/music.js?v=020" defer></script>
   <script type="module" src="./js/drive.js?v=019"></script>
 </body>
 </html>

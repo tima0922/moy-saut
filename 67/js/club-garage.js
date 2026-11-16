@@ -121,5 +121,5 @@ export function createClubGarage(world) {
   }
   room.add(lighting);
   batchSharedMeshes(room);
-  return { room, obstacles, liftArms, equipment };
+  return { room, obstacles, liftArms, equipment, lighting };
 }

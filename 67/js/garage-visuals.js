@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from '../vendor/three/addons/utils/BufferGeometryUtils.js';
 
 export function batchSharedMeshes(parent) {
   const batches = new Map();
@@ -21,4 +22,28 @@ export function batchSharedMeshes(parent) {
     });
     parent.add(batch);
   }
+}
+
+
+// Parked preview models have no moving parts. Bake their visible meshes into
+// groups by material so lightweight geometry also costs fewer draw calls.
+export function bakeParkedCar(root) {
+  const baked = new THREE.Group();
+  const batches = new Map();
+  root.updateMatrixWorld(true);
+  root.traverseVisible(mesh => {
+    if (!mesh.isMesh) return;
+    const source = mesh.geometry;
+    const geometry = source.index ? source.toNonIndexed() : source.clone();
+    geometry.applyMatrix4(mesh.matrixWorld);
+    const key = [mesh.material.id, ...Object.keys(geometry.attributes).sort()].join('/');
+    if (!batches.has(key)) batches.set(key,{ material:mesh.material, geometries:[] });
+    batches.get(key).geometries.push(geometry);
+  });
+  for (const { material,geometries } of batches.values()) {
+    const geometry = mergeGeometries(geometries);
+    for (const part of geometries) part.dispose();
+    baked.add(new THREE.Mesh(geometry,material));
+  }
+  return baked;
 }

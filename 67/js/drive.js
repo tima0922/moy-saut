@@ -1,19 +1,20 @@
 import * as THREE from 'three';
-import { createWorld } from './world.js';
-import { batchSharedMeshes } from './garage-visuals.js';
+import { createWorld } from './world.js?v=019';
+import { GRAPHICS, createGraphicsController, createMaterialQuality, renderRatio } from './graphics.js?v=019';
+import { bakeParkedCar, batchSharedMeshes } from './garage-visuals.js?v=019';
 import { BATTERY, fitE39 } from './bmw.js?v=013';
 import { CLUB_ARENA, createClubLayout, createShortLayout, createRun, safeCircuitStart } from './drift.js?v=015';
-import { createDriftWorld, createTireEffects } from './drift-world.js?v=017';
+import { createDriftWorld, createTireEffects } from './drift-world.js?v=019';
 import { createDistrict, SHOP, TRACK } from './district.js?v=013';
 import { createPhysics, MODELS, STEP } from './vehicle.js?v=017';
-import { loadPitCar } from './pit-cars.js?v=017';
+import { buildPitCar, loadPitCar } from './pit-cars.js?v=017';
 import { FLEET, SETUPS, DRIFT_SETUP, loadPit, savePit, setupFor } from './pit-save.js?v=017';
-import { CLUB_FLOOR, STALLS, STALL_Z, SERVICE_STEPS, createClubGarage } from './club-garage.js?v=017';
-import { circuitTerrain } from './circuit-terrain.js?v=017';
+import { CLUB_FLOOR, STALLS, STALL_Z, SERVICE_STEPS, createClubGarage } from './club-garage.js?v=019';
+import { circuitTerrain } from './circuit-terrain.js?v=019';
 import { PRACTICE_PAD, TANDEM_HEAT, practiceStart, createPracticePad, createTandem } from './drift-modes.js?v=015';
 import { createDriftAudio } from './drift-audio.js?v=017';
 import { createReplayPlayer, createReplayRecorder } from './drift-replay.js';
-import { createGuest, raceTelemetry } from './local-duo.js?v=015';
+import { createGuest, raceTelemetry } from './local-duo.js?v=019';
 import { DEFAULT_KEYS, DRIVING_ACTIONS, allowedKey, keyLabel, loadBindings } from './drive-bindings.js';
 import { createOrbitCamera } from './orbit-camera.js?v=013';
 import { JOBS, advance, loadCareer, saveCareer, makeRoadTest } from './career.js?v=08';
@@ -21,11 +22,6 @@ import { JOBS, advance, loadCareer, saveCareer, makeRoadTest } from './career.js
 const $ = selector => document.querySelector(selector);
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const damp = THREE.MathUtils.damp;
-const GRAPHICS = {
-  auto: { shadows:true,shadowMs:1000/30,dpr:1.25,scale:1 },
-  ultra: { shadows:true,shadowMs:1000/60,dpr:1.5,scale:1 },
-  performance: { shadows:false,dpr:1,scale:.85 },
-};
 const touchScreen = matchMedia('(pointer: coarse)');
 const touchDrive = new Set();
 const canvas = $('#scene');
@@ -43,7 +39,7 @@ function clearControls() {
 }
 let renderer;
 try {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: !touchScreen.matches, powerPreference: 'high-performance' });
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance' });
   await boot();
 } catch (error) {
   console.error(error);
@@ -60,7 +56,8 @@ async function boot() {
   renderer.info.autoReset = false;
   const camera = new THREE.PerspectiveCamera(62, 1, .035, 185);
   camera.rotation.order = 'YXZ';
-  const world = createWorld(renderer, { districtMode: true });
+  const world = createWorld(renderer, { districtMode: true, deferredEnvironment: true });
+  const materials = createMaterialQuality();
   const district = createDistrict(world, renderer);
   const bmw = await fitE39(world);
   bmw.engine = world.engine;
@@ -70,6 +67,8 @@ async function boot() {
   const [f90, cls, supra] = await Promise.all(['f90','cls','supra'].map(id => loadPitCar(world,id)));
   const visuals = { sedan: bmw, touring: bmw, f90, cls, supra };
   let rig = bmw;
+  const parkedPreviews = new Map();
+  let fleetNeedsLayout = true;
   for (const object of [world.scene, world.car, world.engine, world.lift, world.arms]) {
     batchSharedMeshes(object);
   }
@@ -132,18 +131,17 @@ async function boot() {
   let replay;
   let replayTarget;
   let eventCursor;
-  let renderScale = 1;
-  let headroom = 0;
   let shadowDirty = true;
   let shadowDue = 0;
   const shadowPose = { position:V(0,0,0), rotation:new THREE.Quaternion() };
   const guestShadowPose = { position:V(0,0,0), rotation:new THREE.Quaternion() };
   let nextHud = 0;
-  let graphicsMode = Object.hasOwn(GRAPHICS,career.graphics) ? career.graphics : career.high === false ? 'performance' : 'auto';
-  const selectProfile = () => touchScreen.matches && graphicsMode === 'auto'
-    ? { shadows: false, dpr: 1, scale: 1 }
-    : GRAPHICS[graphicsMode];
-  let profile = selectProfile();
+  const modes = new Set(['auto', 'ultra', 'performance', 'minimum']);
+  let graphicsMode = modes.has(career.graphics) ? career.graphics : career.high === false ? 'performance' : 'auto';
+  const graphics = createGraphicsController(graphicsMode, touchScreen.matches);
+  let profile;
+  let fps = 0;
+  let menuFrameDue = 0;
   let guestEffects;
   let guestTap = false;
   let seated = false;
@@ -298,10 +296,15 @@ async function boot() {
 
   function syncScene() {
     const workshop = state === 'pit' && !onCircuit || state === 'menu';
-    club.room.visible = workshop;
-    legacyScenery.visible = state === 'shift';
-    arena.group.visible = onCircuit && !padActive();
-    practice.root.visible = padActive();
+    const practicePad = padActive();
+    const locations = [[club.room,workshop],[legacyScenery,state === 'shift'],
+      [arena.group,onCircuit && !practicePad],[practice.root,practicePad]];
+    for (const [root,visible] of locations) {
+      root.visible = visible;
+      if (visible && root.parent !== scene) scene.add(root);
+      if (!visible) root.removeFromParent();
+    }
+    fleetNeedsLayout = true;
     $('.map').hidden = padActive();
     scene.fog.color.setHex(onCircuit ? 0xc8a991 : 0xa2b6c4);
     const shadow = district.sunlight.shadow.camera;
@@ -413,12 +416,13 @@ async function boot() {
 
   function stopDuo() {
     if (!guest) return;
+    materials.forget(guest.paintMaterials);
     guest.remove();
     guest = undefined;
     guestModelId = undefined;
     duoFree = false;
     physics.setCarContacts(true);
-    renderScale = 1;
+    fpsTime = fpsFrames = 0;
   }
 
   function startDuo(first,second,mode,route,contacts) {
@@ -429,9 +433,11 @@ async function boot() {
     guestEffects ??= arena.makeGuestEffects();
     guest = createGuest({
       scene, rig: visuals[second], world: physics, spec: MODELS[second],
-      setup: setupFor(pit.cars[second]), layout, effects: guestEffects,
+      setup: setupFor(pit.cars[second]), layout, effects: guestEffects, clonePaint: materials.clone,
       color: second === 'supra' ? (first === second ? 0x287aab : pit.cars.supra.color) : 0xc86135,
     });
+    materials.collect(guest.car);
+    materials.apply(profile.lite, textureAnisotropy());
     guestModelId = second;
     guest.physics.setAssist(pit.assist);
     duoFree = mode === 'free';
@@ -539,11 +545,7 @@ async function boot() {
   }
 
   function resizeRenderBuffer() {
-    const touch = touchScreen.matches;
-    const dpr = Math.min(touch ? 1 : profile.dpr,window.devicePixelRatio);
-    const pixels = touch ? 750_000 : guest ? 2_500_000 : 3_700_000;
-    const autoDpr = Math.min(dpr,Math.sqrt(pixels/(innerWidth*innerHeight))) * renderScale;
-    const ratio = graphicsMode === 'auto' ? autoDpr : dpr*profile.scale;
+    const ratio = renderRatio(profile, innerWidth, innerHeight, devicePixelRatio, touchScreen.matches, !!guest);
     if (canvas.width !== Math.floor(innerWidth*ratio) || canvas.height !== Math.floor(innerHeight*ratio) || renderer.getPixelRatio() !== ratio) {
       renderer.setDrawingBufferSize(innerWidth,innerHeight,ratio);
     }
@@ -556,12 +558,35 @@ async function boot() {
   }
 
   function quality() {
-    profile = selectProfile();
+    const next = GRAPHICS[graphics.level];
+    if (profile !== next) {
+      profile = next;
+      renderer.shadowMap.enabled = !!profile.shadows;
+      shadowDirty = true;
+      world.dust.visible = !!profile.shadows;
+      district.sky.visible = !profile.lite;
+      club.lighting.visible = !profile.lite;
+      world.setEnvironment(graphics.level === 'ultra');
+      arena.setLite(!!profile.lite);
+      fleetNeedsLayout = true;
+      materials.apply(profile.lite, textureAnisotropy());
+    }
+    document.documentElement.classList.toggle('lite-graphics', !!profile.lite);
     $('#graphics').value = graphicsMode;
-    renderer.shadowMap.enabled = profile.shadows;
-    shadowDirty = true;
-    world.dust.visible = profile.shadows;
+    updateRenderCamera(camera);
+    if (guest) updateRenderCamera(guest.camera);
     resizeRenderBuffer();
+    menuFrameDue = 0;
+  }
+
+  function textureAnisotropy() {
+    return Math.min(renderer.capabilities.getMaxAnisotropy(), profile.lite ? 1 : touchScreen.matches ? 2 : 8);
+  }
+
+  function updateRenderCamera(viewCamera) {
+    if (viewCamera.far === profile.far) return;
+    viewCamera.far = profile.far;
+    viewCamera.updateProjectionMatrix();
   }
 
   function updateJob() {
@@ -634,6 +659,8 @@ async function boot() {
     cancelManual();
     rig.root.removeFromParent();
     rig = visuals[id];
+    rig.root.visible = true;
+    fleetNeedsLayout = true;
     model = MODELS[id];
     modelId = id;
     physics.setModel(model);
@@ -643,6 +670,7 @@ async function boot() {
     for (const [key, x] of Object.entries(STALLS)) {
       const parkedRig = visuals[key];
       parkedRig.root.removeFromParent();
+      parkedRig.root.visible = true;
       for (const paint of parkedRig.paints) paint.color.set(pit.cars[key].color);
       closeRig(parkedRig);
       if (!inFleet || key === id) continue;
@@ -672,6 +700,37 @@ async function boot() {
     parked = true;
     cameraCut = true;
     physics.render(car, rig.wheels, 1, rig.hubs);
+  }
+
+  function updateParkedPreviews() {
+    if (!fleetNeedsLayout) return;
+    fleetNeedsLayout = false;
+    let added = false;
+    for (const id of ['f90','cls','supra']) {
+      const detailed = visuals[id];
+      const parked = detailed.root.parent === club.room;
+      const usePreview = parked && club.room.visible && detailed.external && !!profile.lite;
+      let preview = parkedPreviews.get(id);
+      if (usePreview && !preview) {
+        const display = buildPitCar(world,id);
+        preview = { root: bakeParkedCar(display.root), paints: display.paints };
+        materials.collect(preview.root);
+        parkedPreviews.set(id,preview);
+        added = true;
+      }
+      if (parked) detailed.root.visible = !usePreview;
+      if (!preview) continue;
+      if (usePreview) {
+        for (const paint of preview.paints) paint.color.set(pit.cars[id].color);
+        preview.root.position.copy(detailed.root.position);
+        preview.root.quaternion.copy(detailed.root.quaternion);
+        preview.root.scale.copy(detailed.root.scale);
+        if (preview.root.parent !== club.room) club.room.add(preview.root);
+      } else {
+        preview.root.removeFromParent();
+      }
+    }
+    if (added) materials.apply(profile.lite, textureAnisotropy());
   }
 
   function closeRig(visual) {
@@ -797,6 +856,7 @@ async function boot() {
     closeReplay();
     clearControls();
     state = next;
+    fpsTime = fpsFrames = 0;
     seated = cockpit = false;
     onCircuit = false;
     player.copy(next === 'pit' ? walkStart : startPose);
@@ -1422,15 +1482,16 @@ async function boot() {
   });
   window.addEventListener('pagehide', () => { if (dirty) persistPit(); });
   document.addEventListener('visibilitychange', () => {
+    fpsTime = fpsFrames = 0;
     if (document.hidden && dirty) persistPit();
   });
   $('#menu').onclick = () => { $('#menu').blur(); show('menu'); };
   $('#graphics').onchange = event => {
-    if (!Object.hasOwn(GRAPHICS,event.target.value)) return;
+    if (!modes.has(event.target.value)) return;
     graphicsMode = career.graphics = event.target.value;
-    career.high = graphicsMode !== 'performance';
-    renderScale = 1;
-    headroom = fpsTime = fpsFrames = 0;
+    career.high = graphicsMode === 'auto' || graphicsMode === 'ultra';
+    graphics.setMode(graphicsMode);
+    fpsTime = fpsFrames = 0;
     event.target.blur();
     quality();
     saved();
@@ -1793,8 +1854,10 @@ async function boot() {
     renderer.setViewport(0,0,width,innerHeight);
     renderer.setScissor(0,0,width,innerHeight);
     renderer.render(scene,camera);
-    district.sky.position.copy(guest.camera.position);
-    district.sky.updateWorldMatrix(false,false);
+    if (district.sky.visible) {
+      district.sky.position.copy(guest.camera.position);
+      district.sky.updateWorldMatrix(false,false);
+    }
     renderer.setViewport(width,0,innerWidth-width,innerHeight);
     renderer.setScissor(width,0,innerWidth-width,innerHeight);
     // The scene was already updated for the first view. Only the sky moved.
@@ -1839,13 +1902,20 @@ async function boot() {
     const elapsed = clock.getDelta();
     if (document.hidden) return;
     const dt = Math.min(elapsed, .1);
-    accumulated += dt;
-    while (accumulated >= STEP) {
-      step();
-      accumulated -= STEP;
+    updateParkedPreviews();
+    if (state === 'menu') {
+      if (now < menuFrameDue) return;
+      menuFrameDue = now + 1000/20;
+      accumulated = 0;
+    } else {
+      accumulated += dt;
+      while (accumulated >= STEP) {
+        step();
+        accumulated -= STEP;
+      }
     }
     if (replay && replay.tick(dt,replayTarget,camera,safeChase)) closeReplay();
-    if (!pitPanel.open && !replay) physics.render(car, rig.wheels, accumulated / STEP, rig.hubs);
+    if (state !== 'menu' && !pitPanel.open && !replay) physics.render(car, rig.wheels, accumulated / STEP, rig.hubs);
     car.updateWorldMatrix(true,false);
     placeContact(world.contact,car.position);
     world.contact.visible = !lifted && !replay;
@@ -1855,12 +1925,16 @@ async function boot() {
     if (rig.steering) rig.steering.rotation.z = -rig.hubs[0].rotation.y * 4;
     const inWorkshop = state === 'menu' || garageMode() && !onCircuit ||
       position().z < 8.4 && position().z > -8.3 && Math.abs(position().x) < 7.3;
-    workLight.castShadow = inWorkshop;
+    const workShadow = !!profile.shadows && inWorkshop;
+    if (workLight.castShadow !== workShadow) shadowDirty = true;
+    workLight.castShadow = workShadow;
+    world.fill.visible = world.worklight.visible = !profile.lite || state === 'shift' && inWorkshop;
     district.sky.material.uniforms.circuit.value = onCircuit ? 1 : 0;
+    scene.background.setHex(onCircuit ? 0xa98d82 : 0xa2b6c4);
     district.sunlight.color.setHex(onCircuit ? 0xffc791 : 0xfff1db);
     district.sunlight.position.x = onCircuit ? -45 : -24;
     district.sunlight.position.y = onCircuit ? 19 : 32;
-    district.sunlight.castShadow = !inWorkshop;
+    district.sunlight.castShadow = !!profile.shadows && !inWorkshop;
     district.sunlight.intensity = damp(district.sunlight.intensity, inWorkshop ? .55 : onCircuit ? 2.6 : 2.05, 6, dt);
     const lightZ = replay ? replayTarget.car.position.z : guest ? CLUB_ARENA.z : Math.max(23,position().z);
     const lightX = replay ? replayTarget.car.position.x : onCircuit && !guest ? position().x : 0;
@@ -1882,45 +1956,30 @@ async function boot() {
     updateShadowMap(now);
     renderer.info.reset();
     renderRaceViews(dt);
-    fpsTime += elapsed;
-    fpsFrames++;
-    if (fpsTime >= .9) {
-      const rate = fpsFrames/fpsTime;
-      $('#fps').textContent = Math.round(rate)+' FPS';
-      if (graphicsMode === 'auto' && state !== 'menu') {
-        headroom = rate >= (touchScreen.matches ? 49 : 57) ? headroom+1 : 0;
-        const floor = touchScreen.matches ? .55 : guest ? .60 : .65;
-        const next = rate < (touchScreen.matches ? 43 : 49) ? Math.max(floor,renderScale-.08) : headroom >= 3 ? Math.min(1,renderScale+.04) : renderScale;
-        if (next !== renderScale) {
-          renderScale = next;
-          headroom = 0;
-          resizeRenderBuffer();
-        }
+    if (state !== 'menu' && !pitPanel.open && elapsed > 0) {
+      fpsTime += elapsed;
+      fpsFrames++;
+      if (fpsTime >= 1) {
+        const rate = fpsFrames/fpsTime;
+        fps = Math.round(rate);
+        $('#fps').textContent = fps + ' FPS';
+        fpsTime = fpsFrames = 0;
+        if (graphics.sample(rate)) quality();
       }
-      fpsTime = fpsFrames = 0;
     }
     if (state !== 'menu' && now >= nextHud) {
       renderHud(now);
-      nextHud = now + (touchScreen.matches ? 100 : 50);
+      nextHud = now + (touchScreen.matches || profile.lite ? 100 : 50);
     }
   }
 
-  quality();
   $('#audio').textContent = career.muted ? 'Звук: выкл' : 'Звук: вкл';
   show('menu');
   const [, equipment, trackKit] = await Promise.all([world.assetsReady, club.equipment, arena.kit]);
-  const anisotropy = Math.min(touchScreen.matches ? 2 : 8, renderer.capabilities.getMaxAnisotropy());
-  const textures = new Set();
-  const filterMaterials = object => {
-    if (!object.isMesh) return;
-    const materials = Array.isArray(object.material) ? object.material : [object.material];
-    for (const material of materials) for (const channel of ['map','normalMap','roughnessMap','bumpMap']) {
-      if (material[channel]) textures.add(material[channel]);
-    }
-  };
-  scene.traverse(filterMaterials);
-  for (const visual of [bmw,f90,cls,supra]) visual.root.traverse(filterMaterials);
-  for (const texture of textures) texture.anisotropy = anisotropy;
+  for (const root of [scene, club.room, arena.group, practice.root, legacyScenery, bmw.root, f90.root, cls.root, supra.root]) {
+    materials.collect(root);
+  }
+  profile = undefined;
   const keep = new Set([car, world.contact, guestContact, district.sky, district.sunlight, district.sunlight.target,
     district.marker, arena.group, club.room, practice.root, legacyScenery]);
   for (const object of [...scene.children]) {
@@ -1942,6 +2001,7 @@ async function boot() {
       manual: manual ? { ...manual, wheelRemoved: !!removedWheel } : null, fleet: Object.keys(STALLS),
       workshopAsset: equipment, trackAsset: trackKit, importedCars: [f90,cls,supra].filter(rig => rig.external).length, setup: garageMode() ? { ...condition() } : null,
       assets: { ...world.assetStatus }, render: { ...renderer.info.render }, graphics: graphicsMode,
+      graphicsLevel: graphics.level, fps, buffer: [canvas.width,canvas.height],
     }),
   }) });
   requestAnimationFrame(frame);

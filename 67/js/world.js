@@ -5,9 +5,20 @@ import {PARTS} from './game-state.js';
 import {CRANE} from './crane-route.js';
 
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
-export function createWorld(renderer,{districtMode=false}={}){
+export function createWorld(renderer,{districtMode=false,deferredEnvironment=false}={}){
   const scene=new THREE.Scene();scene.background=new THREE.Color('#5e8193');scene.fog=new THREE.Fog('#688899',28,72);
-  const env=new RoomEnvironment();const pmrem=new THREE.PMREMGenerator(renderer);scene.environment=pmrem.fromScene(env,0.05).texture;env.dispose();pmrem.dispose();
+  let environment;
+  function setEnvironment(enabled) {
+    if (enabled && !environment) {
+      const room = new RoomEnvironment();
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      environment = pmrem.fromScene(room, .05);
+      room.dispose();
+      pmrem.dispose();
+    }
+    scene.environment = enabled ? environment.texture : null;
+  }
+  if (!deferredEnvironment) setEnvironment(true);
   const mats={
     wall:new THREE.MeshStandardMaterial({color:0x545f64,roughness:.93}),
     dark:new THREE.MeshStandardMaterial({color:0x1a242a,roughness:.64}),
@@ -382,5 +393,5 @@ export function createWorld(renderer,{districtMode=false}={}){
     const anisotropy=q==='low'?1:q==='balanced'?4:8;
     for(const t of loadedTextures){t.anisotropy=Math.min(anisotropy,renderer.capabilities.getMaxAnisotropy());t.needsUpdate=true;}
   }
-  return {scene,mats,car,engine,hood,door,carDoors,wheels,floor,steering,batteryCase:batt,lift,arms,crane,chain,stand,standEnginePosition,targets,partObjects,bolts,installSlots,partsTray,newPart,contact,highlight,key,dust,assetsReady,assetStatus,rayTargets,box,cylinder,textPlane,setTextureQuality};
+  return {scene,setEnvironment,mats,car,engine,hood,door,carDoors,wheels,floor,steering,batteryCase:batt,lift,arms,crane,chain,stand,standEnginePosition,targets,partObjects,bolts,installSlots,partsTray,newPart,contact,highlight,key,fill,worklight,dust,assetsReady,assetStatus,rayTargets,box,cylinder,textPlane,setTextureQuality};
 }

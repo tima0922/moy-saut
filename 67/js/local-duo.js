@@ -1,14 +1,15 @@
 import { Group, MathUtils, PerspectiveCamera, Quaternion, Vector3, Euler } from 'three';
 import { createRun } from './drift.js?v=015';
 
-export function createGuest({ scene, rig, world, spec, setup, layout, effects, color }) {
+export function createGuest({ scene, rig, world, spec, setup, layout, effects, color, clonePaint = material => material.clone() }) {
   const car = new Group();
   const shell = rig.root.clone(true);
+  shell.visible = true;
   const originals = [], copies = [];
   rig.root.traverse(object => originals.push(object));
   shell.traverse(object => copies.push(object));
   const mapping = new Map(originals.map((object,i) => [object,copies[i]]));
-  const paints = new Map([...rig.paints].map(mat => [mat,mat.clone()]));
+  const paints = new Map([...rig.paints].map(mat => [mat,clonePaint(mat)]));
   for (const paint of paints.values()) paint.color.set(color);
   for (const object of copies) {
     if (object.isLight) object.visible = false;
@@ -38,7 +39,7 @@ export function createGuest({ scene, rig, world, spec, setup, layout, effects, c
   let race;
 
   const guest = {
-    physics,camera,effects,car,wheels,hubs,
+    physics,camera,effects,car,wheels,hubs, paintMaterials: [...paints.values()],
     get race() { return race; },
     reset(x,z,angle,options) {
       race = createRun(layout,options);

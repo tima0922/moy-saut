@@ -26,7 +26,8 @@ export function createDriftWorld(world, layout, asphalt, terrain, shortLayout) {
   const branchDirections = connector.map((_,i) => connector[Math.min(i+1,connector.length-1)]
     .clone().sub(connector[Math.max(0,i-1)]).normalize());
   const details = makeCircuitDetails(layout,connector,branchDirections);
-  group.add(makeCircuitFloor(terrain,asphalt,{ red:red.color,blue:blue.color,white:white.color },details));
+  const floor = makeCircuitFloor(terrain,asphalt,{ red:red.color,blue:blue.color,white:white.color },details);
+  group.add(floor.root);
   const overMain = (x,z) => road.some(p => (p.x-x)**2+(p.z-z)**2 < (ROAD_HALF+.65)**2);
 
   function barrier(x, z, w, d) {
@@ -134,7 +135,7 @@ export function createDriftWorld(world, layout, asphalt, terrain, shortLayout) {
   let active, guestActive;
   const fx = createTireEffects(group);
   return {
-    group, obstacles, fx, kit, makeGuestEffects: () => createTireEffects(group),
+    group, obstacles, fx, kit, setLite: floor.setLite, makeGuestEffects: () => createTireEffects(group),
     markGate(index, guestIndex = -1, route = layout) {
       const playerGate = route.gates[index], guestGate = route.gates[guestIndex];
       if (active === playerGate && guestActive === guestGate) return;
@@ -277,9 +278,65 @@ function makeCircuitFloor(terrain, asphalt, curbColors, details) {
         diffuseColor.rgb *= mix(surfaceColor, curbTint, curb * paintCover);
       `);
   };
-  const floor = new THREE.Mesh(geometry,material);
-  floor.receiveShadow = true;
-  return floor;
+  const lite = new THREE.MeshLambertMaterial();
+  lite.onBeforeCompile = shader => {
+    for (const [name,color] of Object.entries(curbColors)) shader.uniforms[name+'Curb'] = { value:color };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec3 circuitSurface; varying vec3 vCircuitSurface;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCircuitSurface = circuitSurface;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vCircuitSurface; uniform vec3 redCurb, blueCurb, whiteCurb;')
+      .replace('#include <map_fragment>', `
+        float edge = vCircuitSurface.x - ${ROAD_HALF.toFixed(2)};
+        float aa = clamp(fwidth(edge)*0.65, 0.035, 0.6);
+        vec3 verge = mix(vec3(.19,.17,.12), vec3(.074,.106,.064), smoothstep(2.7,3.8,edge));
+        vec3 paving = mix(vec3(.072,.078,.087), verge, smoothstep(-aa,aa,edge));
+        float line = 1.0 - smoothstep(.10-aa,.10+aa,abs(edge+.16));
+        float curb = smoothstep(.03-aa,.03+aa,edge)*(1.0-smoothstep(.77-aa,.77+aa,edge));
+        vec3 stripe = mix(redCurb,blueCurb,vCircuitSurface.z);
+        stripe = mix(stripe,whiteCurb,smoothstep(-.25,.25,vCircuitSurface.y));
+        diffuseColor.rgb *= mix(mix(paving,whiteCurb,line),stripe,curb);
+      `);
+  };
+
+  const full = new THREE.Mesh(geometry,material);
+  full.receiveShadow = true;
+  const root = new THREE.Group();
+  const tiles = new THREE.Group();
+  root.add(full,tiles);
+  const { stride, rows } = terrain;
+  const tileSize = 24;
+  for (let z=0; z<rows; z+=tileSize) for (let x=0; x<stride-1; x+=tileSize) {
+    const cols = Math.min(tileSize,stride-1-x);
+    const height = Math.min(tileSize,rows-z);
+    const width = cols+1;
+    const tile = new THREE.BufferGeometry();
+    for (const name of ['position','normal','circuitSurface']) {
+      const source = geometry.getAttribute(name).array;
+      const data = new Float32Array(width*(height+1)*3);
+      for (let row=0; row<=height; row++) {
+        const start = ((z+row)*stride+x)*3;
+        data.set(source.subarray(start,start+width*3),row*width*3);
+      }
+      tile.setAttribute(name,new THREE.BufferAttribute(data,3));
+    }
+    const indices = new Uint16Array(cols*height*6);
+    for (let row=0; row<height; row++) for (let col=0; col<cols; col++) {
+      const i = row*width+col;
+      indices.set([i,i+width,i+1,i+1,i+width,i+width+1],(row*cols+col)*6);
+    }
+    tile.setIndex(new THREE.BufferAttribute(indices,1));
+    tile.computeBoundingSphere();
+    tiles.add(new THREE.Mesh(tile,lite));
+  }
+  tiles.visible = false;
+  return {
+    root,
+    setLite(enabled) {
+      full.visible = !enabled;
+      tiles.visible = enabled;
+    },
+  };
 }
 
 function grassTexture() {

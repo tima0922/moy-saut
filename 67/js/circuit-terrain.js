@@ -134,7 +134,7 @@ export function circuitTerrain({ arena, road, directions }, connector = []) {
     const h00 = field[i], h10 = field[i+1], h01 = field[i+stride], h11 = field[i+stride+1];
     return a+b <= 1 ? h00+(h10-h00)*a+(h01-h00)*b : h11+(h01-h11)*(1-a)+(h10-h11)*(1-b);
   }
-  return { vertices, indices, surface,
+  return { vertices, indices, surface, stride, rows,
     heightAt: (x,z) => interpolate(heights,x,z),
     gripAt: (x,z) => interpolate(grip,x,z),
     curbAt(x,z) {

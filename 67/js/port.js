@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { dockMaterials,addDockScenery } from './port-scenery.js?v=027';
 import { batchSharedMeshes } from './garage-visuals.js';
 import { createTireEffects } from './drift-world.js?v=024';
 
@@ -69,6 +71,70 @@ const sections = [
   {title:'Последний пролёт',x:0,speed:83,jumps:[[50,73,16,0,5.4,1.5,7]],
     narrow:[[89,118,4.15,3.3]],line:[[43,0],[62,.9],[86,3.1],[112,3.3],[137,0]],down:[118,139,1.5]},
 ];
+// Decks use the center at each end: start Z, end Z, start X, end X, start height, end height, width.
+const rebuilt = {
+  4:{title:'Прыжок по диагонали',speed:54,
+    routeDecks:[[30,47,0,3,0,0,12],[47,62,3,6.5,0,2.75,7.6],[69,94,8.3,10,1.1,1.1,6.7],
+      [94,104,10,8,1.1,2.45,7.5],[109,130,6.7,1,.2,0,9],[130,154,1,0,0,0,14]],
+    line:[[32,0],[48,3],[60,5.7],[70,8],[94,9.6],[104,8.1],[119,4.6],[133,0]]},
+  8:{title:'Крановая развилка',speed:56,branch:['ЛЕВО · 58 КМ/Ч','ПРАВО · 76 КМ/Ч'],
+    routeDecks:[[30,44,0,0,0,0,24],
+      [44,52,-6,-6,0,0,7.2],[52,65,-6,-6,0,2.5,7],
+      [72,101,-6,-6,1.1,1.1,6],[101,123,-6,0,1.1,0,8],
+      [44,53,6,6,0,0,7.2],[53,69,6,6,0,4,6.8],
+      [80,104,6,6,2,2,4.9],[104,123,6,0,2,0,7.3],[123,154,0,0,0,0,14]],
+    line:[[31,0],[44,-6],[103,-6],[126,0],[140,0]],
+    alternate:{speed:76,line:[[31,0],[46,6],[108,6],[128,0],[140,0]]}},
+  12:{title:'Слепая посадка',speed:57,
+    routeDecks:[[30,46,0,-2,0,0,11],[46,63,-2,-5,0,3.05,7],
+      [70,93,-7,-8.2,1.15,1.15,5.55],[93,119,-8.2,-4,1.15,.25,7],
+      [119,137,-4,0,.25,0,8],[137,154,0,0,0,0,14]],
+    line:[[31,0],[45,-2],[62,-5],[78,-7.8],[94,-8],[119,-4.7],[138,0]]},
+  16:{title:'Спуск на баржу',speed:57,
+    routeDecks:[[30,52,0,0,0,4.15,9],[52,67,0,0,4.15,4.15,8],
+      [67,74,0,1.5,4.15,4.4,7.3],[82,105,4,5.3,.6,.6,6.1,'barge'],[105,116,5.3,5.2,.6,1.55,6.1],
+      [120.5,137,4.5,0,.3,0,8],[137,154,0,0,0,0,14]],
+    line:[[54,0],[66,.3],[76,2.6],[91,4.8],[109,5.35],[121,4.25],[137,0]]},
+  18:{title:'Прыжок на верхний ярус',speed:68,
+    routeDecks:[[30,47,0,0,0,1.35,9],[47,64,0,2,1.35,5.35,7],
+      [72,101,3.5,5,4.85,4.85,6.25],[101,107,5,4.2,4.85,4.85,6.25],
+      [115,130,3,1.4,1.45,.65,8],[130,140,1.4,0,.65,0,9],[140,154,0,0,0,0,14]],
+    line:[[44,0],[60,1.3],[77,3.9],[99,4.8],[109,4.2],[123,2],[140,0]]},
+  22:{title:'Контейнерные крыши',speed:62,
+    routeDecks:[[30,47,0,-1.4,0,1.1,12],[47,64,-1.4,-4,1.1,4.25,7.8],
+      [71,93,-5.4,-5.4,3.35,3.35,5.8,'containers'],
+      [93,103,-5.4,-3.2,3.35,4.9,6.1],[109,127,-.9,0,2.8,2.8,6.2,'containers'],
+      [127,141,0,0,2.8,0,10],[141,154,0,0,0,0,14]],
+    line:[[36,-.4],[56,-3],[74,-5.4],[91,-5.4],[103,-2.85],[114,-.65],[133,0]]},
+  25:{title:'Ножницы над каналом',speed:58,
+    routeDecks:[[30,45,0,-1,0,0,10],[45,59,-1,-4.05,0,2.8,7],
+      [65,86,-5.3,-5.1,1.05,1.05,5.6],[86,100,-5.1,-.7,1.05,3.95,6.4],
+      [106,125,1.3,3.05,1.35,1.35,5.4],[125,140,3.05,0,1.35,0,9],
+      [140,154,0,0,0,0,14]],
+    line:[[42,-1],[57,-3.7],[71,-5.25],[84,-5.2],[100,-.6],[114,2.2],[126,2.7],[144,0]]},
+  27:{title:'Свайный мост',speed:35,
+    routeDecks:[[30,49,0,0,0,2.6,8],[49,64,0,-3.5,2.6,2.6,5.95],
+      [64,81,-3.5,-3.5,2.6,2.6,4.45],[81,97,-3.5,2.65,2.6,3.15,5.4],
+      [101,116,4.1,4.1,1.95,1.95,5.45],[116,139,4.1,0,1.95,0,7],
+      [139,154,0,0,0,0,14]],
+    line:[[47,0],[63,-3.5],[79,-3.5],[96,2.4],[104,4.1],[115,4.1],[139,0]]},
+  29:{title:'Диспетчерские пути',speed:48,branch:['ЛЕВО · МОСТ','ПРАВО · ПРЫЖОК'],
+    routeDecks:[[30,45,0,0,0,0,26],
+      [45,63,-6,-6,0,2.8,6.8],[63,103,-6,-6,2.8,2.8,4.45],[103,130,-6,0,2.8,0,7],
+      [45,56,6,6,0,0,6.8],[56,71,6,7,0,3.5,6.35],[82,103,8.1,7.5,1.25,1.25,5.55],
+      [103,130,7.5,0,1.25,0,7],[130,154,0,0,0,0,14]],
+    line:[[30,0],[46,-6],[104,-6],[131,0],[146,0]],
+    alternate:{speed:72,line:[[30,0],[46,6],[70,6.9],[88,7.9],[102,7.5],[132,0],[146,0]]}},
+  30:{title:'Финальный перелёт',speed:81,
+    routeDecks:[[30,51,0,0,0,0,14],[51,74,0,4.15,0,5.45,8],
+      [90,115,7.2,10,1.45,1.45,5.75],[115,137,10,0,1.45,0,9],[137,154,0,0,0,0,14]],
+    line:[[44,0],[61,2],[75,4.25],[94,7.75],[116,9.5],[138,0]]},
+};
+for (const [number,layout] of Object.entries(rebuilt)) {
+  const {x} = sections[number-1];
+  sections[number-1] = {x,...layout};
+}
+
 const END = START+SPAN*sections.length;
 const arena = {x:0,z:(START+END)/2,w:100,d:END-START};
 export const PORT_SPAWN = {x:0,z:515,y:0,yaw:Math.PI};
@@ -86,6 +152,12 @@ function pierSections() {
     const x = section.x;
     const previous = sections[index-1]?.x ?? x;
     const decks = [{x:(previous+x)/2,a:z,b:z+30,w:DECK+Math.abs(x-previous),y0:0,y1:0}];
+    if (section.routeDecks) {
+      for (const [from,to,x0,x1,y0,y1,w,surface] of section.routeDecks) {
+        decks.push({x:x+x0,x1:x+x1,a:z+from,b:z+to,w,y0,y1,surface});
+      }
+      return {...section,z,previous,decks,gate:PORT_GATES[index]};
+    }
     const features = [
       ...(section.jumps ?? []).map(([from,lip,gap,low,high,landing,width])=>({from,to:lip,low,high,width,gap,landing})),
       ...(section.hills ?? []).map(([from,to,low,high,width=DECK,offset=0])=>({from,to,low,high,width,offset})),
@@ -107,11 +179,16 @@ function pierSections() {
 export const PORT_SECTORS = pierSections();
 
 export function portLayout() {
-  const road = [PORT_SPAWN,...PORT_GATES].flatMap((gate,i)=>i ? [
-    {x:gate.x,z:START+(i-1)*SPAN+29},gate,
-  ] : [gate]).map(({x,z})=>new THREE.Vector3(x,0,z));
+  const vector = ({x,z})=>new THREE.Vector3(x,0,z);
+  const road = [vector(PORT_SPAWN)];
+  const branches = [];
+  for (const sector of PORT_SECTORS) {
+    const centerline = points=>(points ?? []).map(([z,x])=>vector({x:sector.x+x,z:sector.z+z}));
+    road.push(vector({x:sector.x,z:sector.z+29}),...centerline(sector.line),vector(sector.gate));
+    if (sector.alternate) branches.push(centerline(sector.alternate.line));
+  }
   const direction = new THREE.Vector3(0,0,1);
-  return {port:true,arena,spawn:PORT_SPAWN,road,gates:PORT_GATES.map(gate=>({
+  return {port:true,arena,spawn:PORT_SPAWN,road,branches,gates:PORT_GATES.map(gate=>({
     position:new THREE.Vector3(gate.x,gate.y,gate.z),direction,
   }))};
 }
@@ -172,8 +249,11 @@ export function portWorld(world) {
   const material = color=>new THREE.MeshStandardMaterial({color,roughness:.84});
   const steel=material(0x525d65), deck=material(0x70797d), yellow=material(0xf6bc50);
   const ink=material(0x222f36), aqua=material(0x287d82), rust=material(0xa55838), light=material(0xf2ead4);
-  const colors=[rust,aqua,steel];
-  const water=new THREE.Mesh(new THREE.PlaneGeometry(126,END-START+40),new THREE.MeshBasicMaterial({color:0x214655}));
+  const scenery = dockMaterials();
+  const waterLength=END-START+46;
+  scenery.water.repeat.set(140/17,waterLength/18);
+  const water=new THREE.Mesh(new THREE.PlaneGeometry(140,waterLength),
+    new THREE.MeshBasicMaterial({color:0xe6f0ef,map:scenery.water}));
   water.rotation.x=-Math.PI/2;
   water.position.set(0,-4.1,arena.z);
   group.add(water);
@@ -186,40 +266,48 @@ export function portWorld(world) {
     const sectionObstacles = [];
     cameraShapes.push(sectionObstacles);
     group.add(chunk);
-    const block=(x,y,z,w,h,d,paint,pitch=0)=>{
-      const mesh=box(chunk,[w,h,d],[x,y,z],paint,[pitch,0,0]);
+    const block=(x,y,z,w,h,d,paint,pitch=0,yaw=0)=>{
+      const mesh=box(chunk,[w,h,d],[x,y,z],paint,[pitch,yaw,0,'YXZ']);
       mesh.castShadow=false;
       return mesh;
     };
-    function structure(x,y,z,w,h,d,paint,pitch=0,drivable=false) {
-      const mesh=block(x,y,z,w,h,d,paint,pitch);
-      const shape = {x,y:y-h/2,z,w,h,d,pitch,drivable};
+    function structure(x,y,z,w,h,d,paint,pitch=0,drivable=false,yaw=0) {
+      const mesh=block(x,y,z,w,h,d,paint,pitch,yaw);
+      const shape = {x,y:y-h/2,z,w,h,d,pitch,yaw,drivable};
       obstacles.push(shape);
       if (!drivable) sectionObstacles.push(shape);
       return mesh;
     }
-    for (const {x,a,b,w,y0,y1} of section.decks) {
-      const middle=(y0+y1)/2,pitch=-Math.atan2(y1-y0,b-a),depth=Math.hypot(b-a,y1-y0),z=(a+b)/2;
-      structure(x,middle-.45*Math.cos(pitch),z-.45*Math.sin(pitch),w,.9,depth,deck,pitch,true).receiveShadow=true;
+    const deckTops = [];
+    for (const {x,x1=x,a,b,w,y0,y1,surface} of section.decks) {
+      const dx=x1-x,dz=b-a,dy=y1-y0;
+      const yaw=Math.atan2(dx,dz), pitch=-Math.atan2(dy,Math.hypot(dx,dz)), depth=Math.hypot(dx,dz,dy);
+      const cx=(x+x1)/2, cy=(y0+y1)/2, cz=(a+b)/2;
+      const normalX=Math.sin(yaw)*Math.sin(pitch),normalZ=Math.cos(yaw)*Math.sin(pitch);
+      const paint=surface==='barge' || surface==='containers' ? steel : deck;
+      structure(cx-.45*normalX,cy-.45*Math.cos(pitch),cz-.45*normalZ,w,.9,depth,paint,pitch,true,yaw);
+      const top = new THREE.PlaneGeometry(w,depth);
+      top.applyQuaternion(new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch,yaw,0,'YXZ'))
+        .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2)));
+      top.translate(cx+.012*normalX,cy+.012*Math.cos(pitch),cz+.012*normalZ);
+      const uv = top.getAttribute('uv');
+      for (let i=0;i<uv.count;i++) uv.setXY(i,uv.getX(i)*w,uv.getY(i)*depth);
+      deckTops.push(top);
       for (const side of [-1,1]) {
-        block(x+side*(w/2-.14),middle+.023,z,.14,.018,depth,yellow,pitch);
+        const edge=side*(w/2-.14);
+        block(cx+Math.cos(yaw)*edge,cy+.023,cz-Math.sin(yaw)*edge,.14,.018,depth,yellow,pitch,yaw);
       }
       if (pitch<-.09) for (let k=1;k<=3;k++) {
         const t=k/4;
-        block(x,y0+(y1-y0)*t+.025,a+(b-a)*t,w-.4,.025,.26,k%2 ? yellow : ink,pitch);
+        block(x+dx*t,y0+dy*t+.025,a+dz*t,w-.4,.025,.26,k%2 ? yellow : ink,pitch,yaw);
       }
     }
 
-    // The repeated scenery is decorative and batched per section; only course blockers need colliders.
-    for (let n=0;n<6;n++) {
-      const side=n%2 ? 1 : -1;
-      const x=section.x+side*(15+(n%3)*2.1);
-      const z=section.z+38+n*17;
-      const y=-2.1+(n%2)*.6;
-      block(x,y,z,3.2,3.5,11.5,colors[(index+n)%colors.length]);
-      for (let rib=0;rib<6;rib++) block(x-side*1.63,y,z-4.75+rib*1.9,.08,3.35,.11,ink);
-      block(x,y+1.78,z,3.3,.12,11.6,steel);
-    }
+    const topMesh = new THREE.Mesh(mergeGeometries(deckTops),scenery.deck);
+    topMesh.receiveShadow=true;
+    deckTops.forEach(geometry=>geometry.dispose());
+    chunk.add(topMesh);
+    addDockScenery(block,section,index,scenery);
 
     for (const [along,side,offset=3.25,width=7,floor=0] of section.slalom ?? []) {
       const x=section.x+side*offset,z=section.z+along;
@@ -256,6 +344,10 @@ export function portWorld(world) {
       5.5,.57,[x,y+3.29,z-.19],[0,Math.PI,0],'#fff5d9','#263b44');
     textPlane(chunk,section.title.toUpperCase()+` · ${section.speed} КМ/Ч`,12,.62,
       [(section.previous+section.x)/2,3.8,section.z+22],[0,Math.PI,0],'#ffe6a7','#263b44');
+    if (section.branch) for (const [lane,label] of section.branch.entries()) {
+      textPlane(chunk,label,7.4,.59,[section.x+(lane ? 6 : -6),2.85,section.z+37],
+        [0,Math.PI,0],'#ffe6a7','#263b44');
+    }
     if (finish) structure(x,.7,END-.5,DECK,1.4,.55,steel);
     batchSharedMeshes(chunk);
   });
@@ -263,6 +355,7 @@ export function portWorld(world) {
   const cameraBuckets = cameraShapes.map((_,i)=>cameraShapes.slice(Math.max(0,i-1),i+2).flat());
   return {
     group,obstacles,fx:createTireEffects(group),markGate() {},
+    animate(now) { scenery.water.offset.set((now*.000035)%1,(now*.000061)%1); },
     cameraNear(z) {
       return cameraBuckets[THREE.MathUtils.clamp(Math.floor((z-START)/SPAN),0,chunks.length-1)];
     },

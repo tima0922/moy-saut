@@ -1,7 +1,7 @@
 import { Group, Quaternion, Vector3, MathUtils } from 'three';
-import { enterRoom } from './online.js?v=026';
+import { enterRoom } from './online.js?v=027';
 
-import { MATCH_MODES,RESET_PENALTY,formatTime,rankRound } from './competition.js?v=026';
+import { MATCH_MODES,RESET_PENALTY,formatTime,rankRound } from './competition.js?v=027';
 
 const scoreFormat = new Intl.NumberFormat('ru-RU');
 const $ = selector => document.querySelector(selector);

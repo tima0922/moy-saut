@@ -11,7 +11,7 @@ registerHooks({resolve(specifier,context,next) {
 }});
 
 const {BoxGeometry,Mesh,Scene} = await import('three');
-const {portCourse,portWorld,PORT_GATES,PORT_SPAWN,PORT_SECTORS,PORT_LENGTH,PORT_SPAN} = await import('../js/port.js');
+const {portCourse,portWorld,portLayout,PORT_GATES,PORT_SPAWN,PORT_SECTORS,PORT_LENGTH,PORT_SPAN} = await import('../js/port.js');
 const {MODELS,STEP,createPhysics} = await import('../js/vehicle.js');
 const {loadPit,setupFor} = await import('../js/pit-save.js');
 
@@ -72,7 +72,7 @@ test('finish counts while crossing the outside curb at suspension height', () =>
   assert.equal(run.reset(),null);
 });
 
-test('all four cars clear the expanded port with digital steering and nearby chunks', async () => {
+test('all four cars clear the dock course, its branches, and retries with digital steering', async () => {
   const savedDocument = globalThis.document;
   globalThis.document = {createElement:()=>({getContext:()=>({
     createRadialGradient:()=>({addColorStop() {}}),fillRect() {},
@@ -91,23 +91,33 @@ test('all four cars clear the expanded port with digital steering and nearby chu
   finally { globalThis.document = savedDocument; }
   const chunks = track.group.children.filter(child=>child.isGroup);
   assert.equal(chunks.length,PORT_GATES.length);
+  assert.equal(portLayout().branches.length,2);
   for (const sector of PORT_SECTORS) {
     track.showAround(sector.gate.z,185);
-    assert.ok(chunks.filter(chunk=>chunk.visible).length<=3);
+    const near = chunks.filter(chunk=>chunk.visible);
+    assert.ok(near.length<=3);
+    let drawObjects = 0;
+    for (const chunk of near) chunk.traverseVisible(mesh=>{if(mesh.isMesh) drawObjects++;});
+    assert.ok(drawObjects<=110,`dock draw-object count ${drawObjects}`);
   }
 
   const physics = await createPhysics(track.obstacles.map(shape=>({...shape,region:'port'})));
   physics.setRegion('port');
   const pit = loadPit();
   const clamp = (value,min,max)=>Math.max(min,Math.min(max,value));
-  const guides = PORT_SECTORS.map(sector=>[
-    [0,sector.previous],[26,sector.x],
-    ...(sector.line ?? sector.slalom?.map(([z,side,offset=3.25,width=7])=>
-      [z,-side*Math.max(2.72,width/2-offset+1.32)]) ?? []).map(([z,x])=>[z,sector.x+x]),
-    [145,sector.x],[PORT_SPAN,sector.x],
-  ]);
-  function targetLane(i,z) {
-    const points = guides[i];
+  function routePoints(sector) {
+    return [
+      [0,sector.previous],[26,sector.x],
+      ...(sector.line ?? sector.slalom?.map(([z,side,offset=3.25,width=7])=>
+        [z,-side*Math.max(2.72,width/2-offset+1.32)]) ?? []).map(([z,x])=>[z,sector.x+x]),
+      [145,sector.x],[PORT_SPAN,sector.x],
+    ];
+  }
+  const guides = PORT_SECTORS.map(routePoints);
+  const alternatives = new Map(PORT_SECTORS.flatMap((sector,index)=>sector.alternate ?
+    [[index,routePoints({...sector,...sector.alternate})]] : []));
+  function targetLane(i,z,alternate) {
+    const points = alternate ? alternatives.get(i) : guides[i];
     const local = clamp(z-PORT_SECTORS[i].z,0,PORT_SPAN);
     const next = points.findIndex(([at])=>at>=local);
     if (next===0) return points[0][1];
@@ -115,17 +125,17 @@ test('all four cars clear the expanded port with digital steering and nearby chu
     return x+(y-x)*(local-a)/(b-a);
   }
 
-  function controller() {
+  function controller(alternate=false) {
     let steerError = 0;
     return function tick(index,speedCap=Infinity) {
       const {x,z} = physics.position;
       const speed = physics.totalSpeed*3.6;
       const sector = PORT_SECTORS[index];
       const local = z-sector.z;
-      const pace = sector.pace?.find(([end])=>local<=end)?.[1] ?? sector.speed;
+      const pace = alternate ? sector.alternate.speed : sector.pace?.find(([end])=>local<=end)?.[1] ?? sector.speed;
       const cornerSpeed = local<19 && sector.previous!==sector.x ? Math.min(37,pace) : pace;
       const targetSpeed = Math.min(speedCap,cornerSpeed);
-      const targetX = targetLane(index,z+6);
+      const targetX = targetLane(index,z+6,alternate);
       steerError += clamp((x-targetX)*.21+physics.velocity.x*.205,-.85,.85);
       const turn = Math.abs(steerError)>.5 ? Math.sign(steerError) : 0;
       steerError -= turn;
@@ -150,13 +160,22 @@ test('all four cars clear the expanded port with digital steering and nearby chu
 
     for (let index=1;index<PORT_GATES.length;index++) {
       const previous = PORT_GATES[index-1];
-      physics.reset(previous.x,previous.z+2.2,PORT_SPAWN.yaw,previous.y);
-      physics.running = true;
-      const retry = controller();
       const gate = PORT_GATES[index];
-      for (let frame=0;frame<2500 && physics.position.z<gate.z && physics.position.y>=-3.1;frame++) retry(index);
-      assert.ok(physics.position.z>=gate.z && physics.position.y>-.65 &&
-        Math.abs(physics.position.x-gate.x)<=gate.w/2, `${id} · checkpoint ${index+1}`);
+      const sector = PORT_SECTORS[index];
+      for (const alternate of sector.alternate ? [false,true] : [false]) {
+        physics.reset(previous.x,previous.z+2.2,PORT_SPAWN.yaw,previous.y);
+        physics.running = true;
+        const retry = controller(alternate);
+        let usedLane = false;
+        for (let frame=0;frame<2500 && physics.position.z<gate.z && physics.position.y>=-3.1;frame++) {
+          retry(index);
+          const {x,z} = physics.position;
+          if (z>=sector.z+88 && z<=sector.z+94 && (alternate ? x>sector.x+3.2 : x<sector.x-3.2)) usedLane = true;
+        }
+        assert.ok(physics.position.z>=gate.z && physics.position.y>-.65 &&
+          Math.abs(physics.position.x-gate.x)<=gate.w/2, `${id} · checkpoint ${index+1} · alternate=${alternate}`);
+        if (sector.alternate) assert.ok(usedLane,`${id} · lane ${index+1} · alternate=${alternate}`);
+      }
     }
   }
 

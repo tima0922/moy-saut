@@ -64,7 +64,7 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
   const driveableShapes = [];
   for (const { x, z, w, d, h, y = 0, yaw = 0, radius, region, pitch = 0, drivable } of obstacles) {
     const collider = radius ? RAPIER.ColliderDesc.cylinder(h/2,radius) : RAPIER.ColliderDesc.cuboid(w/2,h/2,d/2);
-    const rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch,yaw,0));
+    const rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch,yaw,0,'YXZ'));
     const shape = physics.createCollider(collider.setTranslation(x,y+h/2,z).setRotation(rotation));
     if (drivable) driveableShapes.push(shape.handle);
     if (region) {

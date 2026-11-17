@@ -62,10 +62,15 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
   const regions = new Map();
   let currentRegion;
   const driveableShapes = [];
-  for (const { x, z, w, d, h, y = 0, yaw = 0, radius, region, pitch = 0, drivable } of obstacles) {
+  const movingShapes = [];
+  for (const { x, z, w, d, h, y = 0, yaw = 0, radius, region, pitch = 0, drivable, motion } of obstacles) {
     const collider = radius ? RAPIER.ColliderDesc.cylinder(h/2,radius) : RAPIER.ColliderDesc.cuboid(w/2,h/2,d/2);
     const rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch,yaw,0,'YXZ'));
-    const shape = physics.createCollider(collider.setTranslation(x,y+h/2,z).setRotation(rotation));
+    const body = motion && physics.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased()
+      .setTranslation(x,y+h/2,z));
+    const shape = body ? physics.createCollider(collider.setRotation(rotation),body)
+      : physics.createCollider(collider.setTranslation(x,y+h/2,z).setRotation(rotation));
+    if (body) movingShapes.push({body,shape,z,motion,active:false});
     if (drivable) driveableShapes.push(shape.handle);
     if (region) {
       if (!regions.has(region)) regions.set(region,[]);
@@ -75,6 +80,7 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
   const gate = physics.createCollider(RAPIER.ColliderDesc.cuboid(2.56, 2.18, .13).setTranslation(0, 2.18, 7.95));
   const cars = new Set();
   const impacts = new Set();
+  let trapHit = false;
   const hullHandles = new Set();
   let carContacts = true;
   const hullGroups = () => (HULL_GROUP << 16) | STATIC_GROUP | (carContacts ? HULL_GROUP : 0);
@@ -436,6 +442,7 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       get slip() { return slip; },
       get grounded() { return grounded; },
       get hit() { return hit; },
+      get trapHit() { return car===player && trapHit; },
       get up() { return up; },
       wheelContact(i) { return suspension.wheelIsInContact(i) ? suspension.wheelContactPoint(i) : null; },
       get position() { return currentPose.position; },
@@ -461,11 +468,21 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       for (const car of cars) car.collider.setCollisionGroups(hullGroups());
     },
     tick(input = {}, guestInput = {}) {
+      if (currentRegion==='port') for (const item of movingShapes) {
+        const active=Math.abs(player.position.z-item.z)<46;
+        if (active) {
+          const pose=item.motion(input.portTime ?? 0);
+          if (!item.active) item.body.setTranslation(pose,true);
+          item.body.setNextKinematicTranslation(pose);
+        }
+        item.active=active;
+      }
       gate.setTranslation({ x: 0, y: (input.gateY ?? 0) + 2.18, z: 7.95 });
       const brakes = [];
       for (const car of cars) brakes.push(car.prepare(car === player ? input : guestInput));
       physics.step(events);
       impacts.clear();
+      trapHit = false;
       events.drainContactForceEvents(event => {
         const a = event.collider1(), b = event.collider2();
         if (!groundHandles.has(a) && !groundHandles.has(b)) {
@@ -473,6 +490,10 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
           impacts.add(b);
         }
       });
+      if (currentRegion==='port') for (const {shape,z,active} of movingShapes) {
+        if (!active || Math.abs(player.collider.translation().z-z)>3.9) continue;
+        if (player.collider.contactCollider(shape,.045)) trapHit = true;
+      }
       for (const car of cars) {
         if (!carContacts || car === player) continue;
         physics.contactPair(player.collider,car.collider,manifold => {

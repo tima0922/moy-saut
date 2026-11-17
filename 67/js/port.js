@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { dockMaterials,addDockScenery } from './port-scenery.js?v=027';
+import { dockMaterials,addDockScenery } from './port-scenery.js?v=028';
+import { HARBOR_WATER,harborScenery } from './port-harbor.js?v=028';
+import { buildPortHazard,portHazards,portHazardPose,portSignal } from './port-hazards.js?v=028';
 import { batchSharedMeshes } from './garage-visuals.js';
 import { createTireEffects } from './drift-world.js?v=024';
 
@@ -17,7 +19,8 @@ const sections = [
   {title:'Двойной трамплин',x:10,speed:55,jumps:[[41,53,4,0,2.4,1.1,10],[84,96,5,1.1,3.55,2,9]],down:[115,134,2]},
   {title:'Верхняя эстакада',x:-6,speed:45,hills:[[38,55,0,2.8],[62,75,2.8,4.5]],
     narrow:[[55,62,6.3],[75,112,6.8]],down:[112,134,4.5]},
-  {title:'Пролёт над доком',x:-6,speed:76,jumps:[[55,72,11,0,4.3,1.65,10]],down:[112,130,1.65]},
+  {title:'Прыжок над сухогрузом',x:-6,speed:82,ship:true,
+    jumps:[[53,72,15,0,4.65,1.48,8]],narrow:[[87,112,5.8]],down:[112,131,1.48]},
   {title:'Прыжок с высоты',x:8,speed:57,hills:[[34,52,0,3.6]],
     jumps:[[72,84,9,3.6,4.8,.95,9]],down:[118,134,.95]},
   {title:'Складские ворота',x:4,speed:36,slalom:[[43,-1],[69,1],[95,-1],[119,1]]},
@@ -28,8 +31,8 @@ const sections = [
     line:[[32,0],[56,0],[73,2.6],[114,2.6],[128,0]]},
   {title:'Косая посадка',x:5,speed:62,jumps:[[49,65,7.5,0,3.15,1.25,8]],
     narrow:[[72.5,96,4.1,3.8]],line:[[45,0],[58,1.2],[76,3.7],[91,3.8],[114,0]],down:[104,129,1.25]},
-  {title:'Обрезанный мост',x:5,speed:77,jumps:[[52,71,13,0,4.5,1.45,6.3]],
-    narrow:[[84,115,4.05]],down:[115,136,1.45]},
+  {title:'Дальняя посадка над фарватером',x:5,speed:79,ship:true,pace:[[86,79],[154,42]],
+    jumps:[[52,71,14,0,4.65,1.5,6.3]],narrow:[[85,115,3.65]],down:[115,136,1.5]},
   {title:'Слалом без бортов',x:-5,speed:35,narrow:[[31,131,8.7]],
     slalom:[[43,1,2.5,4.8],[66,-1,2.5,4.8],[89,1,2.5,4.8],[112,-1,2.5,4.8]]},
   {title:'Короткая посадка',x:8,speed:57,jumps:[[44,59,6,0,3,1.3,7],[83,95,5.8,1.3,3.8,1.55,6.4]],
@@ -45,8 +48,11 @@ const sections = [
     narrow:[[46,128,8.2]],slalom:[[55,-1,2.35,4.4,2.2],[79,1,2.35,4.4,2.2],[103,-1,2.35,4.4,2.2],[122,1,2.35,4.4,2.2]],down:[128,139,2.2]},
   {title:'Прыжок из-под крыши',x:-7,speed:58,arches:[[52,0,5.2,1.9]],
     jumps:[[59,72,7,0,3.2,1.1,5.6]],narrow:[[36,59,5],[79,111,4.25]],down:[113,134,1.1]},
-  {title:'Мост-лезвие',x:0,speed:41,hills:[[36,54,0,3.5,4.25]],
-    narrow:[[54,118,3.25]],down:[118,139,3.5]},
+  {title:'Лезвие над причалом',x:0,speed:31,
+    routeDecks:[[30,36,0,0,0,0,14],[36,54,0,0,0,3.5,4.6],[54,68,0,-1.14,3.5,3.5,3.68],
+      [68,81,-1.14,-1.14,3.5,3.5,3.2],[81,99,-1.14,1.25,3.5,3.5,3.34],
+      [99,119,1.25,1.25,3.5,3.5,3.22],[119,139,1.25,0,3.5,0,6.3],[139,154,0,0,0,0,14]],
+    line:[[54,0],[68,-1.14],[81,-1.14],[99,1.25],[119,1.25],[139,0]]},
   {title:'Падение на полку',x:9,speed:58,hills:[[37,55,0,4.4,7]],
     jumps:[[67,80,9,4.4,5.45,1.05,6.7]],narrow:[[89,111,4.1,-3.15]],
     line:[[59,0],[71,-.7],[88,-3.15],[105,-3.15],[126,0]],down:[113,137,1.05]},
@@ -58,8 +64,8 @@ const sections = [
   {title:'Ножницы',x:-5,speed:59,jumps:[[41,54,5.5,0,2.55,1,7],[85,98,6.5,1,3.9,1.6,7]],
     narrow:[[59.5,78,4.4,3.55],[104.5,122,4.35,-3.35]],
     line:[[38,0],[52,1.75],[68,3.45],[76,3.25],[91,-1.25],[108,-3.3],[118,-3.1],[136,0]],down:[122,138,1.6]},
-  {title:'Контейнерная пропасть',x:-5,speed:82,jumps:[[54,73,14.8,0,5.0,1.45,6.2]],
-    narrow:[[87.8,115,4.1]],down:[115,139,1.45]},
+  {title:'Контейнеровоз под колёсами',x:-5,speed:86,ship:true,pace:[[90,86],[154,48]],
+    jumps:[[53,73,17,0,5.4,1.4,6.2]],narrow:[[90,115,3.85]],down:[115,139,1.4]},
   {title:'Опоры крана',x:6,speed:35,hills:[[33,49,0,2.75,8.1]],narrow:[[49,126,8.6]],
     slalom:[[57,1,2.45,4.7,2.75],[81,-1,2.45,4.7,2.75],[104,1,2.45,4.7,2.75]],down:[126,140,2.75]},
   {title:'Тройной трамплин',x:0,speed:61,jumps:[[40,52,4.8,0,2.35,.85,7],
@@ -74,7 +80,7 @@ const sections = [
 // Decks use the center at each end: start Z, end Z, start X, end X, start height, end height, width.
 const rebuilt = {
   4:{title:'Прыжок по диагонали',speed:54,
-    routeDecks:[[30,47,0,3,0,0,12],[47,62,3,6.5,0,2.75,7.6],[69,94,8.3,10,1.1,1.1,6.7],
+    routeDecks:[[30,47,0,3,0,0,12],[47,62,3,6.5,0,2.75,7.6],[69,94,8.3,10,1.1,1.1,6.7,'roof'],
       [94,104,10,8,1.1,2.45,7.5],[109,130,6.7,1,.2,0,9],[130,154,1,0,0,0,14]],
     line:[[32,0],[48,3],[60,5.7],[70,8],[94,9.6],[104,8.1],[119,4.6],[133,0]]},
   8:{title:'Крановая развилка',speed:56,branch:['ЛЕВО · 58 КМ/Ч','ПРАВО · 76 КМ/Ч'],
@@ -95,9 +101,9 @@ const rebuilt = {
       [67,74,0,1.5,4.15,4.4,7.3],[82,105,4,5.3,.6,.6,6.1,'barge'],[105,116,5.3,5.2,.6,1.55,6.1],
       [120.5,137,4.5,0,.3,0,8],[137,154,0,0,0,0,14]],
     line:[[54,0],[66,.3],[76,2.6],[91,4.8],[109,5.35],[121,4.25],[137,0]]},
-  18:{title:'Прыжок на верхний ярус',speed:68,
+  18:{title:'Прыжок на крышу склада',speed:68,
     routeDecks:[[30,47,0,0,0,1.35,9],[47,64,0,2,1.35,5.35,7],
-      [72,101,3.5,5,4.85,4.85,6.25],[101,107,5,4.2,4.85,4.85,6.25],
+      [72,101,3.5,5,4.85,4.85,6.25,'roof'],[101,107,5,4.2,4.85,4.85,6.25],
       [115,130,3,1.4,1.45,.65,8],[130,140,1.4,0,.65,0,9],[140,154,0,0,0,0,14]],
     line:[[44,0],[60,1.3],[77,3.9],[99,4.8],[109,4.2],[123,2],[140,0]]},
   22:{title:'Контейнерные крыши',speed:62,
@@ -125,7 +131,7 @@ const rebuilt = {
       [103,130,7.5,0,1.25,0,7],[130,154,0,0,0,0,14]],
     line:[[30,0],[46,-6],[104,-6],[131,0],[146,0]],
     alternate:{speed:72,line:[[30,0],[46,6],[70,6.9],[88,7.9],[102,7.5],[132,0],[146,0]]}},
-  30:{title:'Финальный перелёт',speed:81,
+  30:{title:'Финиш над кораблём',speed:81,
     routeDecks:[[30,51,0,0,0,0,14],[51,74,0,4.15,0,5.45,8],
       [90,115,7.2,10,1.45,1.45,5.75],[115,137,10,0,1.45,0,9],[137,154,0,0,0,0,14]],
     line:[[44,0],[61,2],[75,4.25],[94,7.75],[116,9.5],[138,0]]},
@@ -245,17 +251,19 @@ export function portWorld(world) {
   const group = new THREE.Group();
   group.visible = false;
   scene.add(group);
-  const obstacles = [];
+  const obstacles = [], visualHazards = [];
+  const hazards = portHazards(PORT_SECTORS);
+  const harbor = harborScenery();
   const material = color=>new THREE.MeshStandardMaterial({color,roughness:.84});
   const steel=material(0x525d65), deck=material(0x70797d), yellow=material(0xf6bc50);
   const ink=material(0x222f36), aqua=material(0x287d82), rust=material(0xa55838), light=material(0xf2ead4);
   const scenery = dockMaterials();
-  const waterLength=END-START+46;
-  scenery.water.repeat.set(140/17,waterLength/18);
-  const water=new THREE.Mesh(new THREE.PlaneGeometry(140,waterLength),
+  const waterLength=END-START+320;
+  scenery.water.repeat.set(440/17,waterLength/18);
+  const water=new THREE.Mesh(new THREE.PlaneGeometry(440,waterLength),
     new THREE.MeshBasicMaterial({color:0xe6f0ef,map:scenery.water}));
   water.rotation.x=-Math.PI/2;
-  water.position.set(0,-4.1,arena.z);
+  water.position.set(0,HARBOR_WATER,arena.z);
   group.add(water);
   const chunks = [], cameraShapes = [];
   let visibleFirst=-1,visibleLast=-1;
@@ -308,6 +316,14 @@ export function portWorld(world) {
     deckTops.forEach(geometry=>geometry.dispose());
     chunk.add(topMesh);
     addDockScenery(block,section,index,scenery);
+    chunk.add(harbor.createChunk(section,index));
+    for (const hazard of hazards) {
+      if (hazard.z<section.z || hazard.z>=section.z+SPAN) continue;
+      const visual=buildPortHazard(chunk,world,hazard,{steel,ink,rust,yellow,light});
+      batchSharedMeshes(visual.body);
+      visualHazards.push(visual);
+      obstacles.push({...hazard,motion:time=>portHazardPose(hazard,time)});
+    }
 
     for (const [along,side,offset=3.25,width=7,floor=0] of section.slalom ?? []) {
       const x=section.x+side*offset,z=section.z+along;
@@ -355,7 +371,22 @@ export function portWorld(world) {
   const cameraBuckets = cameraShapes.map((_,i)=>cameraShapes.slice(Math.max(0,i-1),i+2).flat());
   return {
     group,obstacles,fx:createTireEffects(group),markGate() {},
-    animate(now) { scenery.water.offset.set((now*.000035)%1,(now*.000061)%1); },
+    animate(now,time) {
+      scenery.water.offset.set((now*.000035)%1,(now*.000061)%1);
+      for (const {hazard,body,amber} of visualHazards) {
+        if (!body.parent.visible) continue;
+        const {x,y,z}=portHazardPose(hazard,time);
+        body.position.set(x,y,z);
+        const [state]=portSignal(hazard,time);
+        amber.color.setHex(state==='open' ? 0x79fa95 : state==='opening' || state==='closing' ? 0xffc555 : 0xff5942);
+      }
+    },
+    signalNear(z,time) {
+      const hazard=hazards.find(item=>item.z-z>=-2.7 && item.z-z<=36);
+      if (!hazard) return null;
+      const [state,remaining]=portSignal(hazard,time);
+      return {state,remaining,distance:Math.max(0,hazard.z-z)};
+    },
     cameraNear(z) {
       return cameraBuckets[THREE.MathUtils.clamp(Math.floor((z-START)/SPAN),0,chunks.length-1)];
     },

@@ -72,7 +72,7 @@ test('finish counts while crossing the outside curb at suspension height', () =>
   assert.equal(run.reset(),null);
 });
 
-test('all four cars clear the dock course, its branches, and retries with digital steering', async () => {
+test('all four cars clear the timed harbor course, its branches, and retries with digital steering', async () => {
   const savedDocument = globalThis.document;
   globalThis.document = {createElement:()=>({getContext:()=>({
     createRadialGradient:()=>({addColorStop() {}}),fillRect() {},
@@ -92,6 +92,8 @@ test('all four cars clear the dock course, its branches, and retries with digita
   const chunks = track.group.children.filter(child=>child.isGroup);
   assert.equal(chunks.length,PORT_GATES.length);
   assert.equal(portLayout().branches.length,2);
+  assert.equal(track.obstacles.filter(shape=>shape.motion).length,6);
+  assert.equal(PORT_SECTORS.filter(sector=>sector.ship).length,3);
   for (const sector of PORT_SECTORS) {
     track.showAround(sector.gate.z,185);
     const near = chunks.filter(chunk=>chunk.visible);
@@ -127,19 +129,28 @@ test('all four cars clear the dock course, its branches, and retries with digita
 
   function controller(alternate=false) {
     let steerError = 0;
+    let time = 0, crossing = false;
     return function tick(index,speedCap=Infinity) {
+      time+=STEP*1000;
       const {x,z} = physics.position;
       const speed = physics.totalSpeed*3.6;
       const sector = PORT_SECTORS[index];
       const local = z-sector.z;
       const pace = alternate ? sector.alternate.speed : sector.pace?.find(([end])=>local<=end)?.[1] ?? sector.speed;
       const cornerSpeed = local<19 && sector.previous!==sector.x ? Math.min(37,pace) : pace;
-      const targetSpeed = Math.min(speedCap,cornerSpeed);
+      const signal = track.signalNear(z,time);
+      if (!signal) crossing=false;
+      if (signal?.state==='open' && signal.distance<11 && signal.remaining>2750) crossing=true;
+      const brakeSpeed = signal && !crossing
+        ? 3.6*Math.sqrt(Math.max(0,4.7*(signal.distance-8))) : Infinity;
+      const targetSpeed = Math.min(speedCap,cornerSpeed,brakeSpeed);
       const targetX = targetLane(index,z+6,alternate);
       steerError += clamp((x-targetX)*.21+physics.velocity.x*.205,-.85,.85);
       const turn = Math.abs(steerError)>.5 ? Math.sign(steerError) : 0;
       steerError -= turn;
-      physics.tick({occupied:true,gas:speed<targetSpeed,reverse:speed>targetSpeed+3,turn});
+      physics.tick({occupied:true,gas:speed<targetSpeed,reverse:speed>targetSpeed+(brakeSpeed<cornerSpeed?1.5:3),
+        parking:targetSpeed===0 && speed<1.6,turn,portTime:time});
+      assert.ok(!physics.trapHit,`timed controller hit a trap at stage ${index+1} (Z ${z.toFixed(1)} · ${JSON.stringify(signal)} · ${time.toFixed(0)})`);
     };
   }
 
@@ -155,7 +166,7 @@ test('all four cars clear the dock course, its branches, and retries with digita
       tick(index);
       run.tick(frame*STEP*1000,physics.position);
     }
-    assert.equal(run.next,PORT_GATES.length,id);
+    assert.equal(run.next,PORT_GATES.length,`${id} at ${physics.position.toArray()}`);
     assert.ok(Number.isFinite(run.elapsed),id);
 
     for (let index=1;index<PORT_GATES.length;index++) {
@@ -173,10 +184,29 @@ test('all four cars clear the dock course, its branches, and retries with digita
           if (z>=sector.z+88 && z<=sector.z+94 && (alternate ? x>sector.x+3.2 : x<sector.x-3.2)) usedLane = true;
         }
         assert.ok(physics.position.z>=gate.z && physics.position.y>-.65 &&
-          Math.abs(physics.position.x-gate.x)<=gate.w/2, `${id} · checkpoint ${index+1} · alternate=${alternate}`);
-        if (sector.alternate) assert.ok(usedLane,`${id} · lane ${index+1} · alternate=${alternate}`);
+          Math.abs(physics.position.x-gate.x)<=gate.w/2, `${id} · checkpoint ${index+1} · alternate=${alternate} at ${physics.position.toArray()}`);
+        if (sector.alternate) assert.ok(usedLane,`${id} · lane ${index+1} · alternate=${alternate} at ${physics.position.toArray()}`);
       }
     }
+  }
+
+  const firstTrap = track.obstacles.find(shape=>shape.motion);
+  const closedTime = Array.from({length:80},(_,i)=>i*100).find(time=>
+    track.signalNear(firstTrap.z-15,time).state==='closed');
+  const openTime = Array.from({length:80},(_,i)=>i*100).find(time=>
+    track.signalNear(firstTrap.z-15,time).state==='open');
+  assert.notEqual(closedTime,undefined);
+  assert.notEqual(openTime,undefined);
+  for (const time of [closedTime,openTime]) {
+    physics.reset(firstTrap.x,firstTrap.z-14,PORT_SPAWN.yaw);
+    physics.running = true;
+    let hit = false;
+    for (let i=0;i<480 && !hit && physics.position.z<firstTrap.z+5;i++) {
+      physics.tick({occupied:true,gas:true,portTime:time});
+      hit=physics.trapHit;
+    }
+    assert.equal(hit,time===closedTime,`the cargo must hit only when it blocks the deck at ${time} · pose ${physics.position.toArray()}`);
+    if (time===openTime) assert.ok(physics.position.z>=firstTrap.z+5,'opening clears the entire wheel path');
   }
 
   const final = PORT_GATES.length-1;

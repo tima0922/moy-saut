@@ -6,18 +6,18 @@ import { BATTERY, fitE39 } from './bmw.js?v=013';
 import { CLUB_ARENA, createClubLayout, createShortLayout, createRun, safeCircuitStart } from './drift.js?v=022';
 import { createDriftWorld, createTireEffects } from './drift-world.js?v=024';
 import { createDistrict, SHOP, TRACK } from './district.js?v=022';
-import { createPhysics, MODELS, STEP } from './vehicle.js?v=027';
+import { createPhysics, MODELS, STEP } from './vehicle.js?v=028';
 import { buildPitCar, loadPitCar } from './pit-cars.js?v=022';
 import { FLEET, SETUPS, DRIFT_SETUP, loadPit, savePit, setupFor } from './pit-save.js?v=022';
 import { CLUB_FLOOR, STALLS, STALL_Z, SERVICE_STEPS, createClubGarage } from './club-garage.js?v=022';
-import { portLayout,portWorld,portCourse,portMapView,outOfPort,PORT_GATES } from './port.js?v=027';
+import { portLayout,portWorld,portCourse,portMapView,outOfPort,PORT_GATES } from './port.js?v=028';
 import { eliminationRun,formatTime,RESET_PENALTY } from './competition.js?v=027';
 import { STADIUM, stadiumSurface, createStadiumLayout, createStadiumWorld } from './stadium.js?v=022';
 import { circuitTerrain } from './circuit-terrain.js?v=019';
 import { PRACTICE_PAD, TANDEM_HEAT, practiceStart, createPracticePad, createTandem } from './drift-modes.js?v=022';
 import { createDriftAudio } from './drift-audio.js?v=017';
 import { createReplayPlayer, createReplayRecorder } from './drift-replay.js';
-import { createOnlineView } from './online-view.js?v=027';
+import { createOnlineView } from './online-view.js?v=028';
 import { createGuest, raceTelemetry } from './local-duo.js?v=019';
 import { DEFAULT_KEYS, DRIVING_ACTIONS, allowedKey, keyLabel, loadBindings } from './drive-bindings.js';
 import { createOrbitCamera } from './orbit-camera.js?v=013';
@@ -81,7 +81,7 @@ async function boot() {
   const shortLayout = createShortLayout(mainLayout);
   const stadiumLayout = createStadiumLayout();
   const parkourLayout = portLayout();
-  const routeFor = value => (value==='port' || value==='port4') ? parkourLayout : value==='stadium' ? stadiumLayout : value==='short' ? shortLayout : mainLayout;
+  const routeFor = value => (value==='port' || value==='port5') ? parkourLayout : value==='stadium' ? stadiumLayout : value==='short' ? shortLayout : mainLayout;
   let layout = mainLayout;
   const terrain = circuitTerrain(mainLayout,shortLayout.connector);
   const arena = createDriftWorld(world,mainLayout,district.asphalt,terrain,shortLayout);
@@ -218,6 +218,7 @@ async function boot() {
   const pitOpen = $('#pit-open');
   const mapGate = $('#map-gate');
   const portRespawn = $('#parkour-respawn');
+  const portSignalHud = $('#parkour-signal');
   const raceStart = $('#race-start');
   const raceReturn = $('#race-return');
   const raceRetry = $('#race-retry');
@@ -402,6 +403,7 @@ async function boot() {
     }
     fleetNeedsLayout = true;
     $('.map').hidden = padActive();
+    scene.fog.density = onCircuit && layout.port ? .0055 : .0085;
     scene.fog.color.setHex(onCircuit && layout.port ? 0x829ba9 : onCircuit ? 0xc8a991 : 0xa2b6c4);
     const shadow = district.sunlight.shadow.camera;
     const span = guest ? 100 : 53;
@@ -427,7 +429,8 @@ async function boot() {
     $('#location-mode').textContent = onCircuit ? (online.active ? 'ВМЕСТЕ' : training ? 'ТРЕНИРОВКА' : duoFree ? 'СВОБОДНЫЙ ЗАЕЗД' : tandem ? 'ТАНДЕМ' : 'ДРИФТ') : workshop ? 'ДРИФТ-КЛУБ' : 'МАСТЕРСКАЯ';
     $('.job').hidden = onCircuit;
     driftHud.hidden = !onCircuit || !!guest || online.active || layout.port;
-    $('#parkour-hud').hidden = !onCircuit || !layout.port || online.active;
+    $('#parkour-hud').hidden = !onCircuit || !layout.port;
+    $('#parkour-back').hidden = online.active;
     portRespawn.hidden = !onCircuit || !layout.port;
     raceStartBanner.hidden = !onCircuit || !!guest || online.active || layout.port;
     duoHud.hidden = !guest;
@@ -1700,7 +1703,11 @@ async function boot() {
     }
   }
 
-  function step() {
+  function portTime(now) {
+    return roundPlan ? online.now-roundPlan.startsAt : now-practiceStarted;
+  }
+
+  function step(now) {
     if (pitPanel.open || replay) return;
     const { hood, trunk, batteryHatch, bayLight, cargoLight, carDoors, engine } = rig;
     if (repairTime > 0) {
@@ -1740,6 +1747,7 @@ async function boot() {
         - Number(onCircuit ? drivingKey(0,'left') : walkKey('left', 'KeyA', 'ArrowLeft')) : 0,
       handbrake, drift: drifting,
       occupied: canDrive, parking: !!frozen || leaving || unsecured || garageMode() && !onCircuit, fault: broken(), gateY: door.position.y,
+      portTime:parkour ? portTime(now) : undefined,
     }, guest && {
       gas: drivingKey(1,'gas'), reverse: drivingKey(1,'brake'),
       turn: Number(drivingKey(1,'right'))-Number(drivingKey(1,'left')),
@@ -1803,10 +1811,16 @@ async function boot() {
     physics.reset(target.x,target.z,target.yaw,target.y);
     physics.running = true;
     resetCamera();
+    return true;
   }
 
   function updatePort(now) {
     const p = physics.position;
+    if (parkour.elapsed!==undefined) return;
+    if (physics.trapHit) {
+      if (resetPort()) tell('Удар о ловушку · дождись зелёного сигнала.');
+      return;
+    }
     if (outOfPort(p) || physics.up<.25 && physics.totalSpeed<1) {
       resetPort();
       return;
@@ -1958,6 +1972,13 @@ async function boot() {
     }
     if (layout.port && onCircuit) {
       $('#parkour-status').textContent = parkourText();
+      const signal = parkour.elapsed===undefined && port.signalNear(physics.position.z,portTime(now));
+      portSignalHud.hidden = !signal;
+      if (signal) {
+        portSignalHud.dataset.state = signal.state;
+        const label = {closed:'СТОП',opening:'ОТКРЫВАЕТСЯ',open:'ПРОЕЗД',closing:'ЗАКРЫВАЕТСЯ'}[signal.state];
+        portSignalHud.textContent = `${label} · ${Math.ceil(signal.distance)} м · ${(signal.remaining/1000).toFixed(1)} с`;
+      }
       $('#map-svg').setAttribute('viewBox',portMapView(physics.position.z));
       mapGate.style.display = parkour.gate ? '' : 'none';
       if (parkour.gate) markerPosition(mapGate,parkour.gate.x,parkour.gate.z);
@@ -2123,7 +2144,7 @@ async function boot() {
     } else {
       accumulated += dt;
       while (accumulated >= STEP) {
-        step();
+        step(now-(accumulated-STEP)*1000);
         accumulated -= STEP;
       }
     }
@@ -2135,7 +2156,7 @@ async function boot() {
     world.contact.visible = !lifted && !replay && !layout.port;
     if (layout.port && onCircuit) {
       port.showAround(physics.position.z,profile.far);
-      port.animate(now);
+      port.animate(now,portTime(now));
       const contact = physics.wheelContact(1) ?? physics.wheelContact(3);
       if (contact && physics.grounded) {
         world.contact.position.set(car.position.x,contact.y+.035,car.position.z);

@@ -61,10 +61,12 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
   const events = new RAPIER.EventQueue(true);
   const regions = new Map();
   let currentRegion;
-  for (const { x, z, w, d, h, y = 0, yaw = 0, radius, region } of obstacles) {
+  const driveableShapes = [];
+  for (const { x, z, w, d, h, y = 0, yaw = 0, radius, region, pitch = 0, drivable } of obstacles) {
     const collider = radius ? RAPIER.ColliderDesc.cylinder(h/2,radius) : RAPIER.ColliderDesc.cuboid(w/2,h/2,d/2);
-    const shape = physics.createCollider(collider.setTranslation(x, y + h / 2, z)
-      .setRotation({x:0,y:Math.sin(yaw*.5),z:0,w:Math.cos(yaw*.5)}));
+    const rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch,yaw,0));
+    const shape = physics.createCollider(collider.setTranslation(x,y+h/2,z).setRotation(rotation));
+    if (drivable) driveableShapes.push(shape.handle);
     if (region) {
       if (!regions.has(region)) regions.set(region,[]);
       regions.get(region).push(shape);
@@ -76,7 +78,8 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
   const hullHandles = new Set();
   let carContacts = true;
   const hullGroups = () => (HULL_GROUP << 16) | STATIC_GROUP | (carContacts ? HULL_GROUP : 0);
-  const groundHandles = new Set([floor, arenaFloor, garageFloor, connectorFloor, practiceFloor, stadiumFloor].filter(Boolean).map(item => item.handle));
+  const groundHandles = new Set([floor,arenaFloor,garageFloor,connectorFloor,practiceFloor,stadiumFloor]
+    .filter(Boolean).map(item=>item.handle).concat(driveableShapes));
 
   function createCar() {
     const body = physics.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
@@ -183,10 +186,10 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       };
     }
 
-    function reset(x = 0, z = 0, yaw = Math.PI) {
+    function reset(x = 0,z = 0,yaw = Math.PI,elevation) {
       body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
       const onArena = inArena(x,z);
-      body.setTranslation({ x, y: .15 + (onArena ? terrain.heightAt(x,z) : 0), z }, true);
+      body.setTranslation({ x, y: .15 + (elevation ?? (onArena ? terrain.heightAt(x,z) : 0)), z }, true);
       body.setRotation({ x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) }, true);
       body.setLinvel(stop, true);
       body.setAngvel(stop, true);

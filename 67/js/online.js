@@ -6,6 +6,10 @@ const errors = {
   full: 'В комнате уже четыре пилота.',
   code: 'Введи шесть цифр.',
   server: 'Сервер комнат временно недоступен.',
+  players: 'Для старта нужен ещё один игрок.',
+  running: 'Раунд уже запущен.',
+  update: 'Обнови страницу, чтобы войти в соревновательную комнату.',
+  round: 'Этот раунд уже закончился.',
 };
 
 async function request(body, options) {
@@ -36,18 +40,19 @@ function waitForIce(peer) {
 
 function acceptPose(pose) {
   return Array.isArray(pose) && pose.length === 9 && pose.every(Number.isFinite) &&
-    Math.abs(pose[0]) < 150 && Math.abs(pose[1]) < 50 && pose[2] >= 60 && pose[2] <= 460 &&
+    Math.abs(pose[0]) < 150 && Math.abs(pose[1]) < 50 && pose[2] >= 60 && pose[2] <= 700 &&
     pose.slice(3,7).every(value => Math.abs(value) <= 1.01) &&
     Math.abs(pose[7]) < 150 && Math.abs(pose[8]) < 150;
 }
 
-export async function enterRoom({code,nick,model,color,route,contacts,onRoster,onPose,onImpact,onClose}) {
+export async function enterRoom({code,nick,model,color,route,mode,contacts,onRoster,onPose,onImpact,onMatch,onClose}) {
   const signing = await makeRelayIdentity();
-  const room = await request({action:code ? 'join' : 'create',code,nick,model,color,route,contacts,socketKey:signing?.publicKey});
+  const room = await request({action:code ? 'join' : 'create',code,nick,model,color,route,mode,contacts,games:1,socketKey:signing?.publicKey});
   const {id,secret} = room;
   const send = (action, body, options) => request({action,id,secret,...body}, options);
   const peers = new Map();
   let sequence = 0;
+  let serverOffset, bestClockRtt = Infinity, clockSyncAt = 0;
   let ws, lastBroadcast, broadcastAt = 0, signingFrame = false, roster = [];
   let timer, latest, active = true, lastSent = 0, lastSync = performance.now(), pingAt = 0, serverRtt, after = 0;
 
@@ -195,6 +200,26 @@ export async function enterRoom({code,nick,model,color,route,contacts,onRoster,o
     }).catch(() => {}).finally(() => { signingFrame = false; });
   }
 
+  function matchClock(match,started) {
+    if (!active || !match || !Number.isFinite(match.serverNow)) return;
+    const now = performance.now();
+    const rtt = now-started;
+    if (rtt<=bestClockRtt+25 || now-clockSyncAt>18000) {
+      if (now-clockSyncAt>18000) bestClockRtt = Infinity;
+      bestClockRtt = Math.min(bestClockRtt,rtt);
+      const offset = match.serverNow-(started+now)/2;
+      serverOffset = serverOffset===undefined ? offset : serverOffset*.75+offset*.25;
+      clockSyncAt = now;
+    }
+    onMatch?.(match.round,match.serverNow);
+  }
+
+  async function roundAction(action,payload) {
+    const now = performance.now();
+    const result = await send(action,payload);
+    matchClock(result,now);
+  }
+
   async function sync() {
     if (!active) return;
     const now = performance.now();
@@ -227,6 +252,7 @@ export async function enterRoom({code,nick,model,color,route,contacts,onRoster,o
         const link = peers.get(member.id) ?? add(member);
         if (member.pose && !direct(link,lastSync) && !socketLive(link,lastSync)) onPose(link, member.pose, 'https');
       }
+      if (response.match) matchClock(response.match,now);
       for (const signal of response.signals) void acceptSignal(peers.get(signal.from), signal.sdp);
       notify();
     } catch (error) {
@@ -244,6 +270,9 @@ export async function enterRoom({code,nick,model,color,route,contacts,onRoster,o
   timer = setTimeout(sync, 0);
   return {
     ...room, close,
+    get serverNow() { return serverOffset===undefined ? Date.now() : performance.now()+serverOffset; },
+    startRound() { return roundAction('startRound',{}); },
+    report(round,result) { return roundAction('result',{round,...result}); },
     tick(now,pose) {
       if (!active || now - lastSent < 50 || !acceptPose(pose)) return;
       lastSent = now;

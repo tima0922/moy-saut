@@ -1,21 +1,23 @@
 import * as THREE from 'three';
 import { createWorld } from './world.js?v=019';
-import { GRAPHICS, createGraphicsController, createMaterialQuality, renderRatio, createRenderDiagnostics } from './graphics.js?v=022';
+import { GRAPHICS, createGraphicsController, createMaterialQuality, renderRatio, createRenderDiagnostics } from './graphics.js?v=024';
 import { bakeParkedCar, batchSharedMeshes } from './garage-visuals.js?v=019';
 import { BATTERY, fitE39 } from './bmw.js?v=013';
 import { CLUB_ARENA, createClubLayout, createShortLayout, createRun, safeCircuitStart } from './drift.js?v=022';
-import { createDriftWorld, createTireEffects } from './drift-world.js?v=022';
+import { createDriftWorld, createTireEffects } from './drift-world.js?v=024';
 import { createDistrict, SHOP, TRACK } from './district.js?v=022';
-import { createPhysics, MODELS, STEP } from './vehicle.js?v=022';
+import { createPhysics, MODELS, STEP } from './vehicle.js?v=024';
 import { buildPitCar, loadPitCar } from './pit-cars.js?v=022';
 import { FLEET, SETUPS, DRIFT_SETUP, loadPit, savePit, setupFor } from './pit-save.js?v=022';
 import { CLUB_FLOOR, STALLS, STALL_Z, SERVICE_STEPS, createClubGarage } from './club-garage.js?v=022';
+import { portLayout,portWorld,portCourse,PORT_GATES } from './port.js?v=024';
+import { eliminationRun,formatTime,RESET_PENALTY } from './competition.js?v=024';
 import { STADIUM, stadiumSurface, createStadiumLayout, createStadiumWorld } from './stadium.js?v=022';
 import { circuitTerrain } from './circuit-terrain.js?v=019';
 import { PRACTICE_PAD, TANDEM_HEAT, practiceStart, createPracticePad, createTandem } from './drift-modes.js?v=022';
 import { createDriftAudio } from './drift-audio.js?v=017';
 import { createReplayPlayer, createReplayRecorder } from './drift-replay.js';
-import { createOnlineView } from './online-view.js?v=023';
+import { createOnlineView } from './online-view.js?v=024';
 import { createGuest, raceTelemetry } from './local-duo.js?v=019';
 import { DEFAULT_KEYS, DRIVING_ACTIONS, allowedKey, keyLabel, loadBindings } from './drive-bindings.js';
 import { createOrbitCamera } from './orbit-camera.js?v=013';
@@ -78,17 +80,19 @@ async function boot() {
   const mainLayout = createClubLayout();
   const shortLayout = createShortLayout(mainLayout);
   const stadiumLayout = createStadiumLayout();
-  const routeFor = value => value === 'stadium' ? stadiumLayout : value === 'short' ? shortLayout : mainLayout;
+  const parkourLayout = portLayout();
+  const routeFor = value => value==='port' ? parkourLayout : value==='stadium' ? stadiumLayout : value==='short' ? shortLayout : mainLayout;
   let layout = mainLayout;
   const terrain = circuitTerrain(mainLayout,shortLayout.connector);
   const arena = createDriftWorld(world,mainLayout,district.asphalt,terrain,shortLayout);
   const stadium = createStadiumWorld(world,district.asphalt);
-  const raceWorld = () => layout.stadium ? stadium : arena;
+  const port = portWorld(world);
+  const raceWorld = () => layout.port ? port : layout.stadium ? stadium : arena;
   const club = createClubGarage(world);
   const practice = createPracticePad(world,district.asphalt);
   const padEffects = createTireEffects(practice.root);
   await Promise.all([arena.kit,club.equipment]);
-  const regions = {district:district.obstacles,circuit:arena.obstacles,garage:club.obstacles,pad:practice.obstacles,stadium:stadium.obstacles};
+  const regions = {district:district.obstacles,circuit:arena.obstacles,garage:club.obstacles,pad:practice.obstacles,stadium:stadium.obstacles,port:port.obstacles};
   const barriers = Object.entries(regions).flatMap(([region,items]) => items.map(item => ({...item,region})));
   const physics = await createPhysics(barriers,CLUB_ARENA,CLUB_FLOOR,terrain,PRACTICE_PAD,{...STADIUM,gripAt:stadiumSurface});
   const { car, scene, door, key: workLight } = world;
@@ -144,7 +148,7 @@ async function boot() {
   const shadowPose = { position:V(0,0,0), rotation:new THREE.Quaternion() };
   const guestShadowPose = { position:V(0,0,0), rotation:new THREE.Quaternion() };
   let nextHud = 0;
-  const modes = new Set(['auto', 'ultra', 'integrated', 'performance', 'minimum']);
+  const modes = new Set(['auto', 'ultra', 'balanced', 'integrated', 'performance', 'minimum']);
   let graphicsMode = modes.has(career.graphics) ? career.graphics : career.high === false ? 'performance' : 'auto';
   const graphics = createGraphicsController(graphicsMode, touchScreen.matches);
   let profile;
@@ -185,7 +189,7 @@ async function boot() {
   let audio;
 
   let brakeResult;
-  let driftRun;
+  let driftRun,roundPlan,roundOutcome,elimination,parkour,practiceStarted;
   let lastScore;
   const heading = new THREE.Quaternion();
   const carEuler = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -231,6 +235,17 @@ async function boot() {
       training = '0';
       seated = true;
       startRace();
+    },
+    roundStart(round) { startRace(false,round); },
+    roundInfo() {
+      if (roundPlan?.mode==='elimination') {
+        const text = roundOutcome ? 'Ты выбыл' : elimination?.begun ? 'Занос '+formatTime(elimination.elapsed,2) : 'Войди в занос за 10 секунд';
+        return {text,outcome:roundOutcome};
+      }
+      if (roundPlan?.mode==='battle') {
+        return {text:`${number.format(driftRun.run.score+Math.floor(driftRun.run.chain))} очк.`,outcome:roundOutcome};
+      }
+      return {text:parkourText(),outcome:roundOutcome};
     },
     leave() { show('menu'); },
     spawn(id,color) {
@@ -326,6 +341,7 @@ async function boot() {
   const practiceRoute = $('#practice-route');
   const practiceZone = $('#practice-zone');
   function updatePracticeZones() {
+    practiceZone.closest('label').hidden = practiceRoute.value==='port';
     practiceZone.innerHTML = '<option value="pad">Площадка для восьмёрок</option>' +
       routeFor(practiceRoute.value).gates.map((_,i) => `<option value="${i}">Перед створом ${i+1}</option>`).join('');
     practiceZone.options[0].hidden = practiceRoute.value === 'stadium';
@@ -344,8 +360,8 @@ async function boot() {
   $('#practice-car').innerHTML = duoOptions;
   $('#duo-car-1').value = pit.selected;
   $('#duo-car-2').value = 'cls';
-  const mapPaths = new Map([mainLayout,shortLayout,stadiumLayout].map(route =>
-    [route,'M ' + route.road.map(p => `${p.x.toFixed(2)} ${(-p.z).toFixed(2)}`).join(' L ') + ' Z']));
+  const mapPaths = new Map([mainLayout,shortLayout,stadiumLayout,parkourLayout].map(route =>
+    [route,'M ' + route.road.map(p => `${p.x.toFixed(2)} ${(-p.z).toFixed(2)}`).join(' L ') + (route.port ? '' : ' Z')]));
 
   const condition = () => pit.cars[modelId];
   const garageMode = () => state === 'pit';
@@ -360,7 +376,7 @@ async function boot() {
     if (!driftRun) return;
     driftRun.finish(bank);
     recorder?.tick(0,physics,driftRun.run);
-    if (bank && !guest && !training && !layout.stadium) {
+    if (bank && !guest && !training && !layout.stadium && !layout.port) {
       lastScore = driftRun.run.score;
       const key = layout.short ? 'shortBest' : 'best';
       condition()[key] = Math.max(condition()[key], lastScore);
@@ -373,9 +389,10 @@ async function boot() {
   function syncScene() {
     const workshop = state === 'pit' && !onCircuit || state === 'menu';
     const practicePad = padActive();
-    physics.setRegion(onCircuit ? practicePad ? 'pad' : layout.stadium ? 'stadium' : 'circuit' : workshop ? 'garage' : 'district');
+    physics.setRegion(onCircuit ? practicePad ? 'pad' : layout.port ? 'port' : layout.stadium ? 'stadium' : 'circuit' : workshop ? 'garage' : 'district');
     const locations = [[club.room,workshop],[legacyScenery,state === 'shift'],
-      [arena.group,onCircuit && !practicePad && !layout.stadium],[stadium.group,onCircuit && layout.stadium],[practice.root,practicePad]];
+      [arena.group,onCircuit && !practicePad && !layout.stadium && !layout.port],
+      [stadium.group,onCircuit && layout.stadium],[port.group,onCircuit && layout.port],[practice.root,practicePad]];
     for (const [root,visible] of locations) {
       root.visible = visible;
       if (visible && root.parent !== scene) scene.add(root);
@@ -391,19 +408,20 @@ async function boot() {
     $('#map-district').style.display = state === 'shift' ? '' : 'none';
     $('#map-pit').toggleAttribute('hidden', !workshop);
     $('#map-arena').toggleAttribute('hidden', !onCircuit);
-    mapGate.style.display = online.active || layout.stadium ? 'none' : '';
-    $('#map-arena rect').toggleAttribute('hidden',layout.stadium);
+    mapGate.style.display = online.active || layout.stadium || layout.port ? 'none' : '';
+    $('#map-arena rect').toggleAttribute('hidden',layout.stadium || layout.port);
     $('#map-legend').hidden = state !== 'shift';
-    $('#map-svg').setAttribute('viewBox', onCircuit ? layout.stadium ? '-82 -455 164 164' : '-91 -256 182 152'
+    $('#map-svg').setAttribute('viewBox', onCircuit ? layout.port ? '-30 -690 77 197' : layout.stadium ? '-82 -455 164 164' : '-91 -256 182 152'
       : workshop ? '-15 45 30 22' : '-39 -94 78 114');
-    $('#map-title').textContent = onCircuit ? layout.stadium ? 'СТАДИОН' : 'КОНТУР 67' : workshop ? 'ГАРАЖ' : 'РАЙОН 01';
-    $('#location-area').textContent = padActive() ? 'ВОСЬМЁРКИ' : onCircuit ? (layout.stadium ? 'СТАДИОН' : layout.short ? 'КОРОТКАЯ ПЕТЛЯ' : 'КОНТУР 67') : workshop ? 'ГАРАЖ' : 'БОКС 01';
+    $('#map-title').textContent = onCircuit ? layout.port ? 'ПОРТ' : layout.stadium ? 'СТАДИОН' : 'КОНТУР 67' : workshop ? 'ГАРАЖ' : 'РАЙОН 01';
+    $('#location-area').textContent = padActive() ? 'ВОСЬМЁРКИ' : onCircuit ? (layout.port ? 'ПОРТ' : layout.stadium ? 'СТАДИОН' : layout.short ? 'КОРОТКАЯ ПЕТЛЯ' : 'КОНТУР 67') : workshop ? 'ГАРАЖ' : 'БОКС 01';
     $('#map-course').setAttribute('d', mapPaths.get(layout));
     $('#race-start-banner .label').textContent = `${$('#location-area').textContent} / СТАРТ`;
     $('#location-mode').textContent = onCircuit ? (online.active ? 'ВМЕСТЕ' : training ? 'ТРЕНИРОВКА' : duoFree ? 'СВОБОДНЫЙ ЗАЕЗД' : tandem ? 'ТАНДЕМ' : 'ДРИФТ') : workshop ? 'ДРИФТ-КЛУБ' : 'МАСТЕРСКАЯ';
     $('.job').hidden = onCircuit;
-    driftHud.hidden = !onCircuit || !!guest || online.active;
-    raceStartBanner.hidden = !onCircuit || !!guest || online.active;
+    driftHud.hidden = !onCircuit || !!guest || online.active || layout.port;
+    $('#parkour-hud').hidden = !onCircuit || !layout.port || online.active;
+    raceStartBanner.hidden = !onCircuit || !!guest || online.active || layout.port;
     duoHud.hidden = !guest;
     $('#duo-retry').textContent = duoFree ? 'На старт · T' : 'Повтор · T';
     hud.classList.toggle('is-duo',!!guest);
@@ -418,7 +436,7 @@ async function boot() {
     if (document.pointerLockElement === canvas) document.exitPointerLock();
   }
 
-  function startRace(nextHeat = false) {
+  function startRace(nextHeat = false,nextRound) {
     if (!garageMode() || !seated || manual || lifted) return;
     if (hoodOpen || trunkOpen || hoodReleased) return tell('Закрой капот и багажник перед стартом.');
     if (!guest && !training && !onCircuit && condition().battery <= 8) return tell('Аккумулятор разряжен. Обслужи его в гараже · P.');
@@ -433,9 +451,14 @@ async function boot() {
     closeReplay();
     if (tandem && !nextHeat) tandem = createTandem();
     onCircuit = true;
-    const { x,z,yaw,gate } = training && !online.active ? practiceStart(layout,training) : layout.spawn;
+    roundPlan = nextRound;
+    roundOutcome = undefined;
+    elimination = nextRound?.mode==='elimination' ? eliminationRun(nextRound.startsAt) : undefined;
+    practiceStarted = performance.now();
+    parkour = layout.port ? portCourse(nextRound?.startsAt ?? practiceStarted) : undefined;
+    const {x,z,yaw,gate,y} = training && !online.active && !layout.port ? practiceStart(layout,training) : layout.spawn;
     const options = {
-      duration: tandem ? TANDEM_HEAT : undefined, free: !!training || duoFree || layout.stadium && !tandem,
+      duration: tandem ? TANDEM_HEAT : undefined, free: !!training || duoFree || layout.stadium && !tandem || Boolean(nextRound),
       pad: padActive() ? PRACTICE_PAD : null, startGate: gate ?? 0,
     };
     driftRun = createRun(layout,options);
@@ -453,8 +476,10 @@ async function boot() {
       physics.reset(x+fx*first-dx*.22,z+fz*first-dz*.22,yaw);
     } else {
       if (guest) guest.reset(x+dx,z+dz,yaw,options);
-      const stagger = online.active ? online.slot * 4 : 0;
-      physics.reset(guest ? x-dx : x + Math.sin(yaw)*stagger,guest ? z-dz : z + Math.cos(yaw)*stagger,yaw);
+      const stagger = online.active && !online.competitive ? online.slot*4 : 0;
+      const grid = online.competitive ? (online.slot-1.5)*2.65 : 0;
+      physics.reset(guest ? x-dx : x+Math.sin(yaw)*stagger+Math.cos(yaw)*grid,
+        guest ? z-dz : z+Math.cos(yaw)*stagger-Math.sin(yaw)*grid,yaw,y);
     }
     physics.running = true;
     physics.render(car, rig.wheels, 1, rig.hubs);
@@ -934,6 +959,7 @@ async function boot() {
       persistPit();
     }
     if (!keepRoom) online.clear();
+    roundPlan = roundOutcome = elimination = parkour = undefined;
     stopDuo();
     layout = mainLayout;
     training = tandem = undefined;
@@ -1386,7 +1412,12 @@ async function boot() {
     if (onCircuit) {
       if (event.code === 'Escape') orbitHeld = false;
       if (event.code === 'KeyC') orbit.center();
-      if (event.code === 'KeyT') startRace();
+      if (event.code === 'KeyT') {
+        if (layout.port && (!online.competitive || online.roundLive)) {
+          if (parkour.elapsed===undefined) resetPort();
+          else if (!online.competitive) startRace();
+        } else if (!online.competitive) startRace();
+      }
       if (driverCodes(0,'handbrake').includes(event.code)) tappedHandbrake = true;
       if (guest) {
         if (driverCodes(1,'handbrake').includes(event.code)) guestTap = true;
@@ -1553,6 +1584,7 @@ async function boot() {
   $('#replay-close').onclick = closeReplay;
   duoReplayButton.onclick = () => { duoReplayButton.blur(); openReplay(); };
   $('#duo-retry').onclick = () => { $('#duo-retry').blur(); startRace(); };
+  $('#parkour-back').onclick = () => show('menu');
   $('#duo-back').onclick = () => { $('#duo-back').blur(); returnToClub(); };
   $('#shift').onclick = () => { $('#shift').blur(); show('shift'); };
   raceStart.onclick = () => { raceStart.blur(); startRace(); };
@@ -1687,8 +1719,9 @@ async function boot() {
     }
     const handbrake = seated && ((onCircuit ? drivingKey(0,'handbrake') : walkKey('handbrake', 'Space')) || tappedHandbrake);
     tappedHandbrake = false;
-    const drifting = garageMode() && onCircuit;
-    const canDrive = seated && (!garageMode() || onCircuit);
+    const drifting = garageMode() && onCircuit && !layout.port;
+    const frozen = (online.competitive && (!online.roundLive || roundOutcome)) || parkour?.elapsed!==undefined;
+    const canDrive = !frozen && seated && (!garageMode() || onCircuit);
     const guestBrake = guest && (guestTap || drivingKey(1,'handbrake'));
     guestTap = false;
     physics.tick({
@@ -1697,16 +1730,16 @@ async function boot() {
       turn: canDrive ? Number(onCircuit ? drivingKey(0,'right') : walkKey('right', 'KeyD', 'ArrowRight'))
         - Number(onCircuit ? drivingKey(0,'left') : walkKey('left', 'KeyA', 'ArrowLeft')) : 0,
       handbrake, drift: drifting,
-      occupied: canDrive, parking: leaving || unsecured || garageMode() && !onCircuit, fault: broken(), gateY: door.position.y,
+      occupied: canDrive, parking: !!frozen || leaving || unsecured || garageMode() && !onCircuit, fault: broken(), gateY: door.position.y,
     }, guest && {
       gas: drivingKey(1,'gas'), reverse: drivingKey(1,'brake'),
       turn: Number(drivingKey(1,'right'))-Number(drivingKey(1,'left')),
       handbrake: guestBrake, drift: true, occupied: true,
     });
     if (garageMode() && !guest && !training) updateCondition(handbrake);
-    if (onCircuit) (padActive() ? padEffects : raceWorld().fx).tick(STEP,physics,profile.shadows && !performanceHud.disableSmoke,handbrake);
+    if (onCircuit) (padActive() ? padEffects : raceWorld().fx).tick(STEP,physics,profile.smoke && !performanceHud.disableSmoke,handbrake);
     if (guest) {
-      guest.effects.tick(STEP,guest.physics,profile.shadows && !performanceHud.disableSmoke,guestBrake);
+      guest.effects.tick(STEP,guest.physics,profile.smoke && !performanceHud.disableSmoke,guestBrake);
       if (driftRun.run.status === 'ready' && Math.max(physics.totalSpeed,guest.physics.totalSpeed)*3.6 >= 5) {
         driftRun.start();
         guest.race.start();
@@ -1730,6 +1763,10 @@ async function boot() {
       }
       const active = !duoFree && driftRun.run.status !== 'finished';
       raceWorld().markGate(active ? driftRun.run.next : -1,active ? guest.race.run.next : -1,layout);
+    } else if (online.competitive) {
+      updateCompetition();
+    } else if (layout.port && onCircuit) {
+      updatePort(performance.now());
     } else if (onCircuit && (!online.active || layout.stadium) && driftRun && driftRun.run.status !== 'finished') {
       driftRun.tick(STEP,raceTelemetry(physics));
       recorder?.tick(STEP,physics,driftRun.run);
@@ -1742,6 +1779,57 @@ async function boot() {
     if (!seated && repairTime === 0) movePlayer(STEP);
   }
 
+  function resetPort() {
+    const target = parkour?.reset();
+    if (!target) return;
+    physics.reset(target.x,target.z,target.yaw,target.y);
+    physics.running = true;
+    resetCamera();
+  }
+
+  function updatePort(now) {
+    const p = physics.position;
+    if (p.y < -3.1 || p.z<497 || p.z>690 || Math.abs(p.x)>30 || physics.up<.25 && physics.totalSpeed<1) {
+      resetPort();
+      return;
+    }
+    parkour.tick(now,p);
+  }
+
+  function updateCompetition() {
+    if (!roundPlan || roundOutcome) return;
+    const now = online.now;
+    if (now<roundPlan.startsAt) return;
+    const submit = (value,resets = 0,status = 'finished') => {
+      roundOutcome = {value:Math.max(0,Math.round(value)),resets:Math.min(40,resets),status};
+    };
+    const expired = now>=roundPlan.endsAt;
+    if (expired) {
+      if (roundPlan.mode==='battle') {
+        driftRun.finish();
+        submit(driftRun.run.score);
+      } else if (roundPlan.mode==='elimination') submit(elimination.elapsed);
+      else submit(0,parkour.resets,'dnf');
+    } else if (online.roundLive && layout.port) {
+      updatePort(now);
+      if (parkour.elapsed!==undefined) submit(parkour.elapsed,parkour.resets);
+    } else if (online.roundLive) {
+      driftRun.tick(STEP,raceTelemetry(physics));
+      if (elimination) {
+        const time = elimination.tick(now,driftRun.run);
+        if (time!==undefined) submit(time);
+      } else raceWorld().markGate(driftRun.run.next,-1,layout);
+    }
+  }
+
+  function parkourText() {
+    if (!parkour) return '';
+    const penalty = parkour.resets ? ` · штраф +${parkour.resets*3} с` : '';
+    if (parkour.elapsed!==undefined) return 'Финиш · '+formatTime(parkour.elapsed+parkour.resets*RESET_PENALTY,2)+penalty;
+    const clock = online.active ? '' : formatTime(performance.now()-practiceStarted,2)+' · ';
+    return clock+`Створ ${parkour.next+1}/${PORT_GATES.length} · ${parkour.gate.label}`+penalty+' · T — возврат';
+  }
+
   // Shorten the chase offset when the camera would cross a wall.
   function safeChase(lookAt, desired) {
     let fraction = 1;
@@ -1749,6 +1837,7 @@ async function boot() {
     const cameraBarriers = onCircuit ? (padActive() ? practice.obstacles : raceWorld().obstacles) : garageMode() ? club.obstacles
       : door.position.y < 3.6 ? garageWithShutter : barriers;
     for (const box of cameraBarriers) {
+      if (box.drivable) continue;
       let entry = 0;
       let exit = fraction;
       const cosine = Math.cos(box.yaw ?? 0), sine = Math.sin(box.yaw ?? 0);
@@ -1771,7 +1860,7 @@ async function boot() {
       if (entry > .02 && entry <= exit) fraction = Math.max(.08, entry - .025);
     }
     desired.copy(lookAt).addScaledVector(delta,fraction);
-    if (onCircuit && !padActive()) desired.y = Math.max(desired.y,(layout.stadium ? 0 : terrain.heightAt(desired.x,desired.z))+.54);
+    if (onCircuit && !padActive()) desired.y = Math.max(desired.y,(layout.port ? -3.7 : layout.stadium ? 0 : terrain.heightAt(desired.x,desired.z))+.54);
     return desired;
   }
 
@@ -1842,13 +1931,14 @@ async function boot() {
     if (garageMode()) {
       pitOpen.hidden = !insideBay();
       if (guest) renderDuo();
-      else if (onCircuit && driftRun && !online.active) renderDrift();
+      else if (onCircuit && driftRun && !online.active && !layout.port) renderDrift();
       else if (now >= nextPitHud) {
         updateJob();
         nextPitHud = now + 250;
       }
     }
-    $('#online-stadium-score').hidden = !(online.active && layout.stadium);
+    if (layout.port && onCircuit) $('#parkour-status').textContent = parkourText();
+    $('#online-stadium-score').hidden = !(online.active && layout.stadium && !online.competitive);
     if (layout.stadium && driftRun) {
       const {circle,bestCircle} = driftRun.run;
       const text = `Занос ${Math.round(circle)}% · лучший ${Math.round(Math.max(bestCircle,condition().stadiumBest))}%`;
@@ -1964,7 +2054,7 @@ async function boot() {
   }
 
   function placeContact(mesh, {x,z}) {
-    if (onCircuit && !padActive() && !layout.stadium) {
+    if (onCircuit && !padActive() && !layout.stadium && !layout.port) {
       const { heightAt } = terrain;
       mesh.position.set(x,heightAt(x,z)+.075,z);
       groundNormal.set(heightAt(x-1,z)-heightAt(x+1,z),2,heightAt(x,z-1)-heightAt(x,z+1)).normalize();
@@ -2015,7 +2105,14 @@ async function boot() {
     if (online.active && onCircuit) online.tick(now,dt,car,physics.velocity);
     car.updateWorldMatrix(true,false);
     placeContact(world.contact,car.position);
-    world.contact.visible = !lifted && !replay;
+    world.contact.visible = !lifted && !replay && !layout.port;
+    if (layout.port && onCircuit) {
+      const contact = physics.wheelContact(1) ?? physics.wheelContact(3);
+      if (contact && physics.grounded) {
+        world.contact.position.set(car.position.x,contact.y+.035,car.position.z);
+        world.contact.visible = true;
+      }
+    }
     for (const lamp of rig.lampMeshes) lamp.visible = physics.braking;
     rig.brakeLamps.emissiveIntensity = physics.braking ? 1.2 : rig === bmw ? 0 : .22;
     if (rig.windows) rig.windows.opacity = cockpit ? .16 : .84;
@@ -2075,12 +2172,12 @@ async function boot() {
   $('#audio').textContent = career.muted ? 'Звук: выкл' : 'Звук: вкл';
   show('menu');
   const [, equipment, trackKit] = await Promise.all([world.assetsReady, club.equipment, arena.kit]);
-  for (const root of [scene, club.room, arena.group, stadium.group, practice.root, legacyScenery, bmw.root, f90.root, cls.root, supra.root]) {
+  for (const root of [scene, club.room, arena.group, stadium.group, port.group, practice.root, legacyScenery, bmw.root, f90.root, cls.root, supra.root]) {
     materials.collect(root);
   }
   profile = undefined;
   const keep = new Set([car, world.contact, guestContact, district.sky, district.sunlight, district.sunlight.target,
-    district.marker, arena.group, stadium.group, club.room, practice.root, legacyScenery]);
+    district.marker, arena.group, stadium.group, port.group, club.room, practice.root, legacyScenery]);
   for (const object of [...scene.children]) {
     if (!keep.has(object) && !object.isLight) legacyScenery.add(object);
   }
@@ -2093,7 +2190,7 @@ async function boot() {
       mode: state, seated, cockpit, running: physics.running, speed: physics.speed * 3.6,
       car: physics.position.toArray(), player: player.toArray(), yaw: camera.rotation.y, gate: door.position.y, lifted,
       hood: hoodOpen, trunk: trunkOpen, batteryHatch: hatchOpen, drift: driftRun ? { ...driftRun.run } : null, leaving, phase: phase(), job: job().id, money: career.money, completed: career.completed,
-      practice: training ?? null, route: layout.stadium ? 'stadium' : layout.short ? 'short' : 'main', replay: !!replay, bestReplay: bestReplay()?.clip.points ?? null,
+      practice: training ?? null, route: layout.port ? 'port' : layout.stadium ? 'stadium' : layout.short ? 'short' : 'main', replay: !!replay, bestReplay: bestReplay()?.clip.points ?? null,
       tandem: tandem ? { heat:tandem.heat, leader:tandem.leader+1, done:tandem.done } : null,
       duo: guest ? { car: guest.physics.position.toArray(), speed: guest.physics.totalSpeed*3.6,
         drift: { ...guest.race.run } } : null,

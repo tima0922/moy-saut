@@ -488,7 +488,7 @@ export function createTireEffects(group) {
       trails.fill(null);
       smoke.reset();
     },
-    tick(dt, physics, high, handbrake) {
+    tick(dt,physics,smokeMode,handbrake) {
       const intensity = Math.min(1, Math.abs(physics.slip) * 1.7);
       const skidding = physics.grounded && physics.totalSpeed > 4 &&
         (Math.abs(THREE.MathUtils.radToDeg(physics.slip)) >= ENTRY_ANGLE || handbrake);
@@ -511,9 +511,10 @@ export function createTireEffects(group) {
         count = Math.min(limit, count + 1);
         marks.count = count;
         marks.instanceMatrix.needsUpdate = true;
-        if (high && cursor % 3 === 0) smoke.emit(contact,Math.max(.32,intensity));
+        const spacing = smokeMode==='light' ? 8 : 3;
+        if (smokeMode && cursor%spacing===0) smoke.emit(contact,Math.max(.32,intensity));
       }
-      smoke.update(elapsed,high);
+      smoke.update(elapsed,Boolean(smokeMode));
       elapsed = 0;
     },
   };

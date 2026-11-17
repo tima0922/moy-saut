@@ -1,6 +1,9 @@
 import { Group, Quaternion, Vector3, MathUtils } from 'three';
-import { enterRoom } from './online.js?v=023';
+import { enterRoom } from './online.js?v=024';
 
+import { MATCH_MODES,RESET_PENALTY,formatTime,rankRound } from './competition.js?v=024';
+
+const scoreFormat = new Intl.NumberFormat('ru-RU');
 const $ = selector => document.querySelector(selector);
 const colors = ['#ffad69','#7ce5df','#bfd48c','#c6aaff'];
 const states = {
@@ -12,7 +15,7 @@ const states = {
   retrying:'Восстанавливаем связь…',
 };
 
-export function createOnlineView({scene, models, selection, start, leave, spawn,paint,impact}) {
+export function createOnlineView({scene, models, selection,start,leave,spawn,paint,impact,roundStart,roundInfo}) {
   const dialog = $('#online-dialog');
   const status = $('#online-status');
   const hud = $('#online-hud');
@@ -25,11 +28,128 @@ export function createOnlineView({scene, models, selection, start, leave, spawn,
   const list = $('#online-roster');
   const route = $('#online-route');
   const contacts = $('#online-contacts');
+  const modes = $('#online-modes');
+  const launch = $('#match-start');
+  const matchPanel = $('#match-panel');
+  const matchStatus = $('#match-status');
+  const matchTime = $('#match-time');
+  const resultList = $('#match-results');
+  const matchError = $('#match-error');
   const q1 = new Quaternion(), q2 = new Quaternion();
   const remotes = new Map();
   const target = new Vector3(), qPosition = new Vector3();
   const codeFromLink = new URLSearchParams(location.search).get('room');
-  let room, pending = false, rosterText, copyTimer, lite = false, nextMap = 0;
+  let room,pending = false,rosterText,copyTimer,lite = false,nextMap = 0;
+  let round,matchAt = 0,membersCount = 1,starting = false,outcome,reporting = false,reportAt = 0,lastResults;
+  const chosenMode = () => modes.querySelector('input:checked').value;
+
+  function changeMode() {
+    const mode = chosenMode();
+    const chooseRoute = mode==='free' || mode==='battle';
+    $('#online-route-row').hidden = !chooseRoute;
+    $('#online-contact-row').hidden = mode!=='free';
+    const stadium = route.querySelector('[value="stadium"]');
+    stadium.disabled = mode==='battle';
+    if (mode==='battle' && route.value==='stadium') route.value = 'main';
+    $('#online-mode-description').textContent = MATCH_MODES[mode].description;
+  }
+  modes.addEventListener('change',changeMode);
+  changeMode();
+
+  function launchState() {
+    launch.hidden = !room || room.mode==='free' || room.slot!==0;
+    launch.disabled = starting || membersCount<2 || Boolean(round && !round.finished);
+    launch.textContent = round?.finished ? 'Реванш' : 'Начать раунд';
+  }
+
+  function matchChanged(next,now) {
+    if (!room || now<matchAt || round?.id===next?.id && round?.finished && !next?.finished) return;
+    matchAt = now;
+    if (next?.id!==round?.id) {
+      outcome = undefined;
+      reportAt = 0;
+      if (next?.roster.some(player=>player.id===room.id)) roundStart(next);
+    }
+    round = next;
+    launchState();
+  }
+
+  function reportOutcome(result,now) {
+    if (!round || round.finished || !result) return;
+    outcome ??= result;
+    if (reporting || now<reportAt || round.results.some(row=>row.id===room.id)) return;
+    const current = room, id = round.id;
+    reporting = true;
+    reportAt = now+1400;
+    current.report(id,outcome).catch(()=>{}).finally(()=>{
+      if (room===current) reporting = false;
+    });
+  }
+
+  function renderMatch(now) {
+    if (!room || room.mode==='free') return;
+    const current = room.serverNow;
+    const playing = round?.roster.some(player=>player.id===room.id);
+    let message = membersCount<2 ? 'Ждём ещё одного игрока.' : 'Хост может запустить раунд.';
+    let time = '';
+    if (round?.finished) {
+      message = 'Раунд завершён.';
+      const rows = rankRound(round);
+      const signature = JSON.stringify(rows);
+      if (signature!==lastResults) {
+        lastResults = signature;
+        resultList.replaceChildren(...rows.map((row,index)=>{
+          const item = document.createElement('li');
+          const label = document.createElement('span');
+          const value = document.createElement('strong');
+          label.textContent = `${index+1}. ${row.nick}` + (row.id===room.id ? ' · ты' : '');
+          value.textContent = row.last ? 'Победитель' : row.status!=='finished' ? 'Не финишировал' :
+            round.mode==='battle' ? scoreFormat.format(row.value)+' очк.' :
+            round.mode==='elimination' ? formatTime(row.value,2) :
+            formatTime(row.value+row.resets*RESET_PENALTY,2)+(row.resets ? ` (+${3*row.resets} с)` : '');
+          item.append(label,value);
+          return item;
+        }));
+      }
+    } else if (round) {
+      if (!playing) message = 'Раунд уже идёт. Ты сможешь стартовать в следующем.';
+      else if (current<round.startsAt) {
+        time = String(Math.ceil((round.startsAt-current)/1000));
+        message = 'Приготовься к старту';
+      } else {
+        const info = roundInfo();
+        reportOutcome(info?.outcome,now);
+        time = formatTime(Math.ceil(Math.max(0,round.endsAt-current)/1000)*1000);
+        message = info?.text ?? 'Заезд начался';
+        if (outcome && !round.results.some(row=>row.id===room.id)) message += ' · отправляем результат';
+        if (round.mode==='elimination') message += ` · в игре ${round.roster.length-round.results.length}/${round.roster.length}`;
+      }
+    }
+    if (matchStatus.textContent!==message) matchStatus.textContent = message;
+    if (matchTime.textContent!==time) matchTime.textContent = time;
+    matchTime.hidden = !time;
+    resultList.hidden = !round?.finished;
+  }
+
+  launch.onclick = async () => {
+    if (!room || launch.disabled) return;
+    const current = room;
+    starting = true;
+    launchState();
+    matchError.hidden = true;
+    try {
+      await room.startRound();
+    } catch (error) {
+      if (room!==current) return;
+      matchError.textContent = error.code ? error.message : 'Не удалось начать раунд. Попробуй ещё раз.';
+      matchError.hidden = false;
+    } finally {
+      if (room===current) {
+        starting = false;
+        launchState();
+      }
+    }
+  };
 
   for (const [id,model] of Object.entries(models)) select.add(new Option(model.code,id));
 
@@ -55,6 +175,13 @@ export function createOnlineView({scene, models, selection, start, leave, spawn,
     clearTimeout(copyTimer);
     copy.textContent = 'Копировать';
     rosterText = undefined;
+    round = outcome = lastResults = undefined;
+    matchAt = reportAt = 0;
+    membersCount = 1;
+    starting = reporting = false;
+    resultList.replaceChildren();
+    matchPanel.hidden = matchError.hidden = true;
+    launchState();
     list.replaceChildren();
     for (const id of remotes.keys()) clearRemote(id);
     hud.hidden = true;
@@ -64,6 +191,8 @@ export function createOnlineView({scene, models, selection, start, leave, spawn,
     const connection = $('#online-link-status');
     if (connection.textContent !== states[state]) connection.textContent = states[state];
     if (!members) return;
+    membersCount = members.length;
+    launchState();
     const latencyLabel = id => {
       const link = network[id];
       if (!link) return '';
@@ -135,8 +264,8 @@ export function createOnlineView({scene, models, selection, start, leave, spawn,
     status.textContent = 'Подключаемся…';
     try {
       room = await enterRoom({
-        code,nick:nick.value,model:select.value,color:paint(select.value),route:route.value,contacts:contacts.value==='on',
-        onRoster:updateRoster,onPose:updatePose,onImpact:impact,
+        code,nick:nick.value,model:select.value,color:paint(select.value),route:route.value,contacts:contacts.value==='on',mode:chosenMode(),
+        onRoster:updateRoster,onPose:updatePose,onImpact:impact,onMatch:matchChanged,
         onClose(message) {
           clear();
           leave();
@@ -149,6 +278,11 @@ export function createOnlineView({scene, models, selection, start, leave, spawn,
       hud.hidden = false;
       updateRoster([{slot,id,nick:nick.value.trim() || 'Пилот ' + (slot + 1)}], 'waiting');
       start(select.value,room.route);
+      if (room.mode!=='free') {
+        $('#match-title').textContent = MATCH_MODES[room.mode].label;
+        matchPanel.hidden = false;
+        renderMatch(performance.now());
+      }
     } catch (error) {
       clear();
       show();
@@ -189,8 +323,15 @@ export function createOnlineView({scene, models, selection, start, leave, spawn,
     },
     get active() { return Boolean(room); },
     get slot() { return room?.slot ?? 0; },
+    get competitive() { return Boolean(room && room.mode!=='free'); },
+    get roundLive() {
+      return Boolean(room && round && !round.finished && round.roster.some(player=>player.id===room.id) &&
+        room.serverNow>=round.startsAt && room.serverNow<round.endsAt);
+    },
+    get now() { return room?.serverNow ?? performance.now(); },
     tick(now,dt,car,velocity) {
       if (!room) return;
+      renderMatch(now);
       room.tick(now,[...car.position.toArray(),...car.quaternion.toArray(),velocity.x,velocity.z]);
       const blend = 1 - Math.exp(-14 * dt);
       const drawMap = now>=nextMap;

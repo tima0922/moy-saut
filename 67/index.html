@@ -7,7 +7,7 @@
   <meta name="description" content="GARAGE LIFE — дрифт на Контуре 67, тюнинг и свой гараж.">
   <title>GARAGE LIFE / Контур 67</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231a252b'/%3E%3Cpath d='M12 48V24l20-12 20 12v24H42V29H22v19Z' fill='%23ffad69'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./drive.css?v=022">
+  <link rel="stylesheet" href="./drive.css?v=024">
   <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/addons/"}}</script>
 </head>
 <body>
@@ -17,7 +17,7 @@
     <a class="brand" href="./index.html"><span class="logo" aria-hidden="true">⌂</span> GARAGE<span>LIFE</span></a>
     <div class="location"><i></i> <b id="location-area">БОКС 01</b> <span> / </span> <b id="location-mode">ДРИФТ-КЛУБ</b></div>
     <nav>
-      <span class="version">0.23</span>
+      <span class="version">0.24</span>
       <select id="assist-level" aria-label="Помощь в дрифте">
         <option value="guided">Дрифт: с помощью</option>
         <option value="light">Дрифт: минимум помощи</option>
@@ -26,6 +26,7 @@
       <select id="graphics" aria-label="Качество графики">
         <option value="auto">Графика: авто</option>
         <option value="ultra">Графика: ультра</option>
+        <option value="balanced">Графика: средняя</option>
         <option value="integrated">Графика: для встройки</option>
         <option value="performance">Графика: низкая</option>
         <option value="minimum">Графика: минимум</option>
@@ -81,11 +82,21 @@
         <h2 id="online-title">Играть с друзьями</h2>
         <button type="button" class="secondary" id="online-cancel" aria-label="Закрыть">×</button>
       </div>
-      <p>Свободный дрифт на «Контуре 67» · до 4 игроков.</p>
+      <p>До 4 игроков. Создай комнату или введи код друга.</p>
       <label>Твой ник <input id="online-nick" maxlength="18" autocomplete="nickname" placeholder="Пилот"></label>
       <label>Машина <select id="online-model"></select></label>
-      <label>Трасса для новой комнаты <select id="online-route"><option value="main">Контур 67</option><option value="short">Короткая петля</option><option value="stadium">Стадион</option></select></label>
-      <label>Столкновения <select id="online-contacts"><option value="off">Выкл. · призраки</option><option value="on">Вкл.</option></select></label>
+      <fieldset id="online-modes">
+        <legend>Режим для новой комнаты</legend>
+        <div class="mode-grid">
+          <label><input type="radio" name="online-mode" value="free" checked><span>Свободный заезд</span></label>
+          <label><input type="radio" name="online-mode" value="elimination"><span>Кольцо на вылет</span></label>
+          <label><input type="radio" name="online-mode" value="battle"><span>Дрифт-баттл</span></label>
+          <label><input type="radio" name="online-mode" value="parkour"><span>Паркур в порту</span></label>
+        </div>
+        <p id="online-mode-description"></p>
+      </fieldset>
+      <label id="online-route-row">Трасса <select id="online-route"><option value="main">Контур 67</option><option value="short">Короткая петля</option><option value="stadium">Стадион</option></select></label>
+      <label id="online-contact-row">Столкновения <select id="online-contacts"><option value="off">Выкл. · призраки</option><option value="on">Вкл.</option></select></label>
       <button type="button" class="primary" id="online-create">Создать комнату</button>
       <div class="online-join">
         <label>Код комнаты <input id="online-input" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required></label>
@@ -101,7 +112,19 @@
       <div class="online-heading"><strong id="online-code"></strong><button type="button" class="secondary" id="online-copy">Копировать</button></div>
       <p id="online-link-status" role="status"></p><p id="online-stadium-score" hidden></p>
       <ul id="online-roster"></ul>
+      <button type="button" class="primary" id="match-start" hidden>Начать раунд</button>
+      <p id="match-error" role="status" hidden></p>
       <button type="button" class="secondary" id="online-leave">Выйти из комнаты</button>
+    </aside>
+    <aside id="match-panel" class="hud-card" hidden aria-label="Соревнование">
+      <div class="match-heading"><h2 id="match-title"></h2><time id="match-time" hidden></time></div>
+      <p id="match-status"></p>
+      <ol id="match-results" hidden></ol>
+    </aside>
+    <aside id="parkour-hud" class="hud-card" hidden aria-label="Тренировка в порту">
+      <h2>Паркур в порту</h2>
+      <p id="parkour-status"></p>
+      <button type="button" id="parkour-back" class="secondary">В меню</button>
     </aside>
     <aside class="job hud-card">
       <p class="label" id="job-label"></p>
@@ -205,7 +228,7 @@
       <p class="label">КОНТУР 67 / СВОБОДНАЯ ТРЕНИРОВКА</p>
       <h2 id="practice-title">Тренировка без таймера</h2>
       <label>Машина <select id="practice-car"></select></label>
-      <label>Маршрут <select id="practice-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option><option value="stadium">Стадион</option></select></label>
+      <label>Маршрут <select id="practice-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option><option value="stadium">Стадион</option><option value="port">Паркур в порту</option></select></label>
       <label>Участок <select id="practice-zone"></select></label>
       <p>Пробел — ручник. T мгновенно возвращает на выбранный участок.</p>
       <div class="race-actions"><button type="submit" class="primary">Начать</button>
@@ -250,6 +273,6 @@
     </div>
   </dialog>
   <script src="./js/music.js?v=020" defer></script>
-  <script type="module" src="./js/drive.js?v=023"></script>
+  <script type="module" src="./js/drive.js?v=024"></script>
 </body>
 </html>

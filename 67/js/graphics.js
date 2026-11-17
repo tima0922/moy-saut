@@ -1,6 +1,6 @@
 export const GRAPHICS = {
-  ultra: { pixels: 3_700_000, dpr: 1.5, far: 185, shadows: true, shadowMs: 1000/20 },
-  balanced: { pixels: 1_100_000, dpr: 1, far: 160 },
+  ultra: { pixels: 3_700_000, dpr: 1.5, far: 185, shadows: true, shadowMs: 1000/20, smoke: true },
+  balanced: { pixels: 1_100_000, dpr: 1, far: 160, smoke: 'light' },
   integrated: { pixels: 880_000, dpr: 1, far: 115, lite: true },
   performance: { pixels: 520_000, dpr: .85, far: 115, lite: true },
   minimum: { pixels: 260_000, dpr: .65, far: 85, lite: true },

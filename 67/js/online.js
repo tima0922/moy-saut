@@ -38,16 +38,16 @@ function waitForIce(peer) {
   });
 }
 
-function acceptPose(pose) {
+function acceptPose(pose,route) {
   return Array.isArray(pose) && pose.length === 9 && pose.every(Number.isFinite) &&
-    Math.abs(pose[0]) < 150 && Math.abs(pose[1]) < 50 && pose[2] >= 60 && pose[2] <= 700 &&
+    Math.abs(pose[0]) < 150 && Math.abs(pose[1]) < 50 && pose[2] >= 60 && pose[2] <= (route==='port2' ? 2070 : 700) &&
     pose.slice(3,7).every(value => Math.abs(value) <= 1.01) &&
     Math.abs(pose[7]) < 150 && Math.abs(pose[8]) < 150;
 }
 
 export async function enterRoom({code,nick,model,color,route,mode,contacts,onRoster,onPose,onImpact,onMatch,onClose}) {
   const signing = await makeRelayIdentity();
-  const room = await request({action:code ? 'join' : 'create',code,nick,model,color,route,mode,contacts,games:1,socketKey:signing?.publicKey});
+  const room = await request({action:code ? 'join' : 'create',code,nick,model,color,route,mode,contacts,games:2,socketKey:signing?.publicKey});
   const {id,secret} = room;
   const send = (action, body, options) => request({action,id,secret,...body}, options);
   const peers = new Map();
@@ -92,7 +92,7 @@ export async function enterRoom({code,nick,model,color,route,mode,contacts,onRos
           return;
         }
         const pose = Array.isArray(packet) ? packet : packet?.pose;
-        if (!acceptPose(pose)) return;
+        if (!acceptPose(pose,room.route)) return;
         if (Number.isSafeInteger(packet.seq)) {
           if (packet.seq <= (link.sequence ?? -1)) return;
           link.sequence = packet.seq;
@@ -169,7 +169,7 @@ export async function enterRoom({code,nick,model,color,route,mode,contacts,onRos
     const [sender,number,pose] = frame;
     const link = peers.get(sender);
     if (!link?.relayKey || link.verifying>=2 || !Number.isSafeInteger(number) ||
-        number<1 || number<=(link.socketSequence ?? 0) || !acceptPose(pose)) return;
+        number<1 || number<=(link.socketSequence ?? 0) || !acceptPose(pose,room.route)) return;
     link.verifying++;
     try {
       const key = await link.relayKey;
@@ -274,7 +274,7 @@ export async function enterRoom({code,nick,model,color,route,mode,contacts,onRos
     startRound() { return roundAction('startRound',{}); },
     report(round,result) { return roundAction('result',{round,...result}); },
     tick(now,pose) {
-      if (!active || now - lastSent < 50 || !acceptPose(pose)) return;
+      if (!active || now - lastSent < 50 || !acceptPose(pose,room.route)) return;
       lastSent = now;
       latest = pose.map(value => Math.round(value * 10000) / 10000);
       const packet = JSON.stringify({pose:latest,seq:++sequence});

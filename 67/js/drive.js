@@ -10,14 +10,14 @@ import { createPhysics, MODELS, STEP } from './vehicle.js?v=024';
 import { buildPitCar, loadPitCar } from './pit-cars.js?v=022';
 import { FLEET, SETUPS, DRIFT_SETUP, loadPit, savePit, setupFor } from './pit-save.js?v=022';
 import { CLUB_FLOOR, STALLS, STALL_Z, SERVICE_STEPS, createClubGarage } from './club-garage.js?v=022';
-import { portLayout,portWorld,portCourse,PORT_GATES } from './port.js?v=024';
+import { portLayout,portWorld,portCourse,portMapView,outOfPort,PORT_GATES } from './port.js?v=025';
 import { eliminationRun,formatTime,RESET_PENALTY } from './competition.js?v=024';
 import { STADIUM, stadiumSurface, createStadiumLayout, createStadiumWorld } from './stadium.js?v=022';
 import { circuitTerrain } from './circuit-terrain.js?v=019';
 import { PRACTICE_PAD, TANDEM_HEAT, practiceStart, createPracticePad, createTandem } from './drift-modes.js?v=022';
 import { createDriftAudio } from './drift-audio.js?v=017';
 import { createReplayPlayer, createReplayRecorder } from './drift-replay.js';
-import { createOnlineView } from './online-view.js?v=024';
+import { createOnlineView } from './online-view.js?v=025';
 import { createGuest, raceTelemetry } from './local-duo.js?v=019';
 import { DEFAULT_KEYS, DRIVING_ACTIONS, allowedKey, keyLabel, loadBindings } from './drive-bindings.js';
 import { createOrbitCamera } from './orbit-camera.js?v=013';
@@ -81,7 +81,7 @@ async function boot() {
   const shortLayout = createShortLayout(mainLayout);
   const stadiumLayout = createStadiumLayout();
   const parkourLayout = portLayout();
-  const routeFor = value => value==='port' ? parkourLayout : value==='stadium' ? stadiumLayout : value==='short' ? shortLayout : mainLayout;
+  const routeFor = value => (value==='port' || value==='port2') ? parkourLayout : value==='stadium' ? stadiumLayout : value==='short' ? shortLayout : mainLayout;
   let layout = mainLayout;
   const terrain = circuitTerrain(mainLayout,shortLayout.connector);
   const arena = createDriftWorld(world,mainLayout,district.asphalt,terrain,shortLayout);
@@ -190,6 +190,7 @@ async function boot() {
 
   let brakeResult;
   let driftRun,roundPlan,roundOutcome,elimination,parkour,practiceStarted;
+  let lastRespawn = -Infinity;
   let lastScore;
   const heading = new THREE.Quaternion();
   const carEuler = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -216,6 +217,7 @@ async function boot() {
   const pitPanel = $('#pit-panel');
   const pitOpen = $('#pit-open');
   const mapGate = $('#map-gate');
+  const portRespawn = $('#parkour-respawn');
   const raceStart = $('#race-start');
   const raceReturn = $('#race-return');
   const raceRetry = $('#race-retry');
@@ -411,7 +413,7 @@ async function boot() {
     mapGate.style.display = online.active || layout.stadium || layout.port ? 'none' : '';
     $('#map-arena rect').toggleAttribute('hidden',layout.stadium || layout.port);
     $('#map-legend').hidden = state !== 'shift';
-    $('#map-svg').setAttribute('viewBox', onCircuit ? layout.port ? '-30 -690 77 197' : layout.stadium ? '-82 -455 164 164' : '-91 -256 182 152'
+    $('#map-svg').setAttribute('viewBox', onCircuit ? layout.port ? portMapView(physics.position.z) : layout.stadium ? '-82 -455 164 164' : '-91 -256 182 152'
       : workshop ? '-15 45 30 22' : '-39 -94 78 114');
     $('#map-title').textContent = onCircuit ? layout.port ? 'ПОРТ' : layout.stadium ? 'СТАДИОН' : 'КОНТУР 67' : workshop ? 'ГАРАЖ' : 'РАЙОН 01';
     $('#location-area').textContent = padActive() ? 'ВОСЬМЁРКИ' : onCircuit ? (layout.port ? 'ПОРТ' : layout.stadium ? 'СТАДИОН' : layout.short ? 'КОРОТКАЯ ПЕТЛЯ' : 'КОНТУР 67') : workshop ? 'ГАРАЖ' : 'БОКС 01';
@@ -421,6 +423,7 @@ async function boot() {
     $('.job').hidden = onCircuit;
     driftHud.hidden = !onCircuit || !!guest || online.active || layout.port;
     $('#parkour-hud').hidden = !onCircuit || !layout.port || online.active;
+    portRespawn.hidden = !onCircuit || !layout.port;
     raceStartBanner.hidden = !onCircuit || !!guest || online.active || layout.port;
     duoHud.hidden = !guest;
     $('#duo-retry').textContent = duoFree ? 'На старт · T' : 'Повтор · T';
@@ -455,6 +458,7 @@ async function boot() {
     roundOutcome = undefined;
     elimination = nextRound?.mode==='elimination' ? eliminationRun(nextRound.startsAt) : undefined;
     practiceStarted = performance.now();
+    lastRespawn = -Infinity;
     parkour = layout.port ? portCourse(nextRound?.startsAt ?? practiceStarted) : undefined;
     const {x,z,yaw,gate,y} = training && !online.active && !layout.port ? practiceStart(layout,training) : layout.spawn;
     const options = {
@@ -1413,10 +1417,8 @@ async function boot() {
       if (event.code === 'Escape') orbitHeld = false;
       if (event.code === 'KeyC') orbit.center();
       if (event.code === 'KeyT') {
-        if (layout.port && (!online.competitive || online.roundLive)) {
-          if (parkour.elapsed===undefined) resetPort();
-          else if (!online.competitive) startRace();
-        } else if (!online.competitive) startRace();
+        if (layout.port) respawnAction();
+        else if (!online.competitive) startRace();
       }
       if (driverCodes(0,'handbrake').includes(event.code)) tappedHandbrake = true;
       if (guest) {
@@ -1584,6 +1586,7 @@ async function boot() {
   $('#replay-close').onclick = closeReplay;
   duoReplayButton.onclick = () => { duoReplayButton.blur(); openReplay(); };
   $('#duo-retry').onclick = () => { $('#duo-retry').blur(); startRace(); };
+  portRespawn.onclick = () => { portRespawn.blur(); respawnAction(); };
   $('#parkour-back').onclick = () => show('menu');
   $('#duo-back').onclick = () => { $('#duo-back').blur(); returnToClub(); };
   $('#shift').onclick = () => { $('#shift').blur(); show('shift'); };
@@ -1779,9 +1782,18 @@ async function boot() {
     if (!seated && repairTime === 0) movePlayer(STEP);
   }
 
+  function respawnAction() {
+    if (!parkour || online.competitive && (!online.roundLive || roundOutcome)) return;
+    if (parkour.elapsed===undefined) resetPort();
+    else if (!online.active) startRace();
+  }
+
   function resetPort() {
+    const now = performance.now();
+    if (now-lastRespawn<720) return;
     const target = parkour?.reset();
     if (!target) return;
+    lastRespawn = now;
     physics.reset(target.x,target.z,target.yaw,target.y);
     physics.running = true;
     resetCamera();
@@ -1789,7 +1801,7 @@ async function boot() {
 
   function updatePort(now) {
     const p = physics.position;
-    if (p.y < -3.1 || p.z<497 || p.z>690 || Math.abs(p.x)>30 || physics.up<.25 && physics.totalSpeed<1) {
+    if (outOfPort(p) || physics.up<.25 && physics.totalSpeed<1) {
       resetPort();
       return;
     }
@@ -1801,7 +1813,7 @@ async function boot() {
     const now = online.now;
     if (now<roundPlan.startsAt) return;
     const submit = (value,resets = 0,status = 'finished') => {
-      roundOutcome = {value:Math.max(0,Math.round(value)),resets:Math.min(40,resets),status};
+      roundOutcome = {value:Math.max(0,Math.round(value)),resets,status};
     };
     const expired = now>=roundPlan.endsAt;
     if (expired) {
@@ -1825,16 +1837,17 @@ async function boot() {
   function parkourText() {
     if (!parkour) return '';
     const penalty = parkour.resets ? ` · штраф +${parkour.resets*3} с` : '';
+    if (parkour.missedFinish) return `Финиш пропущен. Нужен створ ${parkour.next+1}/${PORT_GATES.length} · ${parkour.gate.label}. Нажми «Респавн».`;
     if (parkour.elapsed!==undefined) return 'Финиш · '+formatTime(parkour.elapsed+parkour.resets*RESET_PENALTY,2)+penalty;
     const clock = online.active ? '' : formatTime(performance.now()-practiceStarted,2)+' · ';
-    return clock+`Створ ${parkour.next+1}/${PORT_GATES.length} · ${parkour.gate.label}`+penalty+' · T — возврат';
+    return clock+`Створ ${parkour.next+1}/${PORT_GATES.length} · ${parkour.gate.label}`+penalty;
   }
 
   // Shorten the chase offset when the camera would cross a wall.
   function safeChase(lookAt, desired) {
     let fraction = 1;
     const delta = desired.clone().sub(lookAt);
-    const cameraBarriers = onCircuit ? (padActive() ? practice.obstacles : raceWorld().obstacles) : garageMode() ? club.obstacles
+    const cameraBarriers = onCircuit ? (padActive() ? practice.obstacles : layout.port ? port.cameraNear(lookAt.z) : raceWorld().obstacles) : garageMode() ? club.obstacles
       : door.position.y < 3.6 ? garageWithShutter : barriers;
     for (const box of cameraBarriers) {
       if (box.drivable) continue;
@@ -1937,7 +1950,15 @@ async function boot() {
         nextPitHud = now + 250;
       }
     }
-    if (layout.port && onCircuit) $('#parkour-status').textContent = parkourText();
+    if (layout.port && onCircuit) {
+      $('#parkour-status').textContent = parkourText();
+      $('#map-svg').setAttribute('viewBox',portMapView(physics.position.z));
+      mapGate.style.display = parkour.gate ? '' : 'none';
+      if (parkour.gate) markerPosition(mapGate,parkour.gate.x,parkour.gate.z);
+      portRespawn.disabled = online.competitive && (!online.roundLive || Boolean(roundOutcome));
+      const label = parkour.elapsed!==undefined ? 'Новый заезд' : 'Респавн';
+      if (portRespawn.firstChild.nodeValue.trim()!==label) portRespawn.firstChild.nodeValue = label+' ';
+    }
     $('#online-stadium-score').hidden = !(online.active && layout.stadium && !online.competitive);
     if (layout.stadium && driftRun) {
       const {circle,bestCircle} = driftRun.run;
@@ -2107,6 +2128,7 @@ async function boot() {
     placeContact(world.contact,car.position);
     world.contact.visible = !lifted && !replay && !layout.port;
     if (layout.port && onCircuit) {
+      port.showAround(physics.position.z,profile.far);
       const contact = physics.wheelContact(1) ?? physics.wheelContact(3);
       if (contact && physics.grounded) {
         world.contact.position.set(car.position.x,contact.y+.035,car.position.z);

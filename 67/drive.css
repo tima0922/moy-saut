@@ -385,3 +385,19 @@ header {
   #match-panel {bottom:118px}
   #match-panel:has(#match-results:not([hidden])) {bottom:118px}
 }
+
+#parkour-respawn {
+  position: fixed; z-index: 6; right: 24px; bottom: 125px;
+  min-height: 40px; padding: 7px 13px; font-size: 13px;
+}
+#parkour-respawn kbd {margin-left: 5px;color: inherit;opacity:.72}
+#parkour-respawn:disabled {opacity:.44}
+@media (max-width: 820px) {
+  #parkour-respawn {right: 10px; bottom: 195px}
+}
+@media (pointer: coarse) {
+  #parkour-respawn {right: 10px; bottom: calc(205px + env(safe-area-inset-bottom))}
+}
+@media (pointer: coarse) and (orientation: landscape) {
+  #parkour-respawn {bottom: calc(95px + env(safe-area-inset-bottom))}
+}

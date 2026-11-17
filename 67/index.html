@@ -7,23 +7,26 @@
   <meta name="description" content="GARAGE LIFE — дрифт на Контуре 67, тюнинг и свой гараж.">
   <title>GARAGE LIFE / Контур 67</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231a252b'/%3E%3Cpath d='M12 48V24l20-12 20 12v24H42V29H22v19Z' fill='%23ffad69'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./drive.css?v=021">
+  <link rel="stylesheet" href="./drive.css?v=022">
   <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/addons/"}}</script>
 </head>
 <body>
   <canvas id="scene" aria-label="Трёхмерная игра GARAGE LIFE"></canvas>
+  <output id="render-diagnostics" hidden></output>
   <header>
     <a class="brand" href="./index.html"><span class="logo" aria-hidden="true">⌂</span> GARAGE<span>LIFE</span></a>
     <div class="location"><i></i> <b id="location-area">БОКС 01</b> <span> / </span> <b id="location-mode">ДРИФТ-КЛУБ</b></div>
     <nav>
-      <span class="version">0.21</span>
+      <span class="version">0.22</span>
       <select id="assist-level" aria-label="Помощь в дрифте">
         <option value="guided">Дрифт: с помощью</option>
         <option value="light">Дрифт: минимум помощи</option>
+        <option value="sim">Дрифт: без помощи</option>
       </select>
       <select id="graphics" aria-label="Качество графики">
         <option value="auto">Графика: авто</option>
         <option value="ultra">Графика: ультра</option>
+        <option value="integrated">Графика: для встройки</option>
         <option value="performance">Графика: низкая</option>
         <option value="minimum">Графика: минимум</option>
       </select>
@@ -81,6 +84,8 @@
       <p>Свободный дрифт на «Контуре 67» · до 4 игроков.</p>
       <label>Твой ник <input id="online-nick" maxlength="18" autocomplete="nickname" placeholder="Пилот"></label>
       <label>Машина <select id="online-model"></select></label>
+      <label>Трасса для новой комнаты <select id="online-route"><option value="main">Контур 67</option><option value="short">Короткая петля</option><option value="stadium">Стадион</option></select></label>
+      <label>Столкновения <select id="online-contacts"><option value="off">Выкл. · призраки</option><option value="on">Вкл.</option></select></label>
       <button type="button" class="primary" id="online-create">Создать комнату</button>
       <div class="online-join">
         <label>Код комнаты <input id="online-input" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required></label>
@@ -94,7 +99,7 @@
     <aside id="online-hud" class="hud-card" hidden aria-label="Комната дрифта">
       <div class="online-heading"><span class="label">КОД КОМНАТЫ</span><strong id="online-count">1 / 4</strong></div>
       <div class="online-heading"><strong id="online-code"></strong><button type="button" class="secondary" id="online-copy">Копировать</button></div>
-      <p id="online-link-status" role="status"></p>
+      <p id="online-link-status" role="status"></p><p id="online-stadium-score" hidden></p>
       <ul id="online-roster"></ul>
       <button type="button" class="secondary" id="online-leave">Выйти из комнаты</button>
     </aside>
@@ -103,7 +108,7 @@
       <h2 id="job-title"></h2>
       <p id="job-text"></p>
       <div id="job-reading" hidden></div>
-      <label id="solo-route-row" hidden>Маршрут <select id="solo-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option></select></label>
+      <label id="solo-route-row" hidden>Маршрут <select id="solo-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option><option value="stadium">Стадион</option></select></label>
       <button type="button" class="primary" id="race-start" hidden>На трассу <kbd>Enter</kbd></button>
       <button type="button" class="secondary" id="pit-open" hidden>Гараж и тюнинг <kbd>P</kbd></button>
       <div class="job-footer"><span id="model"></span><strong id="money"></strong></div>
@@ -200,7 +205,7 @@
       <p class="label">КОНТУР 67 / СВОБОДНАЯ ТРЕНИРОВКА</p>
       <h2 id="practice-title">Тренировка без таймера</h2>
       <label>Машина <select id="practice-car"></select></label>
-      <label>Маршрут <select id="practice-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option></select></label>
+      <label>Маршрут <select id="practice-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option><option value="stadium">Стадион</option></select></label>
       <label>Участок <select id="practice-zone"></select></label>
       <p>Пробел — ручник. T мгновенно возвращает на выбранный участок.</p>
       <div class="race-actions"><button type="submit" class="primary">Начать</button>
@@ -214,7 +219,7 @@
       <label>Игрок 1 <select id="duo-car-1"></select><small id="duo-bindings-1"></small></label>
       <label>Игрок 2 <select id="duo-car-2"></select><small id="duo-bindings-2"></small></label>
       <label>Режим <select id="duo-mode"><option value="free">Свободный заезд</option><option value="points">Битва за очки</option><option value="tandem">Тандем</option></select></label>
-      <label>Маршрут <select id="duo-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option></select></label>
+      <label>Маршрут <select id="duo-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option><option value="stadium">Стадион</option></select></label>
       <label id="duo-contact-row">Столкновения игроков <select id="duo-contact"><option value="on">Включены</option><option value="off">Выключены</option></select></label>
       <p id="duo-rules">Катайтесь по трассе сколько хотите. T возвращает обе машины на старт.</p>
       <div class="race-actions"><button type="submit" class="primary">На трассу</button>
@@ -245,6 +250,6 @@
     </div>
   </dialog>
   <script src="./js/music.js?v=020" defer></script>
-  <script type="module" src="./js/drive.js?v=021"></script>
+  <script type="module" src="./js/drive.js?v=022"></script>
 </body>
 </html>

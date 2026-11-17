@@ -41,12 +41,6 @@ export function createDriftWorld(world, layout, asphalt, terrain, shortLayout) {
   for (const z of [arena.z - endZ, arena.z + endZ]) barrier(0, z, arena.w, .55);
 
   // Start grid and clipping markers use the same centerline as drift scoring.
-  for (const [i, label] of [[0,'СТАРТ / ФИНИШ'],[37,'ДЛИННАЯ ДУГА'],[79,'ПЕРЕКЛАДКА'],[147,'ШПИЛЬКА']]) {
-    const p = road[i], d = directions[i];
-    const edge = ROAD_HALF + 2.4;
-    textPlane(group, label, 5.3, .61, [p.x + d.z * edge, 2.1, p.z - d.x * edge],
-      [0, Math.atan2(-d.x, -d.z), 0], '#eff3df', '#27333c');
-  }
   const start = road[0], tangent = directions[0];
   const grid = new THREE.Group();
   grid.position.copy(start);
@@ -74,11 +68,14 @@ export function createDriftWorld(world, layout, asphalt, terrain, shortLayout) {
       const wx = frame.position.x + Math.cos(frame.rotation.y)*x;
       const wz = frame.position.z - Math.sin(frame.rotation.y)*x;
       const base = heightAt(wx,wz) - frame.position.y;
-      if (shortGate && overMain(wx,wz)) continue;
+      const overOtherRoute = shortGate ? overMain(wx,wz) : connector.some(p => (p.x-wx)**2+(p.z-wz)**2 < (ROAD_HALF+.8)**2);
+      if (overOtherRoute) continue;
+      obstacles.push({x:wx,z:wz,w:1.5,d:1.1,h:.35,y:base+frame.position.y,yaw:frame.rotation.y});
+      obstacles.push({x:wx,z:wz,w:.27,d:.27,h:2.5,y:base+frame.position.y});
       box(frame, [1.5, .35, 1.1], [x, .175+base, 0], shortGate ? blue : concrete);
       box(frame, [.27, 2.5, .27], [x, 1.25+base, 0], dark);
       bulbs.push(box(frame, [.38, .78, .32], [x, 1.78+base, 0], white));
-      // Timing flags are lightweight markers and do not obstruct a clipping line.
+
     }
     markers.set(gate,bulbs);
     if (gate.clip) {
@@ -95,21 +92,18 @@ export function createDriftWorld(world, layout, asphalt, terrain, shortLayout) {
       const bannerX = side*(ROAD_HALF+.85);
       if (!shortGate) textPlane(frame, `CLIP ${index+1}`,1.5,.38,[bannerX,2.95,-.17],[0,Math.PI,0],'#ffd16b','#22302c');
     }
-    if (startLine) {
-      const board = box(frame, [3.9, 1.05, .22], [-span - 1.4, 2.74, .15], dark);
-      board.rotation.y = -.16;
-      textPlane(frame, 'GARAGE LIFE / DRIFT 67', 3.8, .57, [-span - 1.4, 2.74, -.01],
-        [0, Math.PI - .16, 0], '#dff3bc', '#202a31');
-    } else if (!shortGate) {
+    if (!startLine && !shortGate && bulbs.length === 2) {
       textPlane(frame, String(index + 1).padStart(2, '0'), .62, .48,
         [-span, 2.37, -.19], [0, Math.PI, 0], '#e8efe2', '#202a31');
     }
   }
-  for (const [i,caption] of [[4,'КОРОТКАЯ ПЕТЛЯ →'],[17,'← КОНТУР 67']]) {
-    const p=connector[i], d=branchDirections[i];
-    const x=p.x+d.z*9.5, z=p.z-d.x*9.5;
-    textPlane(group,caption,5,.65,[x,heightAt(x,z)+1.8,z],
-      [0,Math.atan2(-d.x,-d.z),0],'#dffaff','#1b5260');
+  const entry = road.indexOf(connector[0]);
+  const merge = road.indexOf(connector.at(-1));
+  const branch = branchDirections[0], straight = directions[entry];
+  const arrow = straight.x*branch.z-straight.z*branch.x > 0 ? '›' : '‹';
+  // Place the route signs ahead of the real split and rejoin points.
+  for (const [i,caption] of [[entry-10,'КОРОТКАЯ ПЕТЛЯ  '+arrow],[merge-10,'ПОЛНЫЙ КОНТУР']]) {
+    placeRoadSign(world,group,obstacles,road[i],directions[i],caption,4.5,1,[...road,...connector],heightAt,dark);
   }
 
   for (const [x,z,width,color] of [[76,127,8,red],[76,134,8,dark],[-76,235,8,dark],[-76,243,8,red]]) {
@@ -122,12 +116,14 @@ export function createDriftWorld(world, layout, asphalt, terrain, shortLayout) {
     box(group,[w+.55,.26,10.5],[x,h,z],roof).castShadow = false;
   }
   for (const [x,z] of [[-78,160],[81,176],[-76,209],[58,235],[80,217],[-79,124]]) {
-    for (let i=0;i<4;i++) world.cylinder(group,.37,.37,.20,[x,.1+i*.2,z],dark,[0,0,0],12);
+    const y=heightAt(x,z);
+    obstacles.push({x,z,w:.74,d:.74,h:.8,y,radius:.37});
+    for (let i=0;i<4;i++) world.cylinder(group,.37,.37,.20,[x,y+.1+i*.2,z],dark,[0,0,0],12);
   }
-  dressCircuit(world, group, road, directions, arena, heightAt);
-  addTurnBoards(world,group,road,directions,connector,heightAt,dark);
+  dressCircuit(world, group, road, directions, arena, heightAt,obstacles);
+  addTurnBoards(world,group,road,directions,connector,heightAt,dark,obstacles);
   addGrandstands(world,group,obstacles);
-  const kit = addTrackKit(group, obstacles);
+  const kit = addTrackKit(group,obstacles,heightAt);
   batchSharedMeshes(group);
   const amber = new THREE.MeshStandardMaterial({
     color: 0xffb076, roughness: .7, emissive: 0xd15b26, emissiveIntensity: .22,
@@ -148,25 +144,33 @@ export function createDriftWorld(world, layout, asphalt, terrain, shortLayout) {
   };
 }
 
-function addTurnBoards(world,group,road,directions,connector,heightAt,post) {
-  const centerlines=[...road,...connector];
-  for (const [i,caption,side,width] of [[137,'ШПИЛЬКА  ››   30 М',-1,4.6],[145,'15 М  ››',-1,2.5],
-    [153,'›››',-1,2.8],[157,'›››',-1,2.8],[210,'ПЕТЛЯ  ››',1,3.5]]) {
-    const p=road[i], d=directions[i];
-    for (const sign of [side,-side]) {
-      const distance=sign*(ROAD_HALF+2.4);
-      const x=p.x-d.z*distance, z=p.z+d.x*distance;
-      if (centerlines.some(point=>Math.hypot(point.x-x,point.z-z)<ROAD_HALF+1.45)) continue;
-      const y=heightAt(x,z);
-      world.box(group,[.14,1.48,.14],[x,y+.74,z],post).castShadow=false;
-      world.textPlane(group,caption,width,.64,[x,y+1.57,z],[0,Math.atan2(-d.x,-d.z),0],
-        '#1c2428','#f0ba57');
-      break;
-    }
+function placeRoadSign(world,group,obstacles,p,d,caption,width,side,centerlines,heightAt,post) {
+  for (const sign of [side,-side]) {
+    const distance=sign*(ROAD_HALF+3.2);
+    const x=p.x-d.z*distance, z=p.z+d.x*distance;
+    if (centerlines.some(point=>Math.hypot(point.x-x,point.z-z)<ROAD_HALF+1.7)) continue;
+    const y=heightAt(x,z);
+    world.box(group,[.18,1.5,.18],[x,y+.75,z],post).castShadow=false;
+    obstacles.push({x,z,w:.18,d:.18,h:1.5,y});
+    world.textPlane(group,caption,width,.64,[x,y+1.62,z],[0,Math.atan2(-d.x,-d.z),0],
+      '#1c2428','#f0ba57');
+    return;
   }
 }
 
-function dressCircuit(world, group, road, directions, arena, heightAt) {
+function addTurnBoards(world,group,road,directions,connector,heightAt,post,obstacles) {
+  const centerlines=[...road,...connector];
+  for (const i of [137,145,153,157]) {
+    const before=directions[(i+road.length-5)%road.length];
+    const after=directions[(i+9)%road.length];
+    const right=before.x*after.z-before.z*after.x > 0;
+    const arrow=right ? '›››' : '‹‹‹';
+    const caption=i===137 ? 'ШПИЛЬКА  '+arrow : arrow;
+    placeRoadSign(world,group,obstacles,road[i],directions[i],caption,i===137 ? 4.6 : 2.8,-1,centerlines,heightAt,post);
+  }
+}
+
+function dressCircuit(world, group, road, directions, arena, heightAt,obstacles) {
   const { box, textPlane } = world;
   const teal = new THREE.MeshStandardMaterial({ color: 0x377877, roughness: .89 });
   const sand = new THREE.MeshStandardMaterial({ color: 0xa5906a, roughness: 1 });
@@ -178,7 +182,13 @@ function dressCircuit(world, group, road, directions, arena, heightAt) {
   gantry.position.copy(road[0]);
   gantry.rotation.y = Math.atan2(directions[0].x,directions[0].z);
   group.add(gantry);
-  for (const x of [-10.1,10.1]) box(gantry,[.48,5.6,.57],[x,2.8,-2],rail);
+  gantry.updateMatrixWorld(true);
+  for (const x of [-10.1,10.1]) {
+    const p=gantry.localToWorld(new THREE.Vector3(x,0,-2));
+    const y=heightAt(p.x,p.z);
+    box(gantry,[.48,5.6-y,.57],[x,(5.6+y)/2,-2],rail);
+    obstacles.push({x:p.x,z:p.z,w:.48,d:.57,y,h:5.6-y,yaw:gantry.rotation.y});
+  }
   box(gantry,[20.7,.68,.58],[0,5.22,-2],rail);
   box(gantry,[18,.1,.62],[0,4.89,-2],teal);
   for (const yaw of [0,Math.PI]) {
@@ -373,11 +383,12 @@ function addGrandstands(world,group,obstacles) {
     stand.position.set(x,0,z);
     stand.rotation.y = yaw;
     group.add(stand);
-    obstacles.push({ x,z,w:19.2,d:6.9,h:5.3 });
+    obstacles.push({ x,z,w:19.2,d:6.9,h:.3 });
     box(stand,[19.2,.29,6.9],[0,.15,0],concrete);
     for (let row=0; row<7; row++) {
       const y=.26+row*.43, depth=2.78-row*.87;
       box(stand,[19.2,.45,.89],[0,y,depth],concrete);
+      obstacles.push({x,z:z+depth*Math.cos(yaw),w:19.2,d:.89,h:.45,y:y-.225});
       for (let column=-16; column<=16; column++) {
         if (Math.abs(column) % 11 < 2) continue;
         const sx=column*.55;
@@ -388,10 +399,12 @@ function addGrandstands(world,group,obstacles) {
     }
     for (const post of [-9,-4.5,0,4.5,9]) {
       box(stand,[.16,5.3,.19],[post,2.65,-3],structure);
+      obstacles.push({x:x+post*Math.cos(yaw),z:z-3*Math.cos(yaw),w:.16,d:.19,h:5.3});
       box(stand,[.12,.14,5.9],[post,5.02,-.45],structure,[.07,0,0]);
     }
     box(stand,[19.5,.17,6.1],[0,5.17,-.4],roof,[.07,0,0]);
     box(stand,[19.3,.52,.13],[0,.56,3.47],structure);
+    obstacles.push({x,z:z+3.47*Math.cos(yaw),w:19.3,d:.13,h:.52,y:.30});
     box(stand,[19.3,.08,.10],[0,1.04,3.47],structure);
     for (const post of [-9,-6,-3,0,3,6,9]) box(stand,[.065,.56,.065],[post,.81,3.47],structure);
     textPlane(stand,`CONTOUR 67   /   GRANDSTAND ${section}`,7.2,.42,[0,4.8,2.66],[0,0,0],'#f8f5e8','#2b444a');
@@ -399,26 +412,46 @@ function addGrandstands(world,group,obstacles) {
   }
 }
 
-function addTrackKit(group, obstacles) {
+function addTrackKit(group,obstacles,heightAt) {
   const placements = [
-    ['tent', 76, 236, 7.4, 3.5, 7.4, 0, true],
-    ['tent', 66, 237, 7.4, 3.5, 7.4, 0, true],
+    ['tent', 76, 236, 7.4, 3.5, 7.4, 0],
+    ['tent', 66, 237, 7.4, 3.5, 7.4, 0],
     ...[[-78,129],[-81,183],[81,150],[83,201],[37,241],[-50,238]].map(([x,z]) =>
-      ['lamp', x, z, 1.9, 7, 1.9, Math.PI, false]),
+      ['lamp', x, z, 1.9, 7, 1.9, Math.PI]),
   ];
-  for (const [,x,z,w,h,d,, solid] of placements) {
-    obstacles.push({ x,z,w:solid ? w : .32,d:solid ? d : .32,h });
-  }
   return new GLTFLoader().loadAsync('./assets/club/track-kit.glb').then(({scene}) => {
     for (const [name,x,z,w,h,d,yaw] of placements) {
       const source = scene.getObjectByName(name);
       if (!source) continue;
       const prop = source.clone(true);
-      prop.position.set(x,0,z);
+      prop.position.set(x,heightAt(x,z),z);
       prop.scale.set(w,h,d);
       prop.rotation.y = yaw;
       prop.traverse(mesh => { if (mesh.isMesh) mesh.castShadow = mesh.receiveShadow = true; });
       group.add(prop);
+      prop.updateWorldMatrix(true,true);
+      const bounds = new THREE.Box3().setFromObject(prop);
+      if (bounds.isEmpty()) continue;
+      const footprints = Array.from({length:name==='lamp' ? 1 : 4},() => new THREE.Box3());
+      const point = new THREE.Vector3();
+      prop.traverse(mesh => {
+        if (!mesh.isMesh) return;
+        const vertices = mesh.geometry.getAttribute('position');
+        for (let i=0;i<vertices.count;i++) {
+          point.fromBufferAttribute(vertices,i).applyMatrix4(mesh.matrixWorld);
+          if (point.y-bounds.min.y > .11) continue;
+          const quadrant = name==='lamp' ? 0 : Number(point.x>x)+2*Number(point.z>z);
+          footprints[quadrant].expandByPoint(point);
+        }
+      });
+      // Build support colliders from the actual footprint, including off-center lamp bases.
+      for (const footprint of footprints) {
+        if (footprint.isEmpty()) continue;
+        const p=footprint.getCenter(new THREE.Vector3());
+        const size=footprint.getSize(new THREE.Vector3());
+        obstacles.push({x:p.x,z:p.z,w:Math.max(.05,size.x),d:Math.max(.05,size.z),
+          y:bounds.min.y,h:name==='lamp' ? h*.86 : h*.55});
+      }
     }
     return true;
   }).catch(error => {
@@ -443,6 +476,13 @@ export function createTireEffects(group) {
   marks.count = 0;
 
   return {
+    dispose() {
+      marks.removeFromParent();
+      marks.dispose();
+      marks.geometry.dispose();
+      marks.material.dispose();
+      smoke.dispose();
+    },
     reset() {
       marks.count = cursor = count = elapsed = 0;
       trails.fill(null);
@@ -528,6 +568,11 @@ function makeTireSmoke(group) {
   let cursor = 0;
 
   return {
+    dispose() {
+      mesh.removeFromParent();
+      geometry.dispose();
+      material.dispose();
+    },
     reset() {
       cursor = 0;
       for (const puff of puffs) puff.age = Infinity;

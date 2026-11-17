@@ -75,7 +75,6 @@ export function createClubGarage(world) {
     { match: 'tool-chest', x: 7, z: -64.6, w: 2.4, d: .95, h: 1.55 },
     { match: 'compressor', x: 11.6, z: -64.5, w: 1.6, d: .95, h: 1.2 },
   ];
-  for (const prop of furniture) obstacles.push(prop);
   const equipment = new GLTFLoader().loadAsync('./assets/club/workshop.glb').then(({scene: source}) => {
     source.updateMatrixWorld(true);
     const allMeshes = [];
@@ -96,6 +95,7 @@ export function createClubGarage(world) {
       const size = bounds.getSize(new THREE.Vector3());
       const center = bounds.getCenter(new THREE.Vector3());
       const scale = Math.min(slot.w / size.x, slot.d / size.z, slot.h / size.y);
+      let visible = false;
       for (const [material, geometries] of materials) {
         const merged = mergeGeometries(geometries.map(g => g.index ? g.toNonIndexed() : g));
         if (!merged) continue;
@@ -105,8 +105,12 @@ export function createClubGarage(world) {
         prop.position.set(slot.x,.013,slot.z);
         prop.receiveShadow = true;
         room.add(prop);
+        visible = true;
       }
-      installed++;
+      if (visible) {
+        obstacles.push({x:slot.x,z:slot.z,w:size.x*scale,d:size.z*scale,h:size.y*scale,y:.013});
+        installed++;
+      }
     }
     return installed > 0;
   }).catch(error => {

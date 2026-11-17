@@ -137,23 +137,26 @@ export function createDistrict(world, renderer) {
   warehouse(-29, 24, 9, 12, 5, rust, 'ДЕПО');
 
   function sign(x, z, label) {
-    add(roof, .09, 2.5, .09, x, 1.25, z);
+    add(roof, .12, 2.5, .12, x, 1.25, z);
+    solid(x,z,.12,.12,2.5);
     textPlane(scene, label, 3.1, .5, [x, 2.5, z], [0, Math.PI, 0], '#f7e9c6', '#294353');
   }
   sign(TRACK.x - 4.1, 42, 'ТЕСТ-ПОЛОСА');
   sign(SHOP.x, SHOP.z + 1.4, 'ВЫДАЧА ДЕТАЛЕЙ');
-  sign(8.3, 13.2, '01 · ГАРАЖ');
+  add(roof,.12,2.5,.12,8.3,1.25,13.2);
+  solid(8.3,13.2,.12,.12,2.5);
+  textPlane(scene,'01 · ГАРАЖ',3.1,.5,[8.3,2.5,13.2],[0,0,0],'#f7e9c6','#294353');
 
   // Perimeter, barriers, planters and poles give the road clear edges.
   for (const x of [-36, 36]) {
-    solid(x, 37, .25, 104, 1.4);
+    solid(x,37,.35,104,.54);
     add(concrete, .35, .54, 104, x, .27, 37);
     for (let z = -13; z < 89; z += 4) add(roof, .14, 1.7, .14, x, 1.05, z);
     add(roof, .09, .08, 104, x, 1.84, 37);
     add(roof, .09, .08, 104, x, 1.21, 37);
   }
   for (const [x, z, width] of [[0, -15, 72], [-20.5, 89, 31], [20.5, 89, 31]]) {
-    solid(x, z, width, .28, 1.4);
+    solid(x,z,width,.45,.57);
     add(concrete, width, .57, .45, x, .29, z);
     for (let dx = -width / 2 + 1; dx < width / 2; dx += 4) {
       add(roof, .14, 1.3, .14, x + dx, .9, z);
@@ -178,14 +181,19 @@ export function createDistrict(world, renderer) {
     textPlane(scene, '▲', 1.6, 1.3, [0, .009, z], [-Math.PI / 2, 0, Math.PI], '#e5c080');
   }
   sign(4.45, 24, 'КОНТУР 67  ↑');
-  sign(4.45, 82, 'ВЪЕЗД НА ТРАССУ');
-  textPlane(scene, 'БОКС 01  ↓', 3.3, .5, [-4.45, 2.5, 80], [0, 0, 0], '#ffe5b5', '#294353');
+  sign(5.9,82,'ТЕСТОВЫЙ ПРОЕЗД');
+  add(concrete,11,.86,.35,0,.43,116.4);
+  solid(0,116.4,11,.35,.86);
+  add(roof,.12,2.5,.12,-5.9,1.25,80);
+  solid(-5.9,80,.12,.12,2.5);
+  textPlane(scene, 'БОКС 01', 3.3, .5, [-5.9, 2.5, 80], [0, 0, 0], '#ffe5b5', '#294353');
   for (const [x, z] of [[-11, 12], [11, 13], [-12, 34], [10, 45], [-29, 45], [11, 75], [-29, 76], [31, 25]]) {
     add(concrete, 1.14, .17, 1.14, x, .085, z);
     add(roof, .12, 5.2, .12, x, 2.6, z);
     add(roof, 1.3, .12, .25, x + .53, 5.2, z);
     add(mats.light, .55, .035, .22, x + .87, 5.126, z);
-    solid(x, z, .48, .48, 2);
+    solid(x,z,1.14,1.14,.17);
+    solid(x,z,.12,.12,5.2);
   }
   for (const [x, z] of [[-12, -5], [12, -6], [33, 16], [-33, 48], [32, 82], [-30, 83]]) {
     add(concrete, 2.6, .36, 3, x, .18, z);
@@ -198,6 +206,7 @@ export function createDistrict(world, renderer) {
     scene.add(crown);
   }
   for (const x of [-18, -15, 15, 18]) {
+    solid(x,84,.13,.13,.78);
     add(roof, .34, .11, .34, x, .055, 84);
     add(amber, .13, .73, .13, x, .41, 84);
   }

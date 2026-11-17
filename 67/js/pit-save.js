@@ -19,7 +19,7 @@ export const SETUPS = {
 export const DRIFT_SETUP = { power:0,grip:0,lock:1,diff:2,pressure:2 };
 
 const range = (value, min, max, fallback) => Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
-const fresh = id => ({ tires:100,body:100,brakes:100,battery:100,best:0,shortBest:0,color:FLEET[id].color,...DRIFT_SETUP });
+const fresh = id => ({ tires:100,body:100,brakes:100,battery:100,best:0,shortBest:0,stadiumBest:0,color:FLEET[id].color,...DRIFT_SETUP });
 
 export function loadPit(storage, legacyBest = 0) {
   let data;
@@ -30,6 +30,7 @@ export function loadPit(storage, legacyBest = 0) {
     const old = data?.cars?.[id];
     car.best = range(old?.best, 0, 1e8, id === 'sedan' ? legacyBest : 0);
     car.shortBest = range(old?.shortBest,0,1e8,0);
+    car.stadiumBest = range(old?.stadiumBest,0,1e8,0);
     for (const part of ['tires', 'body', 'brakes', 'battery']) car[part] = range(old?.[part], 0, 100, 100);
     if (typeof old?.color === 'string' && /^#[0-9a-f]{6}$/i.test(old.color)) car.color = old.color;
     for (const [key,option] of Object.entries(SETUPS)) {
@@ -38,7 +39,7 @@ export function loadPit(storage, legacyBest = 0) {
     }
     cars[id] = car;
   }
-  return { assist: data?.assist === 'light' ? 'light' : 'guided', keys:loadBindings(data?.keys), selected: Object.hasOwn(FLEET, data?.selected) ? data.selected : 'sedan', cars };
+  return { assist: ['light','sim'].includes(data?.assist) ? data.assist : 'guided', keys:loadBindings(data?.keys), selected: Object.hasOwn(FLEET, data?.selected) ? data.selected : 'sedan', cars };
 }
 
 export function savePit(storage, pit) {

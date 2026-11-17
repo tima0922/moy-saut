@@ -35,7 +35,7 @@ export function createPracticePad(world, asphalt) {
   for (const b of obstacles) box(root,[b.w,b.h,b.d],[b.x,b.h/2,b.z],wall);
   for (const dx of [-10,10]) {
     const cx=x+dx;
-    obstacles.push({x:cx,z,w:1.4,d:1.4,h:.76});
+    obstacles.push({x:cx,z,w:1.4,d:1.4,h:.72,radius:.7});
     for (let tire=0; tire<3; tire++) world.cylinder(root,.7,.7,.24,[cx,.12+tire*.24,z],world.mats.rubber,[0,0,0],20);
     for (let n=0; n<32; n++) {
       const angle=n*Math.PI/16;

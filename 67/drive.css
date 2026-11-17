@@ -339,3 +339,7 @@ header {
   #online-code {font-size:18px}
 }
 @media(pointer:coarse) and (orientation:landscape){#online-hud{top:48px;left:8px}}
+
+#online-roster small {display:block;margin-left:12px;color:var(--sub);font-size:10px;font-variant-numeric:tabular-nums}
+#online-stadium-score {margin:5px 0;color:var(--accent);font-size:12px}
+#render-diagnostics {position:fixed;right:14px;bottom:14px;z-index:8;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:#111318e8;color:#f7f5f0;white-space:pre-line;font:12px/1.45 ui-monospace,monospace;pointer-events:none}

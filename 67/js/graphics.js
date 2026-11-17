@@ -1,6 +1,7 @@
 export const GRAPHICS = {
-  ultra: { pixels: 3_700_000, dpr: 1.5, far: 185, shadows: true, shadowMs: 1000/30 },
+  ultra: { pixels: 3_700_000, dpr: 1.5, far: 185, shadows: true, shadowMs: 1000/20 },
   balanced: { pixels: 1_100_000, dpr: 1, far: 160 },
+  integrated: { pixels: 880_000, dpr: 1, far: 115, lite: true },
   performance: { pixels: 520_000, dpr: .85, far: 115, lite: true },
   minimum: { pixels: 260_000, dpr: .65, far: 85, lite: true },
 };
@@ -99,6 +100,60 @@ export function createMaterialQuality() {
         texture.anisotropy = anisotropy;
         if (texture.image) texture.needsUpdate = true;
       }
+    },
+  };
+}
+
+export function createRenderDiagnostics(renderer, output) {
+  const params = new URLSearchParams(location.search);
+  const enabled = params.get('perf') === '1';
+  const gl = enabled ? renderer.getContext() : null;
+  const timer = gl?.getExtension('EXT_disjoint_timer_query_webgl2');
+  const pending = [];
+  let query, gpuTime, sampledAt = 0, sampleStarted = performance.now();
+  let stats = null;
+  const frameTimes = [];
+  output.hidden = !enabled;
+  return {
+    simpleMaterials:enabled && params.get('materials') === 'simple',
+    disableSmoke:enabled && params.get('smoke') === '0',
+    disableShadows:enabled && params.get('shadows') === '0',
+    get stats() { return stats; },
+    begin() {
+      if (!timer) return;
+      const previous = pending[0];
+      if (previous && gl.getQueryParameter(previous,gl.QUERY_RESULT_AVAILABLE)) {
+        pending.shift();
+        if (!gl.getParameter(timer.GPU_DISJOINT_EXT)) {
+          gpuTime = gl.getQueryParameter(previous,gl.QUERY_RESULT)/1e6;
+        } else gpuTime = undefined;
+        gl.deleteQuery(previous);
+      }
+      const now = performance.now();
+      if (now-sampledAt<180 || pending.length>=4) return;
+      sampledAt = now;
+      query = gl.createQuery();
+      if (query) gl.beginQuery(timer.TIME_ELAPSED_EXT,query);
+    },
+    end(elapsed) {
+      if (!enabled) return;
+      if (query) {
+        gl.endQuery(timer.TIME_ELAPSED_EXT);
+        pending.push(query);
+        query = undefined;
+      }
+      if (elapsed>0 && elapsed<1) frameTimes.push(elapsed*1000);
+      const now = performance.now();
+      if (now-sampleStarted<1000 || !frameTimes.length) return;
+      const sorted = frameTimes.sort((a,b) => a-b);
+      const frameMs = sorted.reduce((sum,value) => sum+value,0)/sorted.length;
+      const p95 = sorted[Math.floor((sorted.length-1)*.95)];
+      const {calls,triangles} = renderer.info.render;
+      stats = {fps:Math.round(1000/frameMs),frameMs,p95,gpuMs:gpuTime,calls,triangles};
+      output.textContent = `${stats.fps} FPS · ${frameMs.toFixed(1)} мс / кадр · p95 ${p95.toFixed(1)} мс\n`
+        + `GPU ${gpuTime===undefined ? '—' : gpuTime.toFixed(1)+' мс'} · ${calls} вызовов · ${triangles} треуг.`;
+      frameTimes.length = 0;
+      sampleStarted = now;
     },
   };
 }

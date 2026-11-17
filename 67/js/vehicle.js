@@ -36,7 +36,7 @@ const stop = { x: 0, y: 0, z: 0 };
 const HULL_GROUP = 2;
 const STATIC_GROUP = 1;
 
-export async function createPhysics(obstacles, driftGround, garageGround, terrain, practiceGround) {
+export async function createPhysics(obstacles, driftGround, garageGround, terrain, practiceGround, stadium) {
   await RAPIER.init();
   const physics = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   physics.timestep = STEP;
@@ -48,16 +48,27 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
   const garageFloor = garageGround && physics.createCollider(
     RAPIER.ColliderDesc.cuboid(garageGround.w / 2, .3, garageGround.d / 2)
       .setTranslation(garageGround.x, -.3, garageGround.z));
-  const connectorFloor = driftGround && !garageGround && physics.createCollider(
-    RAPIER.ColliderDesc.cuboid(6, .3, 9).setTranslation(0, -.3, 109));
+  const connectorFloor = driftGround && physics.createCollider(
+    RAPIER.ColliderDesc.cuboid(5.5,.3,12.5).setTranslation(0,-.3,116.5));
   const practiceFloor = practiceGround && physics.createCollider(
     RAPIER.ColliderDesc.cuboid(practiceGround.w/2,.3,practiceGround.d/2)
       .setTranslation(practiceGround.x,-.3,practiceGround.z));
+  const stadiumFloor = stadium && physics.createCollider(RAPIER.ColliderDesc.cuboid(stadium.w/2,.3,stadium.d/2)
+    .setTranslation(stadium.x,-.3,stadium.z));
+  const inStadium = (x,z) => stadium && Math.abs(x-stadium.x)<stadium.w/2 && Math.abs(z-stadium.z)<stadium.d/2;
   const inArena = (x,z) => !!terrain && Math.abs(x-driftGround.x)<driftGround.w/2 &&
     Math.abs(z-driftGround.z)<driftGround.d/2;
   const events = new RAPIER.EventQueue(true);
-  for (const { x, z, w, d, h, y = 0 } of obstacles) {
-    physics.createCollider(RAPIER.ColliderDesc.cuboid(w / 2, h / 2, d / 2).setTranslation(x, y + h / 2, z));
+  const regions = new Map();
+  let currentRegion;
+  for (const { x, z, w, d, h, y = 0, yaw = 0, radius, region } of obstacles) {
+    const collider = radius ? RAPIER.ColliderDesc.cylinder(h/2,radius) : RAPIER.ColliderDesc.cuboid(w/2,h/2,d/2);
+    const shape = physics.createCollider(collider.setTranslation(x, y + h / 2, z)
+      .setRotation({x:0,y:Math.sin(yaw*.5),z:0,w:Math.cos(yaw*.5)}));
+    if (region) {
+      if (!regions.has(region)) regions.set(region,[]);
+      regions.get(region).push(shape);
+    }
   }
   const gate = physics.createCollider(RAPIER.ColliderDesc.cuboid(2.56, 2.18, .13).setTranslation(0, 2.18, 7.95));
   const cars = new Set();
@@ -65,7 +76,7 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
   const hullHandles = new Set();
   let carContacts = true;
   const hullGroups = () => (HULL_GROUP << 16) | STATIC_GROUP | (carContacts ? HULL_GROUP : 0);
-  const groundHandles = new Set([floor, arenaFloor, garageFloor, connectorFloor, practiceFloor].filter(Boolean).map(item => item.handle));
+  const groundHandles = new Set([floor, arenaFloor, garageFloor, connectorFloor, practiceFloor, stadiumFloor].filter(Boolean).map(item => item.handle));
 
   function createCar() {
     const body = physics.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
@@ -126,7 +137,8 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       const slipAngle = Math.atan2(sideways, Math.max(2.8, Math.abs(longitudinal)));
 
       const contact = suspension.wheelContactPoint(left) ?? suspension.wheelContactPoint(left+2);
-      const surface = contact && inArena(contact.x,contact.z) ? terrain.gripAt(contact.x,contact.z) : 1;
+      const surface = contact && inArena(contact.x,contact.z) ? terrain.gripAt(contact.x,contact.z)
+        : contact && inStadium(contact.x,contact.z) ? stadium.gripAt(contact.x,contact.z) : 1;
       const load = surface * model.mass * 9.81 * (.5 + (front ? loadTransfer : -loadTransfer)) * (wheelsDown / 2);
       const rearLocked = !front && handbrake;
       const brakeForce = service ? (front ? 8300 : 5500) * (setup.brakes ?? 1) : rearLocked ? 2750 : throttle === 0 ? 190 : 0;
@@ -297,7 +309,7 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
         linkTurn = Math.sign(turn);
       }
       // A held opposite input keeps the rear loose as the body passes through alignment.
-      const link = linkTime > 0 ? clamp((.24-turn*slip)*6,0,1)*.82 : 0;
+      const link = linkTime > 0 && assistMode !== 'sim' ? clamp((.24-turn*slip)*6,0,1)*.82 : 0;
       linkTime = Math.max(0,linkTime-STEP);
       const powerSlide = throttle > 0 ? clamp(Math.max(link,Math.abs(steer) * 1.12 + slipDemand) * diffEffect, 0, 1) : 0;
       const slideTarget = drift && moving && grounded && speed > 1 ? slideSpeed * (handbrake ? 1 : powerSlide) : 0;
@@ -310,7 +322,7 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       // remains available for transitions; the assist never steers for the driver.
       const assistWeight = drift && moving && grounded && speed > 3 && !handbrake
         ? THREE.MathUtils.smoothstep(Math.abs(slip), .07, .39) : 0;
-      const assist = clamp(slip * (model.assist ?? .65), -.48, .48) * assistWeight * (assistMode === 'light' ? .26 : 1) * (1-Math.abs(turn)*.85);
+      const assist = clamp(slip * (model.assist ?? .65), -.48, .48) * assistWeight * (assistMode === 'sim' ? 0 : assistMode === 'light' ? .26 : 1) * (1-Math.abs(turn)*.85);
       const transition = terrain && drift && turn*steer < 0 && Math.abs(slip) > .15;
       const steerResponse = model.response ?? 15;
       steer = damp(steer, clamp(turn * lock + assist, -lock, lock), drift ? (transition ? steerResponse + (setup.steerAngle ? 2.5 : 0) : 12) : 8, STEP);
@@ -328,7 +340,7 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       if (customTires && (grounded || inArena(currentPose.position.x,currentPose.position.z))) {
         driftAxle(true, throttle, torque, serviceBrake, handbrake, velocity);
         driftAxle(false, throttle, torque, serviceBrake, handbrake, velocity);
-        if (grounded && tapLock && Math.abs(slip) < .26 && speed > 4) {
+        if (assistMode !== 'sim' && grounded && tapLock && Math.abs(slip) < .26 && speed > 4) {
           const rotationAssist = Math.min(.8, Math.abs(turn)) * Math.sign(steer);
           yawTorque.y = -rotationAssist * model.mass * 8.4 * brakeRelease * STEP;
           body.applyTorqueImpulse(yawTorque, true);
@@ -340,7 +352,7 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
           const catchWeight = linkTime > 0 && turn*yawRate > 0 ? 1.65 : 1;
           const centeredCoast = setup.steerAngle && throttle <= 0 && Math.abs(turn) < .1;
           const slipWeight = THREE.MathUtils.smoothstep(Math.abs(slip),centeredCoast ? .08 : .20,centeredCoast ? .48 : .81);
-          const strength = catchWeight * (assistMode === 'light' ? 1.65 : 3.5) * slipWeight;
+          const strength = catchWeight * (assistMode === 'sim' ? 0 : assistMode === 'light' ? 1.65 : 3.5) * slipWeight;
           yawTorque.y = -yawRate * model.mass * 2 * strength * STEP;
           body.applyTorqueImpulse(yawTorque, true);
         }
@@ -389,6 +401,11 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
     setModel(MODELS.sedan);
     const car = {
       setModel, setLift, reset, render, prepare, afterStep,
+      applyRoomImpact([x,z,vx,vz]) {
+        const p = body.translation(), v = body.linvel();
+        body.setTranslation({x:p.x+x,y:p.y,z:p.z+z},true);
+        body.setLinvel({x:v.x+vx,y:v.y,z:v.z+vz},true);
+      },
       get collider() { return hull; },
       wheelPose() {
         return wheelSpin.map((spin,i) => [
@@ -430,6 +447,12 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
   const player = createCar();
   return Object.assign(player, {
     addCar: createCar,
+    setRegion(region) {
+      if (region===currentRegion) return;
+      currentRegion = region;
+      for (const [name,shapes] of regions) for (const shape of shapes) shape.setEnabled(name===region);
+      gate.setEnabled(region==='district');
+    },
     setCarContacts(enabled) {
       carContacts = enabled;
       for (const car of cars) car.collider.setCollisionGroups(hullGroups());

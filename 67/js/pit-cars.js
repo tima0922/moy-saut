@@ -5,6 +5,13 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { WHEEL_X, WHEEL_Z } from './vehicle.js?v=013';
 
 const profiles = {
+  sedan: {
+    belt:[[-2.34,.77,.73],[-2.2,.87,.82],[-1.58,.91,.88],[-.77,.90,.93],
+      [0,.9,.95],[.91,.91,.95],[1.56,.92,.94],[2.18,.88,.89],[2.34,.8,.83]],
+    glass:[[-.94,.80,.93],[-.47,.73,1.27],[-.31,.70,1.36],[.62,.69,1.35],
+      [.97,.75,1.27],[1.36,.81,.94]],
+    engine:'BMW M POWER · S62',
+  },
   f90: {
     // [longitudinal position, width at the shoulder, shoulder height]
     belt: [[-2.34,.79,.73],[-2.19,.90,.84],[-1.63,.95,.91],[-.82,.94,.97],

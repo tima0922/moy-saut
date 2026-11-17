@@ -100,11 +100,11 @@ function closestSegment(road, x, z) {
   return { onRoad: best <= ROAD_HALF ** 2, tangentX, tangentZ };
 }
 
-export function createRun({ road, gates }, { startImmediately = false, duration = RUN_TIME,
+export function createRun({ road, gates, stadium, arena }, { startImmediately = false, duration = RUN_TIME,
   startGate = 0, free = false, pad = null } = {}) {
   const run = {
     status: startImmediately ? 'running' : 'ready', time: free ? null : duration, score: 0, chain: 0, multiplier: 1,
-    next: startGate, lap: 0, clips: 0, angle: 0, warning: '', sliding: false, events: [],
+    next: startGate, lap: 0, clips: 0, angle: 0, warning: '', sliding: false, events: [], circle:0, bestCircle:0,
   };
   let lastPosition;
   let calmTime = 0;
@@ -125,7 +125,7 @@ export function createRun({ road, gates }, { startImmediately = false, duration 
     } else if (amount && reason) {
       report('loss', reason + ' · серия потеряна', amount);
     }
-    run.chain = chainTime = calmTime = 0;
+    run.chain = chainTime = calmTime = run.circle = 0;
     run.multiplier = 1;
   }
 
@@ -158,11 +158,19 @@ export function createRun({ road, gates }, { startImmediately = false, duration 
         run.status = 'running';
       }
       if (!free) run.time = Math.max(0, run.time - dt);
-      const { onRoad, tangentX, tangentZ } = pad ? {
+      const radius = stadium ? Math.hypot(x-arena.x,z-arena.z) : 0;
+      const centerRadius = stadium ? road[0].x-arena.x : 0;
+      const { onRoad, tangentX, tangentZ } = stadium ? {
+        onRoad:Math.abs(radius-centerRadius)<=ROAD_HALF,
+        tangentX:-(z-arena.z)/(radius || 1),tangentZ:(x-arena.x)/(radius || 1),
+      } : pad ? {
         onRoad: Math.abs(x-pad.x) < pad.w/2-.8 && Math.abs(z-pad.z) < pad.d/2-.8, tangentX:0,tangentZ:0,
       } : closestSegment(road,x,z);
       const dx = lastPosition ? x - lastPosition.x : 0;
       const dz = lastPosition ? z - lastPosition.z : 0;
+      const angularAdvance = stadium && lastPosition ? Math.atan2(
+        (lastPosition.x-arena.x)*(z-arena.z)-(lastPosition.z-arena.z)*(x-arena.x),
+        (lastPosition.x-arena.x)*(x-arena.x)+(lastPosition.z-arena.z)*(z-arena.z)) : 0;
       lastPosition = { x, z };
       const distance = Math.hypot(dx, dz);
       const progress = dx * tangentX + dz * tangentZ;
@@ -179,6 +187,10 @@ export function createRun({ road, gates }, { startImmediately = false, duration 
 
       run.sliding = !penaltyTime && grounded && kmh >= ENTRY_SPEED && angle >= ENTRY_ANGLE &&
         angle < EXIT_ANGLE && (pad ? distance > .001 : progress > distance*.44);
+      if (stadium) {
+        run.circle = run.sliding ? run.circle + Math.max(0,angularAdvance)/(2*Math.PI)*100 : 0;
+        run.bestCircle = Math.max(run.bestCircle,run.circle);
+      }
       if (run.sliding) {
         calmTime = 0;
         chainTime += dt;

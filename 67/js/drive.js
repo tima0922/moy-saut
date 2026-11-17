@@ -17,7 +17,7 @@ import { circuitTerrain } from './circuit-terrain.js?v=019';
 import { PRACTICE_PAD, TANDEM_HEAT, practiceStart, createPracticePad, createTandem } from './drift-modes.js?v=022';
 import { createDriftAudio } from './drift-audio.js?v=017';
 import { createReplayPlayer, createReplayRecorder } from './drift-replay.js';
-import { createOnlineView } from './online-view.js?v=025';
+import { createOnlineView } from './online-view.js?v=025.1';
 import { createGuest, raceTelemetry } from './local-duo.js?v=019';
 import { DEFAULT_KEYS, DRIVING_ACTIONS, allowedKey, keyLabel, loadBindings } from './drive-bindings.js';
 import { createOrbitCamera } from './orbit-camera.js?v=013';
@@ -1193,13 +1193,14 @@ async function boot() {
   }
 
   const shutter = { x: 0, z: 7.95, w: 5.12, d: .25, h: 4.35 };
-  const garageWithShutter = [...barriers, shutter];
+  const walkingBarriers = barriers.filter(shape=>shape.region!=='port');
+  const garageWithShutter = [...walkingBarriers,shutter];
   function hitsRectangle(x, z, radius, box) {
     return Math.hypot(Math.max(0,Math.abs(x-box.x)-box.w/2),
       Math.max(0,Math.abs(z-box.z)-box.d/2)) < radius;
   }
   function blocked(x, z, radius = .27) {
-    if (barriers.some(box => hitsRectangle(x,z,radius,box))) return true;
+    if (walkingBarriers.some(box => hitsRectangle(x,z,radius,box))) return true;
     if (garageMode() && !onCircuit && Object.entries(STALLS).some(([id, px]) => id !== modelId &&
       hitsRectangle(x,z,radius,{ x: px, z: STALL_Z, w: 2.0, d: 4.83 * MODELS[id].length }))) return true;
     if (door.position.y < 1.79 && hitsRectangle(x,z,radius,shutter)) return true;
@@ -1848,7 +1849,7 @@ async function boot() {
     let fraction = 1;
     const delta = desired.clone().sub(lookAt);
     const cameraBarriers = onCircuit ? (padActive() ? practice.obstacles : layout.port ? port.cameraNear(lookAt.z) : raceWorld().obstacles) : garageMode() ? club.obstacles
-      : door.position.y < 3.6 ? garageWithShutter : barriers;
+      : door.position.y < 3.6 ? garageWithShutter : walkingBarriers;
     for (const box of cameraBarriers) {
       if (box.drivable) continue;
       let entry = 0;

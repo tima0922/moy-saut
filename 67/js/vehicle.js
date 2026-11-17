@@ -70,7 +70,7 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       .setTranslation(x,y+h/2,z));
     const shape = body ? physics.createCollider(collider.setRotation(rotation),body)
       : physics.createCollider(collider.setTranslation(x,y+h/2,z).setRotation(rotation));
-    if (body) movingShapes.push({body,shape,z,motion,active:false});
+    if (body) movingShapes.push({body,shape,z,motion,drivable,active:false});
     if (drivable) driveableShapes.push(shape.handle);
     if (region) {
       if (!regions.has(region)) regions.set(region,[]);
@@ -490,8 +490,8 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
           impacts.add(b);
         }
       });
-      if (currentRegion==='port') for (const {shape,z,active} of movingShapes) {
-        if (!active || Math.abs(player.collider.translation().z-z)>3.9) continue;
+      if (currentRegion==='port') for (const {shape,z,active,drivable} of movingShapes) {
+        if (!active || drivable || Math.abs(player.collider.translation().z-z)>3.9) continue;
         if (player.collider.contactCollider(shape,.045)) trapHit = true;
       }
       for (const car of cars) {

@@ -1,5 +1,5 @@
 import { Group, Quaternion, Vector3, MathUtils } from 'three';
-import { enterRoom } from './online.js?v=028';
+import { enterRoom } from './online.js?v=029';
 
 import { MATCH_MODES,RESET_PENALTY,formatTime,rankRound } from './competition.js?v=027';
 

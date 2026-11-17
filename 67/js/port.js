@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { dockMaterials,addDockScenery } from './port-scenery.js?v=028';
+import { dockMaterials,addDockScenery } from './port-scenery.js?v=029';
 import { HARBOR_WATER,harborScenery } from './port-harbor.js?v=028';
-import { buildPortHazard,portHazards,portHazardPose,portSignal } from './port-hazards.js?v=028';
+import { buildPortHazard,portHazards,portHazardPose,portSignal } from './port-hazards.js?v=029';
+import { portFerry,ferryFrame,ferryPrompt,buildFerry,updateFerry } from './port-ferry.js?v=029';
 import { batchSharedMeshes } from './garage-visuals.js';
 import { createTireEffects } from './drift-world.js?v=024';
 
@@ -11,6 +12,7 @@ export const PORT_SPAN = 154;
 const SPAN = PORT_SPAN;
 const DECK = 14;
 const HULL = .95;
+const FERRY_SECTOR = 20;
 const sections = [
   {title:'Разгонный пирс',x:0,speed:55,jumps:[[44,57,4,0,2.45,1.35,10]],down:[88,104,1.35]},
   {title:'Контейнерная змейка',x:-8,speed:37,slalom:[[48,1],[78,-1],[108,1]]},
@@ -48,10 +50,13 @@ const sections = [
     narrow:[[46,128,8.2]],slalom:[[55,-1,2.35,4.4,2.2],[79,1,2.35,4.4,2.2],[103,-1,2.35,4.4,2.2],[122,1,2.35,4.4,2.2]],down:[128,139,2.2]},
   {title:'Прыжок из-под крыши',x:-7,speed:58,arches:[[52,0,5.2,1.9]],
     jumps:[[59,72,7,0,3.2,1.1,5.6]],narrow:[[36,59,5],[79,111,4.25]],down:[113,134,1.1]},
-  {title:'Лезвие над причалом',x:0,speed:31,
+  {title:'Крановая переправа',x:0,speed:31,
     routeDecks:[[30,36,0,0,0,0,14],[36,54,0,0,0,3.5,4.6],[54,68,0,-1.14,3.5,3.5,3.68],
       [68,81,-1.14,-1.14,3.5,3.5,3.2],[81,99,-1.14,1.25,3.5,3.5,3.34],
-      [99,119,1.25,1.25,3.5,3.5,3.22],[119,139,1.25,0,3.5,0,6.3],[139,154,0,0,0,0,14]],
+      [99,119,1.25,1.25,3.5,3.5,3.22],[119,139,1.25,0,3.5,0,6.3],[139,154,0,0,0,0,14],
+      [30,46,-10,-11,0,1.25,5.8],[46,60,-11,-11,1.25,1.25,6.1],
+      [106,116,-11,-11,1.25,1.25,6.1],[116,139,-11,0,1.25,0,6.2]],
+    ferryLine:[[18,-3],[28,-9.9],[46,-11],[106,-11],[116,-11],[139,0]],
     line:[[54,0],[68,-1.14],[81,-1.14],[99,1.25],[119,1.25],[139,0]]},
   {title:'Падение на полку',x:9,speed:58,hills:[[37,55,0,4.4,7]],
     jumps:[[67,80,9,4.4,5.45,1.05,6.7]],narrow:[[89,111,4.1,-3.15]],
@@ -83,7 +88,7 @@ const rebuilt = {
     routeDecks:[[30,47,0,3,0,0,12],[47,62,3,6.5,0,2.75,7.6],[69,94,8.3,10,1.1,1.1,6.7,'roof'],
       [94,104,10,8,1.1,2.45,7.5],[109,130,6.7,1,.2,0,9],[130,154,1,0,0,0,14]],
     line:[[32,0],[48,3],[60,5.7],[70,8],[94,9.6],[104,8.1],[119,4.6],[133,0]]},
-  8:{title:'Крановая развилка',speed:56,branch:['ЛЕВО · 58 КМ/Ч','ПРАВО · 76 КМ/Ч'],
+  8:{title:'Крановая развилка',speed:56,branch:['ПРАВО · 58 КМ/Ч','ЛЕВО · 76 КМ/Ч'],
     routeDecks:[[30,44,0,0,0,0,24],
       [44,52,-6,-6,0,0,7.2],[52,65,-6,-6,0,2.5,7],
       [72,101,-6,-6,1.1,1.1,6],[101,123,-6,0,1.1,0,8],
@@ -124,7 +129,7 @@ const rebuilt = {
       [101,116,4.1,4.1,1.95,1.95,5.45],[116,139,4.1,0,1.95,0,7],
       [139,154,0,0,0,0,14]],
     line:[[47,0],[63,-3.5],[79,-3.5],[96,2.4],[104,4.1],[115,4.1],[139,0]]},
-  29:{title:'Диспетчерские пути',speed:48,branch:['ЛЕВО · МОСТ','ПРАВО · ПРЫЖОК'],
+  29:{title:'Диспетчерские пути',speed:48,branch:['ПРАВО · МОСТ','ЛЕВО · ПРЫЖОК'],
     routeDecks:[[30,45,0,0,0,0,26],
       [45,63,-6,-6,0,2.8,6.8],[63,103,-6,-6,2.8,2.8,4.45],[103,130,-6,0,2.8,0,7],
       [45,56,6,6,0,0,6.8],[56,71,6,7,0,3.5,6.35],[82,103,8.1,7.5,1.25,1.25,5.55],
@@ -183,6 +188,7 @@ function pierSections() {
   });
 }
 export const PORT_SECTORS = pierSections();
+const ferry = portFerry(PORT_SECTORS[FERRY_SECTOR]);
 
 export function portLayout() {
   const vector = ({x,z})=>new THREE.Vector3(x,0,z);
@@ -192,6 +198,7 @@ export function portLayout() {
     const centerline = points=>(points ?? []).map(([z,x])=>vector({x:sector.x+x,z:sector.z+z}));
     road.push(vector({x:sector.x,z:sector.z+29}),...centerline(sector.line),vector(sector.gate));
     if (sector.alternate) branches.push(centerline(sector.alternate.line));
+    if (sector.ferryLine) branches.push(centerline(sector.ferryLine));
   }
   const direction = new THREE.Vector3(0,0,1);
   return {port:true,arena,spawn:PORT_SPAWN,road,branches,gates:PORT_GATES.map(gate=>({
@@ -254,9 +261,11 @@ export function portWorld(world) {
   const obstacles = [], visualHazards = [];
   const hazards = portHazards(PORT_SECTORS);
   const harbor = harborScenery();
+  let ferryVisual;
   const material = color=>new THREE.MeshStandardMaterial({color,roughness:.84});
   const steel=material(0x525d65), deck=material(0x70797d), yellow=material(0xf6bc50);
-  const ink=material(0x222f36), aqua=material(0x287d82), rust=material(0xa55838), light=material(0xf2ead4);
+  const ink=material(0x222f36), aqua=material(0x287d82), rust=material(0xae5434), light=material(0xe7e8d7);
+  const routePaint=material(0xaeb4a2);
   const scenery = dockMaterials();
   const waterLength=END-START+320;
   scenery.water.repeat.set(440/17,waterLength/18);
@@ -305,9 +314,24 @@ export function portWorld(world) {
         const edge=side*(w/2-.14);
         block(cx+Math.cos(yaw)*edge,cy+.023,cz-Math.sin(yaw)*edge,.14,.018,depth,yellow,pitch,yaw);
       }
+      if (w>=6 && depth>14 && Math.abs(pitch)<.085) {
+        const dividers=Math.max(1,Math.floor(depth/8));
+        for (let i=1;i<=dividers;i++) {
+          const t=i/(dividers+1);
+          block(x+dx*t,y0+dy*t+.027,a+dz*t,.095,.021,1.55,routePaint,pitch,yaw);
+        }
+      }
       if (pitch<-.09) for (let k=1;k<=3;k++) {
         const t=k/4;
         block(x+dx*t,y0+dy*t+.025,a+dz*t,w-.4,.025,.26,k%2 ? yellow : ink,pitch,yaw);
+      }
+      if (pitch<-.15 && depth>10) {
+        const end=.92;
+        for (let stripe=0;stripe<8;stripe++) {
+          const side=(stripe-3.5)*w/8;
+          block(x+dx*end+side*Math.cos(yaw),y0+dy*end+.024,a+dz*end-side*Math.sin(yaw),
+            w/8-.024,.021,.54,stripe%2 ? ink : yellow,pitch,yaw);
+        }
       }
     }
 
@@ -317,6 +341,14 @@ export function portWorld(world) {
     chunk.add(topMesh);
     addDockScenery(block,section,index,scenery);
     chunk.add(harbor.createChunk(section,index));
+    if (index===FERRY_SECTOR) {
+      ferryVisual=buildFerry(chunk,world,ferry,{steel,ink,rust,yellow,light});
+      batchSharedMeshes(ferryVisual.carriage);
+      obstacles.push({...ferry,motion:time=>ferryFrame(ferry,time).pose});
+      for (const [z,w] of [[section.z+59.1,5.8],[section.z+106.9,5.8]]) {
+        block(ferry.x,1.278,z,w,.027,.32,yellow);
+      }
+    }
     for (const hazard of hazards) {
       if (hazard.z<section.z || hazard.z>=section.z+SPAN) continue;
       const visual=buildPortHazard(chunk,world,hazard,{steel,ink,rust,yellow,light});
@@ -373,6 +405,7 @@ export function portWorld(world) {
     group,obstacles,fx:createTireEffects(group),markGate() {},
     animate(now,time) {
       scenery.water.offset.set((now*.000035)%1,(now*.000061)%1);
+      if (ferryVisual.carriage.parent.visible) updateFerry(ferryVisual,ferry,time);
       for (const {hazard,body,amber} of visualHazards) {
         if (!body.parent.visible) continue;
         const {x,y,z}=portHazardPose(hazard,time);
@@ -381,6 +414,7 @@ export function portWorld(world) {
         amber.color.setHex(state==='open' ? 0x79fa95 : state==='opening' || state==='closing' ? 0xffc555 : 0xff5942);
       }
     },
+    ferryNear(x,z,time) { return ferryPrompt(ferry,x,z,time); },
     signalNear(z,time) {
       const hazard=hazards.find(item=>item.z-z>=-2.7 && item.z-z<=36);
       if (!hazard) return null;

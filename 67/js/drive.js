@@ -6,18 +6,18 @@ import { BATTERY, fitE39 } from './bmw.js?v=013';
 import { CLUB_ARENA, createClubLayout, createShortLayout, createRun, safeCircuitStart } from './drift.js?v=022';
 import { createDriftWorld, createTireEffects } from './drift-world.js?v=024';
 import { createDistrict, SHOP, TRACK } from './district.js?v=022';
-import { createPhysics, MODELS, STEP } from './vehicle.js?v=028';
+import { createPhysics, MODELS, STEP } from './vehicle.js?v=029';
 import { buildPitCar, loadPitCar } from './pit-cars.js?v=022';
 import { FLEET, SETUPS, DRIFT_SETUP, loadPit, savePit, setupFor } from './pit-save.js?v=022';
 import { CLUB_FLOOR, STALLS, STALL_Z, SERVICE_STEPS, createClubGarage } from './club-garage.js?v=022';
-import { portLayout,portWorld,portCourse,portMapView,outOfPort,PORT_GATES } from './port.js?v=028';
+import { portLayout,portWorld,portCourse,portMapView,outOfPort,PORT_GATES } from './port.js?v=029';
 import { eliminationRun,formatTime,RESET_PENALTY } from './competition.js?v=027';
 import { STADIUM, stadiumSurface, createStadiumLayout, createStadiumWorld } from './stadium.js?v=022';
 import { circuitTerrain } from './circuit-terrain.js?v=019';
 import { PRACTICE_PAD, TANDEM_HEAT, practiceStart, createPracticePad, createTandem } from './drift-modes.js?v=022';
 import { createDriftAudio } from './drift-audio.js?v=017';
 import { createReplayPlayer, createReplayRecorder } from './drift-replay.js';
-import { createOnlineView } from './online-view.js?v=028';
+import { createOnlineView } from './online-view.js?v=029';
 import { createGuest, raceTelemetry } from './local-duo.js?v=019';
 import { DEFAULT_KEYS, DRIVING_ACTIONS, allowedKey, keyLabel, loadBindings } from './drive-bindings.js';
 import { createOrbitCamera } from './orbit-camera.js?v=013';
@@ -81,7 +81,7 @@ async function boot() {
   const shortLayout = createShortLayout(mainLayout);
   const stadiumLayout = createStadiumLayout();
   const parkourLayout = portLayout();
-  const routeFor = value => (value==='port' || value==='port5') ? parkourLayout : value==='stadium' ? stadiumLayout : value==='short' ? shortLayout : mainLayout;
+  const routeFor = value => (value==='port' || value==='port6') ? parkourLayout : value==='stadium' ? stadiumLayout : value==='short' ? shortLayout : mainLayout;
   let layout = mainLayout;
   const terrain = circuitTerrain(mainLayout,shortLayout.connector);
   const arena = createDriftWorld(world,mainLayout,district.asphalt,terrain,shortLayout);
@@ -429,8 +429,11 @@ async function boot() {
     $('#location-mode').textContent = onCircuit ? (online.active ? 'ВМЕСТЕ' : training ? 'ТРЕНИРОВКА' : duoFree ? 'СВОБОДНЫЙ ЗАЕЗД' : tandem ? 'ТАНДЕМ' : 'ДРИФТ') : workshop ? 'ДРИФТ-КЛУБ' : 'МАСТЕРСКАЯ';
     $('.job').hidden = onCircuit;
     driftHud.hidden = !onCircuit || !!guest || online.active || layout.port;
-    $('#parkour-hud').hidden = !onCircuit || !layout.port;
-    $('#parkour-back').hidden = online.active;
+    const parkourHud = $('#parkour-hud');
+    parkourHud.hidden = !onCircuit || !layout.port || online.active;
+    const signalParent = online.active ? $('#match-panel') : parkourHud;
+    if (portSignalHud.parentElement!==signalParent) signalParent.append(portSignalHud);
+    portSignalHud.hidden = true;
     portRespawn.hidden = !onCircuit || !layout.port;
     raceStartBanner.hidden = !onCircuit || !!guest || online.active || layout.port;
     duoHud.hidden = !guest;
@@ -1704,7 +1707,7 @@ async function boot() {
   }
 
   function portTime(now) {
-    return roundPlan ? online.now-roundPlan.startsAt : now-practiceStarted;
+    return roundPlan ? online.now-roundPlan.startsAt+now-performance.now() : now-practiceStarted;
   }
 
   function step(now) {
@@ -1972,12 +1975,16 @@ async function boot() {
     }
     if (layout.port && onCircuit) {
       $('#parkour-status').textContent = parkourText();
-      const signal = parkour.elapsed===undefined && port.signalNear(physics.position.z,portTime(now));
+      const {x,z} = physics.position;
+      const time = portTime(now);
+      const signal = parkour.elapsed===undefined && (!online.active || online.roundLive) &&
+        (port.ferryNear(x,z,time) || port.signalNear(z,time));
       portSignalHud.hidden = !signal;
       if (signal) {
         portSignalHud.dataset.state = signal.state;
-        const label = {closed:'СТОП',opening:'ОТКРЫВАЕТСЯ',open:'ПРОЕЗД',closing:'ЗАКРЫВАЕТСЯ'}[signal.state];
-        portSignalHud.textContent = `${label} · ${Math.ceil(signal.distance)} м · ${(signal.remaining/1000).toFixed(1)} с`;
+        const label = signal.label ?? {closed:'СТОП',opening:'ОТКРЫВАЕТСЯ',open:'ПРОЕЗД',closing:'ЗАКРЫВАЕТСЯ'}[signal.state];
+        const distance = signal.distance===undefined ? '' : ` · ${Math.ceil(signal.distance)} м`;
+        portSignalHud.textContent = `${label}${distance} · ${(signal.remaining/1000).toFixed(1)} с`;
       }
       $('#map-svg').setAttribute('viewBox',portMapView(physics.position.z));
       mapGate.style.display = parkour.gate ? '' : 'none';

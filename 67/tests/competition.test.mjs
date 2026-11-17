@@ -91,8 +91,10 @@ test('all four cars clear the timed harbor course, its branches, and retries wit
   finally { globalThis.document = savedDocument; }
   const chunks = track.group.children.filter(child=>child.isGroup);
   assert.equal(chunks.length,PORT_GATES.length);
-  assert.equal(portLayout().branches.length,2);
-  assert.equal(track.obstacles.filter(shape=>shape.motion).length,6);
+  assert.equal(portLayout().branches.length,3);
+  assert.equal(track.obstacles.filter(shape=>shape.motion && !shape.drivable).length,9);
+  const ferry = track.obstacles.find(shape=>shape.motion && shape.drivable);
+  assert.ok(ferry);
   assert.equal(PORT_SECTORS.filter(sector=>sector.ship).length,3);
   for (const sector of PORT_SECTORS) {
     track.showAround(sector.gate.z,185);
@@ -188,6 +190,33 @@ test('all four cars clear the timed harbor course, its branches, and retries wit
         if (sector.alternate) assert.ok(usedLane,`${id} · lane ${index+1} · alternate=${alternate} at ${physics.position.toArray()}`);
       }
     }
+  }
+
+  const initialBerth = Array.from({length:600},(_,i)=>i*100).find(time=>{
+    const next=track.ferryNear(ferry.x,ferry.start-15,time);
+    return next.state==='open' && next.remaining>=5800;
+  });
+  assert.notEqual(initialBerth,undefined);
+  for (const [id,setup] of Object.entries(pit.cars)) {
+    physics.setModel(MODELS[id]);
+    physics.setSetup(setupFor(setup));
+    physics.reset(ferry.x,ferry.start-14,PORT_SPAWN.yaw,ferry.top);
+    physics.running=true;
+    let maxHeight=0;
+    for (let frame=0;frame<1330;frame++) {
+      const time=initialBerth+STEP*1000*frame;
+      const pose=ferry.motion(time);
+      const boarding=time-initialBerth<4500 && physics.position.z<ferry.start-1.7;
+      const exiting=pose.z>ferry.end-.02 && pose.y<ferry.top;
+      const advancing=boarding || exiting;
+      const speed=physics.totalSpeed*3.6;
+      physics.tick({occupied:true,gas:advancing && speed<19,handbrake:!advancing,portTime:time});
+      assert.ok(physics.position.y>0,`${id} dropped from the crane at ${physics.position.toArray()}`);
+      assert.equal(physics.trapHit,false,'the platform is a road surface');
+      maxHeight=Math.max(maxHeight,physics.position.y);
+      if (physics.position.z>=ferry.end+11) break;
+    }
+    assert.ok(maxHeight>3 && physics.position.z>=ferry.end+11,`${id} must clear the moving gap · ${physics.position.toArray()}`);
   }
 
   const firstTrap = track.obstacles.find(shape=>shape.motion);

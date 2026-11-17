@@ -19,8 +19,12 @@ function texture(kind) {
     } else {
       const u=x/side*tau,v=y/side*tau;
       const dark=Math.sin(3*u+Math.sin(v))*Math.sin(2*v+Math.cos(u))*8;
-      const pitting=noise> .49 ? -28 : noise*18;
-      r=109+dark+pitting;g=109+dark+pitting;b=105+dark+pitting;
+      const abrasion=Math.sin(u*2+v*3)*Math.cos(v*2-u)*6;
+      const stain=Math.max(0,Math.sin(v-u)*Math.cos(2*v)-.72)*27;
+      const pitting=noise>.48 ? -24 : noise*15;
+      r=117+dark+abrasion-stain+pitting;
+      g=118+dark+abrasion-stain+pitting;
+      b=113+dark+abrasion-stain*.7+pitting;
     }
     data.set([r,g,b,255],(y*side+x)*4);
   }

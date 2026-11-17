@@ -11,7 +11,7 @@ registerHooks({resolve(specifier,context,next) {
 }});
 
 const {BoxGeometry,Mesh,Scene} = await import('three');
-const {portCourse,portWorld,PORT_GATES,PORT_SPAWN,PORT_SECTORS,PORT_LENGTH} = await import('../js/port.js');
+const {portCourse,portWorld,PORT_GATES,PORT_SPAWN,PORT_SECTORS,PORT_LENGTH,PORT_SPAN} = await import('../js/port.js');
 const {MODELS,STEP,createPhysics} = await import('../js/vehicle.js');
 const {loadPit,setupFor} = await import('../js/pit-save.js');
 
@@ -59,8 +59,8 @@ test('port reports a skipped gate and respawns at the last cleared checkpoint', 
 
 test('finish counts while crossing the outside curb at suspension height', () => {
   const run = portCourse(1000);
-  assert.equal(PORT_GATES.length,10);
-  assert.ok(PORT_LENGTH>=1520);
+  assert.equal(PORT_GATES.length,30);
+  assert.equal(PORT_LENGTH,4602);
   for (const [i,gate] of PORT_GATES.entries()) {
     const finish = i===PORT_GATES.length-1;
     const x = gate.x+(finish ? gate.w/2+.22 : 0);
@@ -90,7 +90,7 @@ test('all four cars clear the expanded port with digital steering and nearby chu
   try { track = portWorld(world); }
   finally { globalThis.document = savedDocument; }
   const chunks = track.group.children.filter(child=>child.isGroup);
-  assert.equal(chunks.length,10);
+  assert.equal(chunks.length,PORT_GATES.length);
   for (const sector of PORT_SECTORS) {
     track.showAround(sector.gate.z,185);
     assert.ok(chunks.filter(chunk=>chunk.visible).length<=3);
@@ -102,38 +102,69 @@ test('all four cars clear the expanded port with digital steering and nearby chu
   const clamp = (value,min,max)=>Math.max(min,Math.min(max,value));
   const guides = PORT_SECTORS.map(sector=>[
     [0,sector.previous],[26,sector.x],
-    ...(sector.slalom ?? []).map(([z,side])=>[z,sector.x-side*4.05]),
-    [132,sector.x],[154,sector.x],
+    ...(sector.line ?? sector.slalom?.map(([z,side,offset=3.25,width=7])=>
+      [z,-side*Math.max(2.72,width/2-offset+1.32)]) ?? []).map(([z,x])=>[z,sector.x+x]),
+    [145,sector.x],[PORT_SPAN,sector.x],
   ]);
   function targetLane(i,z) {
     const points = guides[i];
-    const local = clamp(z-PORT_SECTORS[i].z,0,154);
+    const local = clamp(z-PORT_SECTORS[i].z,0,PORT_SPAN);
     const next = points.findIndex(([at])=>at>=local);
     if (next===0) return points[0][1];
     const [a,x] = points[next-1], [b,y] = points[next];
     return x+(y-x)*(local-a)/(b-a);
   }
-  for (const [id,setup] of Object.entries(pit.cars)) {
-    const run = portCourse(0);
-    physics.setModel(MODELS[id]);
-    physics.setSetup(setupFor(setup));
-    physics.reset(PORT_SPAWN.x,PORT_SPAWN.z,PORT_SPAWN.yaw);
-    physics.running = true;
+
+  function controller() {
     let steerError = 0;
-    for (let frame=0;frame<10500 && run.elapsed===undefined;frame++) {
+    return function tick(index,speedCap=Infinity) {
       const {x,z} = physics.position;
       const speed = physics.totalSpeed*3.6;
-      const index = clamp(Math.floor((z-PORT_SECTORS[0].z)/154),0,9);
       const sector = PORT_SECTORS[index];
+      const local = z-sector.z;
+      const pace = sector.pace?.find(([end])=>local<=end)?.[1] ?? sector.speed;
+      const cornerSpeed = local<19 && sector.previous!==sector.x ? Math.min(37,pace) : pace;
+      const targetSpeed = Math.min(speedCap,cornerSpeed);
       const targetX = targetLane(index,z+6);
-      const targetSpeed = z-sector.z<19 && sector.previous!==sector.x ? Math.min(37,sector.speed) : sector.speed;
       steerError += clamp((x-targetX)*.21+physics.velocity.x*.205,-.85,.85);
       const turn = Math.abs(steerError)>.5 ? Math.sign(steerError) : 0;
       steerError -= turn;
       physics.tick({occupied:true,gas:speed<targetSpeed,reverse:speed>targetSpeed+3,turn});
+    };
+  }
+
+  for (const [id,setup] of Object.entries(pit.cars)) {
+    physics.setModel(MODELS[id]);
+    physics.setSetup(setupFor(setup));
+    const run = portCourse(0);
+    physics.reset(PORT_SPAWN.x,PORT_SPAWN.z,PORT_SPAWN.yaw);
+    physics.running = true;
+    const tick = controller();
+    for (let frame=0;frame<56000 && run.elapsed===undefined && physics.position.y>=-3.1;frame++) {
+      const index = clamp(Math.floor((physics.position.z-PORT_SECTORS[0].z)/PORT_SPAN),0,PORT_GATES.length-1);
+      tick(index);
       run.tick(frame*STEP*1000,physics.position);
     }
     assert.equal(run.next,PORT_GATES.length,id);
     assert.ok(Number.isFinite(run.elapsed),id);
+
+    for (let index=1;index<PORT_GATES.length;index++) {
+      const previous = PORT_GATES[index-1];
+      physics.reset(previous.x,previous.z+2.2,PORT_SPAWN.yaw,previous.y);
+      physics.running = true;
+      const retry = controller();
+      const gate = PORT_GATES[index];
+      for (let frame=0;frame<2500 && physics.position.z<gate.z && physics.position.y>=-3.1;frame++) retry(index);
+      assert.ok(physics.position.z>=gate.z && physics.position.y>-.65 &&
+        Math.abs(physics.position.x-gate.x)<=gate.w/2, `${id} · checkpoint ${index+1}`);
+    }
   }
+
+  const final = PORT_GATES.length-1;
+  const previous = PORT_GATES[final-1];
+  physics.reset(previous.x,previous.z+2.2,PORT_SPAWN.yaw,previous.y);
+  physics.running = true;
+  const withoutRunup = controller();
+  for (let frame=0;frame<1800 && physics.position.y>=-3.1;frame++) withoutRunup(final,28);
+  assert.ok(physics.position.y< -3.1,'the final gap cannot be crossed at walking speed');
 });

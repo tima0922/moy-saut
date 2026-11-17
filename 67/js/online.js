@@ -40,14 +40,14 @@ function waitForIce(peer) {
 
 function acceptPose(pose,route) {
   return Array.isArray(pose) && pose.length === 9 && pose.every(Number.isFinite) &&
-    Math.abs(pose[0]) < 150 && Math.abs(pose[1]) < 50 && pose[2] >= 60 && pose[2] <= (route==='port2' ? 2070 : 700) &&
+    Math.abs(pose[0]) < 150 && Math.abs(pose[1]) < 50 && pose[2] >= 60 && pose[2] <= (route==='port3' ? 5150 : 700) &&
     pose.slice(3,7).every(value => Math.abs(value) <= 1.01) &&
     Math.abs(pose[7]) < 150 && Math.abs(pose[8]) < 150;
 }
 
 export async function enterRoom({code,nick,model,color,route,mode,contacts,onRoster,onPose,onImpact,onMatch,onClose}) {
   const signing = await makeRelayIdentity();
-  const room = await request({action:code ? 'join' : 'create',code,nick,model,color,route,mode,contacts,games:2,socketKey:signing?.publicKey});
+  const room = await request({action:code ? 'join' : 'create',code,nick,model,color,route,mode,contacts,games:3,socketKey:signing?.publicKey});
   const {id,secret} = room;
   const send = (action, body, options) => request({action,id,secret,...body}, options);
   const peers = new Map();

@@ -14,6 +14,7 @@ import { circuitTerrain } from './circuit-terrain.js?v=019';
 import { PRACTICE_PAD, TANDEM_HEAT, practiceStart, createPracticePad, createTandem } from './drift-modes.js?v=015';
 import { createDriftAudio } from './drift-audio.js?v=017';
 import { createReplayPlayer, createReplayRecorder } from './drift-replay.js';
+import { createOnlineView } from './online-view.js?v=021';
 import { createGuest, raceTelemetry } from './local-duo.js?v=019';
 import { DEFAULT_KEYS, DRIVING_ACTIONS, allowedKey, keyLabel, loadBindings } from './drive-bindings.js';
 import { createOrbitCamera } from './orbit-camera.js?v=013';
@@ -213,6 +214,26 @@ async function boot() {
   const practiceSetup = $('#practice-setup');
   const soloRoute = $('#solo-route');
   const bindingsPanel = $('#bindings-panel');
+  const onlineShells = new Map();
+  const online = createOnlineView({
+    scene, models:FLEET, selection:() => pit.selected,
+    start(id) {
+      show('pit',true);
+      setCar(id);
+      training = '0';
+      seated = true;
+      startRace();
+    },
+    leave() { show('menu'); },
+    spawn(slot, color) {
+      if (!onlineShells.has(slot)) {
+        const display = buildPitCar(world,'f90');
+        for (const paint of display.paints) paint.color.set(color);
+        onlineShells.set(slot,bakeParkedCar(display.root));
+      }
+      return onlineShells.get(slot).clone();
+    },
+  });
   const bindingsGrid = $('#bindings-grid');
   const bindingsStatus = $('#bindings-status');
   let bindingTarget;
@@ -314,6 +335,7 @@ async function boot() {
     $('#map-district').style.display = state === 'shift' ? '' : 'none';
     $('#map-pit').toggleAttribute('hidden', !workshop);
     $('#map-arena').toggleAttribute('hidden', !onCircuit);
+    mapGate.style.display = online.active ? 'none' : '';
     $('#map-legend').hidden = state !== 'shift';
     $('#map-svg').setAttribute('viewBox', onCircuit ? '-91 -256 182 152'
       : workshop ? '-15 45 30 22' : '-39 -94 78 114');
@@ -321,10 +343,10 @@ async function boot() {
     $('#location-area').textContent = padActive() ? 'ВОСЬМЁРКИ' : onCircuit ? (layout.short ? 'КОРОТКАЯ ПЕТЛЯ' : 'КОНТУР 67') : workshop ? 'ГАРАЖ' : 'БОКС 01';
     $('#map-course').setAttribute('d', mapPaths.get(layout));
     $('#race-start-banner .label').textContent = `${$('#location-area').textContent} / СТАРТ`;
-    $('#location-mode').textContent = onCircuit ? (training ? 'ТРЕНИРОВКА' : duoFree ? 'СВОБОДНЫЙ ЗАЕЗД' : tandem ? 'ТАНДЕМ' : 'ДРИФТ') : workshop ? 'ДРИФТ-КЛУБ' : 'МАСТЕРСКАЯ';
+    $('#location-mode').textContent = onCircuit ? (online.active ? 'ВМЕСТЕ' : training ? 'ТРЕНИРОВКА' : duoFree ? 'СВОБОДНЫЙ ЗАЕЗД' : tandem ? 'ТАНДЕМ' : 'ДРИФТ') : workshop ? 'ДРИФТ-КЛУБ' : 'МАСТЕРСКАЯ';
     $('.job').hidden = onCircuit;
-    driftHud.hidden = !onCircuit || !!guest;
-    raceStartBanner.hidden = !onCircuit || !!guest;
+    driftHud.hidden = !onCircuit || !!guest || online.active;
+    raceStartBanner.hidden = !onCircuit || !!guest || online.active;
     duoHud.hidden = !guest;
     $('#duo-retry').textContent = duoFree ? 'На старт · T' : 'Повтор · T';
     hud.classList.toggle('is-duo',!!guest);
@@ -354,14 +376,14 @@ async function boot() {
     closeReplay();
     if (tandem && !nextHeat) tandem = createTandem();
     onCircuit = true;
-    const { x,z,yaw,gate } = training ? practiceStart(layout,training) : layout.spawn;
+    const { x,z,yaw,gate } = training && !online.active ? practiceStart(layout,training) : layout.spawn;
     const options = {
       duration: tandem ? TANDEM_HEAT : undefined, free: !!training || duoFree,
       pad: padActive() ? PRACTICE_PAD : null, startGate: gate ?? 0,
     };
     driftRun = createRun(layout,options);
     if (!nextHeat) previousBest = undefined;
-    recorder = duoFree ? undefined : createReplayRecorder();
+    recorder = duoFree || online.active ? undefined : createReplayRecorder();
     guestRecorder = guest && !duoFree ? createReplayRecorder() : undefined;
     eventCursor = 0;
     raceEvents.replaceChildren();
@@ -374,14 +396,15 @@ async function boot() {
       physics.reset(x+fx*first-dx*.22,z+fz*first-dz*.22,yaw);
     } else {
       if (guest) guest.reset(x+dx,z+dz,yaw,options);
-      physics.reset(guest ? x-dx : x,guest ? z-dz : z,yaw);
+      const stagger = online.active ? online.slot * 4 : 0;
+      physics.reset(guest ? x-dx : x + Math.sin(yaw)*stagger,guest ? z-dz : z + Math.cos(yaw)*stagger,yaw);
     }
     physics.running = true;
     physics.render(car, rig.wheels, 1, rig.hubs);
     cockpit = false;
     arena.fx.reset();
     padEffects.reset();
-    arena.markGate(duoFree ? -1 : (gate ?? 0),-1,layout);
+    arena.markGate(duoFree || online.active ? -1 : (gate ?? 0),-1,layout);
     syncScene();
     updateControls();
     resetCamera();
@@ -844,11 +867,12 @@ async function boot() {
     persistPit();
   });
 
-  function show(next) {
+  function show(next, keepRoom = false) {
     if (garageMode()) {
       if (onCircuit) finishRun();
       persistPit();
     }
+    if (!keepRoom) online.clear();
     stopDuo();
     layout = mainLayout;
     training = tandem = undefined;
@@ -1645,7 +1669,7 @@ async function boot() {
       }
       const active = !duoFree && driftRun.run.status !== 'finished';
       arena.markGate(active ? driftRun.run.next : -1,active ? guest.race.run.next : -1,layout);
-    } else if (onCircuit && driftRun && driftRun.run.status !== 'finished') {
+    } else if (onCircuit && !online.active && driftRun && driftRun.run.status !== 'finished') {
       driftRun.tick(STEP,raceTelemetry(physics));
       recorder?.tick(STEP,physics,driftRun.run);
       if (driftRun.run.status === 'finished') finishRun();
@@ -1916,6 +1940,7 @@ async function boot() {
     }
     if (replay && replay.tick(dt,replayTarget,camera,safeChase)) closeReplay();
     if (state !== 'menu' && !pitPanel.open && !replay) physics.render(car, rig.wheels, accumulated / STEP, rig.hubs);
+    if (online.active && onCircuit) online.tick(now,dt,car,physics.velocity);
     car.updateWorldMatrix(true,false);
     placeContact(world.contact,car.position);
     world.contact.visible = !lifted && !replay;
@@ -1987,7 +2012,8 @@ async function boot() {
   }
   syncScene();
   $('#loading').textContent = '';
-  $('#start').disabled = $('#shift').disabled = $('#duo-open').disabled = $('#practice-open').disabled = false;
+  $('#online-open').disabled = $('#start').disabled = $('#shift').disabled = $('#duo-open').disabled = $('#practice-open').disabled = false;
+  online.openInvite();
   Object.defineProperty(window, 'garageLife', { value: Object.freeze({
     getState: () => ({
       mode: state, seated, cockpit, running: physics.running, speed: physics.speed * 3.6,

@@ -7,7 +7,7 @@
   <meta name="description" content="GARAGE LIFE — дрифт на Контуре 67, тюнинг и свой гараж.">
   <title>GARAGE LIFE / Контур 67</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231a252b'/%3E%3Cpath d='M12 48V24l20-12 20 12v24H42V29H22v19Z' fill='%23ffad69'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./drive.css?v=020">
+  <link rel="stylesheet" href="./drive.css?v=021">
   <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/addons/"}}</script>
 </head>
 <body>
@@ -16,7 +16,7 @@
     <a class="brand" href="./index.html"><span class="logo" aria-hidden="true">⌂</span> GARAGE<span>LIFE</span></a>
     <div class="location"><i></i> <b id="location-area">БОКС 01</b> <span> / </span> <b id="location-mode">ДРИФТ-КЛУБ</b></div>
     <nav>
-      <span class="version">PREVIEW 0.20</span>
+      <span class="version">0.21</span>
       <select id="assist-level" aria-label="Помощь в дрифте">
         <option value="guided">Дрифт: с помощью</option>
         <option value="light">Дрифт: минимум помощи</option>
@@ -51,11 +51,12 @@
 
   <main id="welcome">
     <div class="hero">
-      <p class="label"><i></i> ДРИФТ-КЛУБ / КОНТУР 67</p>
+      <p class="label"><i></i> GARAGE LIFE · ДРИФТ-КЛУБ</p>
       <h1>КОНТУР<br><em>67.</em></h1>
-      <p class="lead">Четыре машины в одном гараже. Выбирай свою, выходи на старт «Контура 67» и возвращайся на тюнинг или обслуживание.</p>
+      <p class="lead">Выбирай машину, настраивай её в гараже и выходи на «Контур 67». Тренируйся один или собери друзей в комнате.</p>
       <div class="hero-buttons">
-        <button class="primary" id="start" disabled>Войти в бокс <b>↗</b></button>
+        <button class="primary" id="online-open" disabled>Играть с друзьями <b aria-hidden="true">↗</b></button>
+        <button class="secondary" id="start" disabled>В гараж</button>
         <button class="secondary" id="practice-open" disabled>Тренировка</button>
         <button class="secondary" id="duo-open" disabled>Дрифт вдвоём</button>
         <button class="secondary" id="shift" disabled>Заказы мастерской</button>
@@ -64,15 +65,39 @@
       <a class="classic" href="./classic.html">Подробный ремонт · классический режим ↗</a>
     </div>
     <div class="intro-card">
-      <p class="label"><span>01 /</span> ПАДДОК</p>
-      <h2>Твой гараж</h2>
-      <p>Четыре заднеприводные машины. Настройки и состояние каждой сохраняются между заездами.</p>
+      <h2>В гараже</h2>
+      <p>Тюнинг и обслуживание четырёх машин.</p>
       <div><strong>E39</strong> · <strong>F90</strong> · <strong>C219</strong> · <strong>A80</strong></div>
     </div>
     <footer><span>WASD · МЫШЬ · КЛАВИАТУРА</span><a href="./credits.html">Авторы и материалы ↗</a></footer>
   </main>
 
+  <dialog id="online-dialog" aria-labelledby="online-title">
+    <form id="online-form">
+      <div class="online-heading">
+        <h2 id="online-title">Играть с друзьями</h2>
+        <button type="button" class="secondary" id="online-cancel" aria-label="Закрыть">×</button>
+      </div>
+      <p>Свободный дрифт на «Контуре 67» · до 4 игроков.</p>
+      <label>Твой ник <input id="online-nick" maxlength="18" autocomplete="nickname" placeholder="Пилот"></label>
+      <label>Машина <select id="online-model"></select></label>
+      <button type="button" class="primary" id="online-create">Создать комнату</button>
+      <div class="online-join">
+        <label>Код комнаты <input id="online-input" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" required></label>
+        <button class="secondary" id="online-join">Войти</button>
+      </div>
+      <p id="online-status" role="status"></p>
+    </form>
+  </dialog>
+
   <section id="play" hidden aria-label="Интерфейс игры">
+    <aside id="online-hud" class="hud-card" hidden aria-label="Комната дрифта">
+      <div class="online-heading"><span class="label">КОД КОМНАТЫ</span><strong id="online-count">1 / 4</strong></div>
+      <div class="online-heading"><strong id="online-code"></strong><button type="button" class="secondary" id="online-copy">Копировать</button></div>
+      <p id="online-link-status" role="status"></p>
+      <ul id="online-roster"></ul>
+      <button type="button" class="secondary" id="online-leave">Выйти из комнаты</button>
+    </aside>
     <aside class="job hud-card">
       <p class="label" id="job-label"></p>
       <h2 id="job-title"></h2>
@@ -220,6 +245,6 @@
     </div>
   </dialog>
   <script src="./js/music.js?v=020" defer></script>
-  <script type="module" src="./js/drive.js?v=019"></script>
+  <script type="module" src="./js/drive.js?v=021"></script>
 </body>
 </html>

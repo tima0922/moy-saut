@@ -1,5 +1,5 @@
 import { Group, Quaternion, Vector3, MathUtils } from 'three';
-import { enterRoom } from './online.js?v=022';
+import { enterRoom } from './online.js?v=023';
 
 const $ = selector => document.querySelector(selector);
 const colors = ['#ffad69','#7ce5df','#bfd48c','#c6aaff'];
@@ -7,6 +7,7 @@ const states = {
   waiting:'Ждём других пилотов',
   connecting:'Подключаем пилотов…',
   direct:'Прямая связь',
+  socket:'Связь через WebSocket',
   relay:'Резервное соединение',
   retrying:'Восстанавливаем связь…',
 };
@@ -67,7 +68,7 @@ export function createOnlineView({scene, models, selection, start, leave, spawn,
       const link = network[id];
       if (!link) return '';
       const delay = Number.isFinite(link.rtt) ? Math.round(link.rtt)+' мс' : '…';
-      return link.type === 'WebRTC' ? 'WebRTC · '+delay : 'HTTPS · '+delay+' до сервера';
+      return link.type+' · '+delay+(link.type==='WebRTC' ? '' : ' до сервера');
     };
     const signature = JSON.stringify(members.map(({id,nick}) => [id,nick,latencyLabel(id)]));
     if (signature === rosterText) return;
@@ -115,7 +116,7 @@ export function createOnlineView({scene, models, selection, start, leave, spawn,
     if (old && transport===remote.transport) {
       remote.cadence = remote.cadence*.8+MathUtils.clamp(time-old.time,16,500)*.2;
     } else {
-      remote.cadence = transport==='rtc' ? 50 : 220;
+      remote.cadence = transport==='rtc' ? 50 : transport==='socket' ? 150 : 220;
       remote.frames.length = 0;
     }
     remote.transport = transport;

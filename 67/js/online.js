@@ -1,3 +1,5 @@
+import { importRelayKey,makeRelayIdentity,openRelay,signRelayFrame,verifyRelayFrame } from './realtime.js?v=023';
+
 const endpoint = 'https://contour-67-rooms.bagirovtimur09.chatgpt.site/api/rooms';
 const errors = {
   closed: 'Комната закрылась или хост вышел.',
@@ -40,11 +42,13 @@ function acceptPose(pose) {
 }
 
 export async function enterRoom({code,nick,model,color,route,contacts,onRoster,onPose,onImpact,onClose}) {
-  const room = await request({action:code ? 'join' : 'create',code,nick,model,color,route,contacts});
+  const signing = await makeRelayIdentity();
+  const room = await request({action:code ? 'join' : 'create',code,nick,model,color,route,contacts,socketKey:signing?.publicKey});
   const {id,secret} = room;
   const send = (action, body, options) => request({action,id,secret,...body}, options);
   const peers = new Map();
   let sequence = 0;
+  let ws, lastBroadcast, broadcastAt = 0, signingFrame = false, roster = [];
   let timer, latest, active = true, lastSent = 0, lastSync = performance.now(), pingAt = 0, serverRtt, after = 0;
 
   function detach(link) {
@@ -56,6 +60,7 @@ export async function enterRoom({code,nick,model,color,route,contacts,onRoster,o
     if (!active) return;
     active = false;
     clearTimeout(timer);
+    ws?.close();
     window.removeEventListener('pagehide', goodbye);
     for (const link of peers.values()) detach(link);
     peers.clear();
@@ -101,7 +106,8 @@ export async function enterRoom({code,nick,model,color,route,contacts,onRoster,o
   }
 
   function add(member) {
-    const link = {...member, started:performance.now(), lastDirect:0};
+    const link = {...member,started:performance.now(),lastDirect:0,lastSocket:0,verifying:0};
+    if (member.socketKey && signing) link.relayKey = importRelayKey(member.socketKey).catch(() => null);
     peers.set(member.id, link);
     if (!window.RTCPeerConnection) return link;
     try {
@@ -129,16 +135,72 @@ export async function enterRoom({code,nick,model,color,route,contacts,onRoster,o
   }
 
   function direct(link, now) {
-    return link.channel?.readyState === 'open' && now - link.lastDirect < 2000 && link.lastDirect > 0;
+    return link.channel?.readyState === 'open' && now - link.lastDirect < 1500 && link.lastDirect > 0;
+  }
+
+  function socketLive(link,now) {
+    return Boolean(ws?.ready && link.lastSocket && now-link.lastSocket<2600);
+  }
+
+  function notify() {
+    const now = performance.now();
+    const links = [...peers.values()];
+    const network = Object.fromEntries(links.map(link => {
+      if (direct(link,now)) return [link.id,{type:'WebRTC',rtt:link.rtt}];
+      if (socketLive(link,now)) return [link.id,{type:'WebSocket',rtt:ws.rtt}];
+      return [link.id,{type:'HTTPS',rtt:serverRtt}];
+    }));
+    const state = !links.length ? 'waiting' :
+      links.every(link=>direct(link,now)) ? 'direct' :
+      links.every(link=>direct(link,now) || socketLive(link,now)) ? 'socket' :
+      links.every(link=>now-link.started<3000) ? 'connecting' : 'relay';
+    onRoster(roster,state,network);
+  }
+
+  async function receiveSocket(packet) {
+    const {frame,signature} = packet ?? {};
+    if (!Array.isArray(frame) || frame.length!==3 ||
+        typeof signature!=='string' || !/^[A-Za-z0-9_-]{86}$/.test(signature)) return;
+    const [sender,number,pose] = frame;
+    const link = peers.get(sender);
+    if (!link?.relayKey || link.verifying>=2 || !Number.isSafeInteger(number) ||
+        number<1 || number<=(link.socketSequence ?? 0) || !acceptPose(pose)) return;
+    link.verifying++;
+    try {
+      const key = await link.relayKey;
+      if (!key || !await verifyRelayFrame(key,frame,signature) || !active || peers.get(sender)!==link ||
+          number<=(link.socketSequence ?? 0)) return;
+      link.socketSequence = number;
+      const now = performance.now();
+      const previouslyActive = socketLive(link,now);
+      link.lastSocket = now;
+      if (!direct(link,now)) onPose(link,pose,'socket');
+      if (!previouslyActive) notify();
+    } catch { /* A malformed frame is ignored. */ }
+    finally { link.verifying--; }
+  }
+
+  function publishSocket(now) {
+    if (!ws?.ready || signingFrame || ![...peers.values()].some(link=>link.relayKey && !direct(link,now))) return;
+    const interval = peers.size >= 3 ? 205 : peers.size===2 ? 170 : 130;
+    if (now-broadcastAt<interval) return;
+    if (lastBroadcast && now-broadcastAt<800 && latest.every((value,i)=>Math.abs(value-lastBroadcast[i])<.002)) return;
+    const frame = [id,sequence,latest];
+    signingFrame = true;
+    signRelayFrame(signing.key,frame).then(signature => {
+      if (active && ws.publish(frame,signature)) {
+        broadcastAt = performance.now();
+        lastBroadcast = frame[2];
+      }
+    }).catch(() => {}).finally(() => { signingFrame = false; });
   }
 
   async function sync() {
     if (!active) return;
     const now = performance.now();
-    const relay = [...peers.values()].some(link => !direct(link, now));
-    const keepPose = relay || room.contacts;
+    const relay = [...peers.values()].some(link => !direct(link,now) && !socketLive(link,now));
     try {
-      const response = await send('sync', {relay, pose:keepPose ? latest : undefined,after,
+      const response = await send('sync', {relay,mirror:true,pose:latest,after,
         signals:[...peers.values()].some(link => !link.handled)});
       if (!active) return;
       lastSync = performance.now();
@@ -149,23 +211,24 @@ export async function enterRoom({code,nick,model,color,route,contacts,onRoster,o
         after = impact.seq;
         onImpact?.(impact.correction);
       }
-      const connected = new Set(response.peers.map(member => member.id));
+      roster = response.peers;
+      const host = roster.find(member=>member.slot===0);
+      if (signing && !ws && host?.socketKey) {
+        ws = openRelay(host.id,{onFrame:receiveSocket,onStatus:notify});
+      }
+      const connected = new Set(roster.map(member => member.id));
       for (const [key,link] of peers) {
         if (connected.has(key)) continue;
         detach(link);
         peers.delete(key);
       }
-      for (const member of response.peers) {
+      for (const member of roster) {
         if (member.id === id) continue;
         const link = peers.get(member.id) ?? add(member);
-        if (member.pose && !direct(link, lastSync)) onPose(link, member.pose, 'https');
+        if (member.pose && !direct(link,lastSync) && !socketLive(link,lastSync)) onPose(link, member.pose, 'https');
       }
       for (const signal of response.signals) void acceptSignal(peers.get(signal.from), signal.sdp);
-      const links = [...peers.values()];
-      const network = Object.fromEntries(links.map(link => [link.id,direct(link,lastSync) ?
-        {type:'WebRTC',rtt:link.rtt} : {type:'HTTPS',rtt:serverRtt}]));
-      onRoster(response.peers, links.every(link => direct(link,lastSync)) ? (links.length ? 'direct' : 'waiting') :
-        links.some(link => !direct(link,lastSync) && lastSync - link.started > 6500) ? 'relay' : 'connecting',network);
+      notify();
     } catch (error) {
       if (!active) return;
       if (error.code === 'closed' || performance.now() - lastSync > 18000) {
@@ -175,7 +238,7 @@ export async function enterRoom({code,nick,model,color,route,contacts,onRoster,o
       }
       onRoster(null, 'retrying');
     }
-    timer = setTimeout(sync, room.contacts ? 120 : relay ? 125 : 1000);
+    timer = setTimeout(sync,room.contacts ? 120 : relay ? 125 : 1000);
   }
 
   timer = setTimeout(sync, 0);
@@ -186,13 +249,14 @@ export async function enterRoom({code,nick,model,color,route,contacts,onRoster,o
       lastSent = now;
       latest = pose.map(value => Math.round(value * 10000) / 10000);
       const packet = JSON.stringify({pose:latest,seq:++sequence});
+      publishSocket(now);
       const measure = now-pingAt>=1000;
       if (measure) pingAt = now;
       for (const link of peers.values()) {
         const {channel} = link;
         if (channel?.readyState === 'open' && channel.bufferedAmount < 2048) {
           try {
-            channel.send(packet);
+            channel.send(link.socketKey ? packet : JSON.stringify(latest));
             if (measure) {
               link.ping = Math.round(performance.now());
               channel.send(JSON.stringify({ping:link.ping}));

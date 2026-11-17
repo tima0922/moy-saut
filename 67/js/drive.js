@@ -15,7 +15,7 @@ import { circuitTerrain } from './circuit-terrain.js?v=019';
 import { PRACTICE_PAD, TANDEM_HEAT, practiceStart, createPracticePad, createTandem } from './drift-modes.js?v=022';
 import { createDriftAudio } from './drift-audio.js?v=017';
 import { createReplayPlayer, createReplayRecorder } from './drift-replay.js';
-import { createOnlineView } from './online-view.js?v=022';
+import { createOnlineView } from './online-view.js?v=023';
 import { createGuest, raceTelemetry } from './local-duo.js?v=019';
 import { DEFAULT_KEYS, DRIVING_ACTIONS, allowedKey, keyLabel, loadBindings } from './drive-bindings.js';
 import { createOrbitCamera } from './orbit-camera.js?v=013';

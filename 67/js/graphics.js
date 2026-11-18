@@ -1,10 +1,16 @@
 export const GRAPHICS = {
   ultra: { pixels: 3_100_000, dpr: 1.5, far: 185, shadows: true, shadowMs: 1000/20, smoke: true },
-  balanced: { pixels: 980_000, dpr: 1, far: 154, smoke: 'light', trackLOD:true },
-  integrated: { pixels: 710_000, dpr: 1, far: 112, lite:true, trackLOD:true },
-  performance: { pixels: 520_000, dpr: .85, far: 105, lite:true, trackLOD:true },
-  minimum: { pixels: 260_000, dpr: .65, far: 85, lite:true, trackLOD:true },
+  balanced: { pixels: 1920*1080, dpr: 1.5, far: 154, smoke: 'light', remoteDetail: 46 },
+  integrated: { pixels: 1600*900, dpr: 1.25, far: 112, lite: true, remoteDetail: 38 },
+  performance: { pixels: 1280*720, dpr: 1, far: 105, lite: true, remoteDetail: 34 },
+  minimum: { pixels: 960*540, dpr: 1, far: 85, lite: true, remoteDetail: 30 },
 };
+
+export function useDistantCar(distanceSquared, detailRange, alreadyDistant) {
+  // Hysteresis avoids flickering between models during an overtake.
+  const threshold=detailRange+(alreadyDistant ? 0 : 8);
+  return Number.isFinite(detailRange) && distanceSquared>threshold**2;
+}
 
 const AUTO_LEVELS = ['minimum', 'performance', 'integrated', 'balanced'];
 
@@ -52,6 +58,8 @@ export function renderRatio(profile, width, height, deviceRatio, touch, split) {
 
 // Change the existing materials so paint, tint and brake light updates still reach every mesh.
 export function createMaterialQuality() {
+  const detailed=new WeakSet();
+  const detailedTextures=new WeakSet();
   const materials = new Map();
   const cheaper = { normalMap: null, bumpMap: null, roughnessMap: null, metalnessMap: null,
     aoMap: null, clearcoat: 0, anisotropy: 0, specularIntensity: 0 };
@@ -60,6 +68,7 @@ export function createMaterialQuality() {
     clone(material) {
       const clone = material.clone();
       if (materials.has(material)) materials.set(clone, materials.get(material));
+      if (detailed.has(material)) detailed.add(clone);
       return clone;
     },
     forget(list) {
@@ -79,11 +88,16 @@ export function createMaterialQuality() {
       if (material.metalness>.25) values.metalness=material.metalness;
       materials.set(material,values);
     },
-    collect(root) {
+    collect(root,preserveDetail=false) {
       root.traverse(object=>{
         if (!object.isMesh) return;
         const list=Array.isArray(object.material) ? object.material : [object.material];
-        for (const material of list) this.register(material);
+        for (const material of list) {
+          this.register(material);
+          if (!preserveDetail) continue;
+          detailed.add(material);
+          for (const texture of tracked.get(material)) detailedTextures.add(texture);
+        }
       });
     },
     release(root,sharedGeometry) {
@@ -108,11 +122,11 @@ export function createMaterialQuality() {
       for (const item of owned) item.dispose();
       this.forget(owned);
     },
-    apply(lite, anisotropy) {
+    apply(lite, anisotropy, maxAnisotropy=anisotropy) {
       for (const [material, values] of materials) {
         let changed = false;
         for (const [name, original] of Object.entries(values)) {
-          const value = lite ? cheaper[name] ?? (name === 'metalness' ? .25 : null) : original;
+          const value = lite && !detailed.has(material) ? cheaper[name] ?? (name === 'metalness' ? .25 : null) : original;
           if (material[name] === value) continue;
           material[name] = value;
           changed = true;
@@ -121,8 +135,9 @@ export function createMaterialQuality() {
       }
       const textures=new Set([...tracked.values()].flatMap(items=>[...items]));
       for (const texture of textures) {
-        if (texture.anisotropy === anisotropy) continue;
-        texture.anisotropy = anisotropy;
+        const target=detailedTextures.has(texture) ? Math.min(Math.max(4,anisotropy),maxAnisotropy) : anisotropy;
+        if (texture.anisotropy === target) continue;
+        texture.anisotropy = target;
         if (texture.image) texture.needsUpdate = true;
       }
     },

@@ -1,3 +1,4 @@
+import { useDistantCar } from './graphics.js?v=033';
 import { Group, Quaternion, Vector3, MathUtils } from 'three';
 import { draftStrength } from './neon-race.js?v=032';
 import { enterRoom } from './online.js?v=032';
@@ -40,7 +41,7 @@ export function createOnlineView({scene, models, selection,start,leave,spawn,pai
   const remotes = new Map();
   const target = new Vector3(), qPosition = new Vector3();
   const codeFromLink = new URLSearchParams(location.search).get('room');
-  let room,pending = false,rosterText,copyTimer,lite = false,nextMap = 0;
+  let room,pending = false,rosterText,copyTimer,detailRange = Infinity,nextMap = 0;
   let round,matchAt = 0,membersCount = 1,starting = false,outcome,reporting = false,reportAt = 0,lastResults;
   const chosenMode = () => modes.querySelector('input:checked').value;
 
@@ -230,7 +231,6 @@ export function createOnlineView({scene, models, selection,start,leave,spawn,pai
       const root = new Group();
       const model = Object.hasOwn(models,member.model) ? member.model : 'sedan';
       const car = spawn(model,/^#[0-9a-f]{6}$/i.test(member.color) ? member.color : colors[member.slot]);
-      car.setLite(lite);
       root.add(car.root);
       const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
       dot.setAttribute('r','2.3');
@@ -239,7 +239,7 @@ export function createOnlineView({scene, models, selection,start,leave,spawn,pai
       dot.setAttribute('stroke-width','.5');
       $('#map-arena').append(dot);
       const orientation = new Quaternion().fromArray(pose,3).normalize();
-      remote = {root,car,dot,orientation,frames:[],cadence:50};
+      remote = {root,car,dot,orientation,frames:[],cadence:50,distant:false};
       root.position.fromArray(pose);
       root.quaternion.copy(orientation);
       scene.add(root);
@@ -328,11 +328,7 @@ export function createOnlineView({scene, models, selection,start,leave,spawn,pai
       show();
       select.value=id;
     },
-    setLite(value) {
-      if (lite===value) return;
-      lite = value;
-      for (const remote of remotes.values()) remote.car.setLite(lite);
-    },
+    setDetailRange(value) { detailRange=value; },
     draftAt(position,velocity,now) {
       let strength=0;
       for(const remote of remotes.values()) {
@@ -380,6 +376,11 @@ export function createOnlineView({scene, models, selection,start,leave,spawn,pai
         }
         remote.root.position.lerp(target,blend);
         remote.root.quaternion.slerp(remote.orientation,blend);
+        const distant=useDistantCar(remote.root.position.distanceToSquared(car.position),detailRange,remote.distant);
+        if (distant!==remote.distant) {
+          remote.distant=distant;
+          remote.car.setDistant(distant);
+        }
         remote.car.rotateWheels(Math.hypot(last.pose[7],last.pose[8])*dt);
         if (!drawMap) continue;
         remote.dot.setAttribute('cx',remote.root.position.x.toFixed(2));

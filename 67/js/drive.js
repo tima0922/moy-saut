@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createWorld } from './world.js?v=032';
-import { GRAPHICS, createGraphicsController, createMaterialQuality, renderRatio, createRenderDiagnostics } from './graphics.js?v=032';
-import { bakeParkedCar, batchSharedMeshes } from './garage-visuals.js?v=019';
+import { GRAPHICS, createGraphicsController, createMaterialQuality, renderRatio, createRenderDiagnostics } from './graphics.js?v=033';
+import { batchSharedMeshes } from './garage-visuals.js?v=019';
 import { BATTERY, fitE39 } from './bmw.js?v=013';
 import { CLUB_ARENA, createClubLayout, createShortLayout, createRun, safeCircuitStart } from './drift.js?v=022';
 import { createDriftWorld, createTireEffects } from './drift-world.js?v=032';
@@ -16,6 +16,7 @@ import { createRaceCourse,createNeonRun,RACE_LAPS,readRaceBest,saveRaceBest } fr
 import { createRaceLights } from './neon-race-world.js?v=032';
 import { createCityLayout } from './city-layout.js?v=032';
 import { createCityWorld } from './city.js?v=032';
+import { createCarReflections } from './car-reflections.js?v=033';
 import { loadTrackCar } from './track-car.js?v=032';
 import { chaseFraction,indexCameraBarriers } from './chase-collision.js?v=032';
 import { STADIUM, stadiumSurface, createStadiumLayout, createStadiumWorld } from './stadium.js?v=022';
@@ -23,7 +24,7 @@ import { circuitTerrain } from './circuit-terrain.js?v=019';
 import { PRACTICE_PAD, TANDEM_HEAT, practiceStart, createPracticePad, createTandem } from './drift-modes.js?v=022';
 import { createDriftAudio } from './drift-audio.js?v=017';
 import { createReplayPlayer, createReplayRecorder } from './drift-replay.js';
-import { createOnlineView } from './online-view.js?v=032';
+import { createOnlineView } from './online-view.js?v=033';
 import { createGuest, raceTelemetry } from './local-duo.js?v=019';
 import { DEFAULT_KEYS, DRIVING_ACTIONS, allowedKey, keyLabel, loadBindings } from './drive-bindings.js';
 import { createOrbitCamera } from './orbit-camera.js?v=013';
@@ -94,11 +95,26 @@ async function boot() {
   world.car.add(bmw.root);
   const visuals = { sedan: bmw, touring: bmw, f90, cls, supra };
   let rig = bmw;
-  let compact;
-  const trackCars=new Map();
-  const trackCarLoads=new Map();
-  const parkedPreviews = new Map();
-  let fleetNeedsLayout = true;
+  const distantCars=new Map();
+  const reflectionMap=createCarReflections();
+  const reflectiveMaterials=new Map();
+  for (const visual of new Set(Object.values(visuals))) {
+    materials.collect(visual.root,true);
+    for (const material of [...visual.paints,visual.windows].filter(Boolean)) {
+      reflectiveMaterials.set(material,material.envMap);
+    }
+  }
+  function applyMaterialQuality() {
+    materials.apply(profile.lite || performanceHud.simpleMaterials,textureAnisotropy(),renderer.capabilities.getMaxAnisotropy());
+  }
+  function updateCarReflections() {
+    for (const [material,original] of reflectiveMaterials) {
+      const map=profile.shadows ? original : original ?? reflectionMap;
+      if (material.envMap===map) continue;
+      material.envMap=map;
+      material.needsUpdate=true;
+    }
+  }
   for (const object of [world.scene, world.car, world.engine, world.lift, world.arms]) {
     batchSharedMeshes(object);
   }
@@ -137,7 +153,7 @@ async function boot() {
     physics.registerRegion(region,result.obstacles);
     cameraBuckets.set(region,indexCameraBarriers(result.obstacles));
     materials.collect(result.group);
-    materials.apply(profile.lite || performanceHud.simpleMaterials,textureAnisotropy());
+    applyMaterialQuality();
     return result;
   }
   const raceWorld = () => layout.city ? additionalWorld('city') : layout.port ? additionalWorld('port') : layout.stadium ? stadium : arena;
@@ -285,7 +301,6 @@ async function boot() {
   const neonNow = (now=performance.now()) => roundPlan ? online.now+now-performance.now() : now;
   const soloRoute = $('#solo-route');
   const bindingsPanel = $('#bindings-panel');
-  const onlineShells = new Map();
   const online = createOnlineView({
     scene, models:FLEET, selection:() => pit.selected,
     start(id, route, mode) {
@@ -311,58 +326,77 @@ async function boot() {
     },
     leave() { show('menu'); },
     spawn(id,color) {
-      const source = visuals[id];
-      const original = [], copies = [];
-      const detailed = source.root.clone(true);
-      detailed.position.set(0,0,0);
-      detailed.rotation.set(0,0,0);
-      detailed.scale.setScalar(1);
-      detailed.visible = true;
-      source.root.traverse(object => original.push(object));
-      detailed.traverse(object => copies.push(object));
-      const wheelParts = source.wheels.map(wheel => copies[original.indexOf(wheel)]);
-      if (!onlineShells.has(id)) {
-        const display = buildPitCar(world,id);
-        onlineShells.set(id,{root:bakeParkedCar(display.root),paints:display.paints});
-      }
-      const preview = onlineShells.get(id);
-      const lightweight = preview.root.clone(true);
-      const owned = new Map();
-      const paint = new Set([...source.paints,...preview.paints]);
-      function replace(material) {
-        if (!paint.has(material)) return material;
-        if (!owned.has(material)) {
-          const tinted = materials.clone(material);
+      const root=new THREE.Group();
+      root.scale.z=MODELS[id].length;
+      const owned=[];
+      let far,loading=false,disposed=false,preferFar=false;
+      function copy(visual,full) {
+        const shell=visual.root.clone(true);
+        shell.position.set(0,0,0);
+        shell.rotation.set(0,0,0);
+        shell.scale.setScalar(1);
+        shell.visible=true;
+        const source=[],clones=[];
+        visual.root.traverse(object=>source.push(object));
+        shell.traverse(object=>clones.push(object));
+        const paint=new Map([...visual.paints].map(material=>{
+          const tinted=materials.clone(material);
           tinted.color.set(color);
-          owned.set(material,tinted);
+          owned.push(tinted);
+          if (full) reflectiveMaterials.set(tinted,reflectiveMaterials.get(material) ?? null);
+          return [material,tinted];
+        }));
+        const replace=material=>paint.get(material) ?? material;
+        for (const object of clones) {
+          if (object.isLight) object.visible=false;
+          if (!object.isMesh) continue;
+          object.castShadow=object.receiveShadow=false;
+          object.material=Array.isArray(object.material) ? object.material.map(replace) : replace(object.material);
         }
-        return owned.get(material);
+        materials.collect(shell,full);
+        updateCarReflections();
+        applyMaterialQuality();
+        return {shell,wheels:visual.wheels.map(wheel=>clones[source.indexOf(wheel)])};
       }
-      for (const shell of [detailed,lightweight]) shell.traverse(object => {
-        if (object.isLight) object.visible = false;
-        if (!object.isMesh) return;
-        object.castShadow = object.receiveShadow = false;
-        object.material = Array.isArray(object.material) ? object.material.map(replace) : replace(object.material);
-      });
-      const root = new THREE.Group();
-      root.scale.z = MODELS[id].length;
-      materials.collect(detailed);
-      materials.collect(lightweight);
-      materials.apply(profile.lite || performanceHud.simpleMaterials,textureAnisotropy());
+      const detailed=copy(visuals[id],true);
+      let active=detailed;
+      root.add(active.shell);
+      function selectModel() {
+        const next=preferFar && far ? far : detailed;
+        if (next===active) return;
+        active.shell.removeFromParent();
+        root.add(next.shell);
+        active=next;
+      }
       return {
         root,
-        setLite(lite) {
-          const shell=lite ? lightweight : detailed;
-          if (shell.parent===root) return;
-          root.clear();
-          root.add(shell);
+        setDistant(value) {
+          preferFar=value;
+          selectModel();
+          if (!value || loading || far) return;
+          loading=true;
+          if (!distantCars.has(id)) {
+            distantCars.set(id,loadTrackCar(id).catch(error=>{
+              distantCars.delete(id);
+              console.warn('Distant car could not load',id,error);
+            }));
+          }
+          distantCars.get(id).then(visual=>{
+            if (disposed || !visual) return;
+            far=copy(visual,false);
+            selectModel();
+          });
         },
         rotateWheels(distance) {
-          if (detailed.parent===root) for (const wheel of wheelParts) if (wheel) wheel.rotation.x -= distance/.333;
+          for (const wheel of active.wheels) if (wheel) wheel.rotation.x -= distance/.333;
         },
         dispose() {
-          materials.forget(owned.values());
-          for (const material of owned.values()) material.dispose();
+          disposed=true;
+          materials.forget(owned);
+          for (const material of owned) {
+            reflectiveMaterials.delete(material);
+            material.dispose();
+          }
         },
       };
     },
@@ -483,7 +517,6 @@ async function boot() {
       if (visible && root.parent !== scene) scene.add(root);
       if (!visible) root.removeFromParent();
     }
-    fleetNeedsLayout = true;
     $('.map').hidden = practicePad;
     for (const [track,entry] of neonTracks) {
       if (onCircuit && neon && track===layout) {
@@ -577,7 +610,6 @@ async function boot() {
     wakeStrength=0;
     const racingTrack=neonSelected ? neonTracks.get(layout) : undefined;
     neon = racingTrack ? createNeonRun(racingTrack.course,nextRound?.startsAt ?? (online.active ? Infinity : practiceStarted+3000)) : undefined;
-    if (profile.trackLOD) ensureTrackCar(modelId);
     neonBest = racingTrack && !online.active ? readRaceBest(storage,racingTrack.id) : null;
     parkour = layout.port ? portCourse(nextRound?.startsAt ?? practiceStarted) : undefined;
     const {x,z,yaw,gate,y} = racingTrack ? racingTrack.course.grid(online.active ? online.slot : undefined)
@@ -647,6 +679,7 @@ async function boot() {
   function stopDuo() {
     if (!guest) return;
     materials.forget(guest.paintMaterials);
+    for (const material of guest.paintMaterials) reflectiveMaterials.delete(material);
     guest.remove();
     guestEffects?.dispose();
     guestEffects = undefined;
@@ -668,8 +701,10 @@ async function boot() {
       setup: setupFor(pit.cars[second]), layout, effects: guestEffects, clonePaint: materials.clone,
       color: second === 'supra' ? (first === second ? 0x287aab : pit.cars.supra.color) : 0xc86135,
     });
-    materials.collect(guest.car);
-    materials.apply(profile.lite || performanceHud.simpleMaterials, textureAnisotropy());
+    materials.collect(guest.car,true);
+    for (const material of guest.paintMaterials) reflectiveMaterials.set(material,null);
+    updateCarReflections();
+    applyMaterialQuality();
     guestModelId = second;
     guest.physics.setAssist(pit.assist);
     duoFree = mode === 'free';
@@ -799,13 +834,12 @@ async function boot() {
       district.sky.visible = !profile.lite;
       club.lighting.visible = !profile.lite;
       world.setEnvironment(graphics.level === 'ultra');
+      updateCarReflections();
       arena.setQuality(profile);
-      if (onCircuit && profile.trackLOD) ensureTrackCar(modelId);
-      fleetNeedsLayout = true;
-      materials.apply(profile.lite || performanceHud.simpleMaterials, textureAnisotropy());
+      applyMaterialQuality();
     }
     document.documentElement.classList.toggle('lite-graphics', !!profile.lite);
-    online.setLite(!!profile.trackLOD);
+    online.setDetailRange(profile.remoteDetail ?? Infinity);
     $('#graphics').value = graphicsMode;
     updateRenderCamera(camera);
     if (guest) updateRenderCamera(guest.camera);
@@ -814,7 +848,7 @@ async function boot() {
   }
 
   function textureAnisotropy() {
-    return Math.min(renderer.capabilities.getMaxAnisotropy(), profile.lite ? 1 : touchScreen.matches ? 2 : 8);
+    return Math.min(renderer.capabilities.getMaxAnisotropy(), profile.lite ? 2 : touchScreen.matches ? 2 : 8);
   }
 
   function updateRenderCamera(viewCamera) {
@@ -895,13 +929,8 @@ async function boot() {
   function setCar(id) {
     cancelManual();
     rig.root.removeFromParent();
-    if (compact) {
-      compact.root.removeFromParent();
-      compact=undefined;
-    }
     rig = visuals[id];
     rig.root.visible = true;
-    fleetNeedsLayout = true;
     model = MODELS[id];
     modelId = id;
     physics.setModel(model);
@@ -941,63 +970,6 @@ async function boot() {
     parked = true;
     cameraCut = true;
     physics.render(car, rig.wheels, 1, rig.hubs);
-  }
-
-  function ensureTrackCar(id) {
-    if (trackCarLoads.has(id)) return;
-    trackCarLoads.set(id,loadTrackCar(id).then(visual=>{
-      materials.collect(visual.root);
-      trackCars.set(id,visual);
-      materials.apply(profile.lite || performanceHud.simpleMaterials,textureAnisotropy());
-    }).catch(error=>{
-      trackCarLoads.delete(id);
-      console.warn('Track car could not load',id,error);
-    }));
-  }
-
-  function drivingVisual() {
-    const next=onCircuit && !cockpit && !replay && profile.trackLOD ? trackCars.get(modelId) : undefined;
-    if (next!==compact) {
-      compact?.root.removeFromParent();
-      compact=next;
-      if (compact) {
-        rig.root.removeFromParent();
-        for (const paint of compact.paints) paint.color.set(pit.cars[modelId].color);
-        car.add(compact.root);
-      } else if (rig.root.parent!==car) car.add(rig.root);
-    }
-    return compact ?? rig;
-  }
-
-  function updateParkedPreviews() {
-    if (!fleetNeedsLayout) return;
-    fleetNeedsLayout = false;
-    let added = false;
-    for (const id of ['f90','cls','supra']) {
-      const detailed = visuals[id];
-      const parked = detailed.root.parent === club.room;
-      const usePreview = parked && club.room.visible && detailed.external && profile.trackLOD;
-      let preview = parkedPreviews.get(id);
-      if (usePreview && !preview) {
-        const display = buildPitCar(world,id);
-        preview = { root: bakeParkedCar(display.root), paints: display.paints };
-        materials.collect(preview.root);
-        parkedPreviews.set(id,preview);
-        added = true;
-      }
-      if (parked) detailed.root.visible = !usePreview;
-      if (!preview) continue;
-      if (usePreview) {
-        for (const paint of preview.paints) paint.color.set(pit.cars[id].color);
-        preview.root.position.copy(detailed.root.position);
-        preview.root.quaternion.copy(detailed.root.quaternion);
-        preview.root.scale.copy(detailed.root.scale);
-        if (preview.root.parent !== club.room) club.room.add(preview.root);
-      } else {
-        preview.root.removeFromParent();
-      }
-    }
-    if (added) materials.apply(profile.lite || performanceHud.simpleMaterials, textureAnisotropy());
   }
 
   function closeRig(visual) {
@@ -2429,7 +2401,6 @@ async function boot() {
     const elapsed = clock.getDelta();
     if (document.hidden || contextLost) { accumulated=0; return; }
     const dt = Math.min(elapsed, .1);
-    updateParkedPreviews();
     if (state === 'menu') {
       if (now < menuFrameDue) return;
       menuFrameDue = now + 1000/20;
@@ -2442,8 +2413,7 @@ async function boot() {
       }
     }
     if (replay && replay.tick(dt,replayTarget,camera,safeChase)) closeReplay();
-    const visual=drivingVisual();
-    if (state !== 'menu' && !pitPanel.open && !replay) physics.render(car,visual.wheels,accumulated/STEP,visual.hubs);
+    if (state !== 'menu' && !pitPanel.open && !replay) physics.render(car,rig.wheels,accumulated/STEP,rig.hubs);
     if (online.active && onCircuit) online.tick(now,dt,car,physics.velocity);
     car.updateWorldMatrix(true,false);
     if (!layout.port) placeContact(world.contact,car.position);
@@ -2459,7 +2429,6 @@ async function boot() {
       }
     }
     for (const lamp of rig.lampMeshes) lamp.visible = physics.braking;
-    if (compact?.brakeLamps) compact.brakeLamps.emissiveIntensity=physics.braking ? 1.25 : .40;
     rig.brakeLamps.emissiveIntensity = physics.braking ? 1.2 : rig === bmw ? 0 : .22;
     if (rig.windows) rig.windows.opacity = cockpit ? .16 : .84;
     if (rig.steering) rig.steering.rotation.z = -rig.hubs[0].rotation.y * 4;
@@ -2550,7 +2519,7 @@ async function boot() {
       manual: manual ? { ...manual, wheelRemoved: !!removedWheel } : null, fleet: Object.keys(STALLS),
       workshopAsset: equipment, trackAsset: trackKit, importedCars: [f90,cls,supra].filter(rig => rig.external).length, setup: garageMode() ? { ...condition() } : null,
       assets: { ...world.assetStatus }, render: { ...renderer.info.render }, graphics: graphicsMode,
-      activeColliders:physics.activeColliderCount(), activeRouteWorlds:[...routeWorlds.keys()], reducedCar:Boolean(compact),
+      activeColliders:physics.activeColliderCount(), activeRouteWorlds:[...routeWorlds.keys()], reducedCar:false,
       graphicsLevel: graphics.level, fps, diagnostics:performanceHud.stats, buffer: [canvas.width,canvas.height],
     }),
   }) });

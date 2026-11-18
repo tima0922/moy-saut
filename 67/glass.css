@@ -65,7 +65,7 @@ select option {background:#222d3c;color:var(--ink)}
 .hero .label {font-size:11px;color:#cfdee9;letter-spacing:.20em}
 .hero h1 {
   max-width:8ch;margin:20px 0 16px;font-family:var(--display);
-  font-weight:800;font-size:clamp(46px,7vw,122px);letter-spacing:-.077em;line-height:1.07;
+  font-weight:800;font-size:clamp(46px,7vw,122px);letter-spacing:-.061em;line-height:1.07;
   text-shadow:0 5px 30px #09121f88;
 }
 .hero h1 em {display:block;color:var(--accent)}
@@ -95,7 +95,7 @@ select option {background:#222d3c;color:var(--ink)}
 .mode-pick strong,.mode-pick small {display:block}
 .mode-pick strong {font-size:17px;line-height:1.14;letter-spacing:-.015em}
 .mode-pick small {margin-top:5px;color:#d1e2e9;font-size:11px}
-.mode-pick b {font-size:16px;font-weight:500;color:#c8eaf3}
+.mode-pick b {width:7px;height:7px;border-top:1.5px solid #c8eaf3;border-right:1.5px solid #c8eaf3;transform:rotate(45deg)}
 .mode-utilities {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .mode-utilities button {min-height:40px;padding:8px 10px;font-size:12px}
 .mode-deck .classic {justify-self:start;padding:3px 2px 0}

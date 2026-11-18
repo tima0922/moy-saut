@@ -1,0 +1,137 @@
+import * as THREE from 'three';
+
+export const RACE_LAPS = 3;
+const ROAD_LIMIT = 9;
+const GATE_HALF = 8;
+const PICKUP_RADIUS = 2.3;
+const keyFor = track => 'garage-life-neon-'+track;
+
+export function readRaceBest(storage,track) {
+  try {
+    const value=Number(storage?.getItem(keyFor(track)));
+    return Number.isFinite(value) && value>0 ? value : null;
+  } catch { return null; }
+}
+
+export function saveRaceBest(storage,track,time) {
+  const best=readRaceBest(storage,track);
+  if (best!==null && best<=time) return best;
+  try { storage?.setItem(keyFor(track),String(time)); } catch { /* Storage is optional. */ }
+  return time;
+}
+
+export function createRaceCourse(layout,height=()=>0) {
+  const {road,directions}=layout;
+  const at=index=>{
+    const point=road[index];
+    return new THREE.Vector3(point.x,height(point.x,point.z),point.z);
+  };
+  const gates=[], pickups=[];
+  const intervals=16;
+  for(let i=1;i<=intervals;i++) {
+    const index=Math.floor(i*road.length/intervals)%road.length;
+    gates.push({point:at(index),dir:directions[index]});
+  }
+  for(let i=0;i<8;i++) {
+    const index=Math.floor((i+.55)*road.length/8);
+    const point=at(index),dir=directions[index];
+    const offset=i%2 ? -3.55 : 3.55;
+    point.x+=dir.z*offset;
+    point.z-=dir.x*offset;
+    point.y=height(point.x,point.z);
+    pickups.push({point,kind:i%3===1 ? 'grip' : 'nitro'});
+  }
+  function place(point,dir,along,across=0) {
+    const x=point.x+along*dir.x+across*dir.z;
+    const z=point.z+along*dir.z-across*dir.x;
+    return {x,z,y:height(x,z),yaw:Math.atan2(-dir.x,-dir.z)};
+  }
+  const grid=slot=>place(gates.at(-1).point,gates.at(-1).dir,slot===undefined ? -7 : -7-Math.floor(slot/2)*6,
+    slot===undefined ? 0 : slot%2 ? 2.65 : -2.65);
+
+  function roadDistance(position) {
+    let distance=Infinity;
+    for(let i=0;i<road.length;i++) {
+      const a=road[i], b=road[(i+1)%road.length];
+      const x=b.x-a.x,z=b.z-a.z,rx=position.x-a.x,rz=position.z-a.z;
+      const t=Math.max(0,Math.min(1,(rx*x+rz*z)/(x*x+z*z)));
+      const square=(rx-x*t)**2+(rz-z*t)**2;
+      if(square<distance) distance=square;
+      if(distance<.04) break;
+    }
+    return distance;
+  }
+  const recovery=index=>index<0 ? grid() : place(gates[index].point,gates[index].dir,2.9);
+  return {gates,pickups,grid,recovery,roadDistance};
+}
+
+function crosses(from,to,{point,dir}) {
+  const a=(from.x-point.x)*dir.x+(from.z-point.z)*dir.z;
+  const b=(to.x-point.x)*dir.x+(to.z-point.z)*dir.z;
+  if(a>=0 || b<0 || b-a<.0001) return false;
+  const t=-a/(b-a);
+  const x=from.x+(to.x-from.x)*t-point.x;
+  const z=from.z+(to.z-from.z)*t-point.z;
+  const y=from.y+(to.y-from.y)*t-point.y;
+  return Math.abs(x*dir.z-z*dir.x)<=GATE_HALF && Math.abs(y)<3;
+}
+
+export function createNeonRun(course,startsAt) {
+  let last, lastGate=-1, next=0, laps=0, resets=0, charges=1, finished, offSince;
+  let boostUntil=0,gripUntil=0;
+  const collected=course.pickups.map(()=>false);
+  return {
+    startsAt, get lap(){return Math.min(laps+1,RACE_LAPS);},
+    get next(){return next;},get charges(){return charges;},get resets(){return resets;},get elapsed(){return finished;},
+    get gate(){return course.gates[next];},get offRoad(){return offSince!==undefined;},
+    available:index=>!collected[index],
+    boosted:now=>now<boostUntil,
+    grip:now=>now<gripUntil,
+    activate(now) {
+      if(now<startsAt || finished!==undefined || charges===0 || now<boostUntil) return false;
+      charges--;
+      boostUntil=now+2400;
+      return true;
+    },
+    recover(now) {
+      if(now<startsAt || finished!==undefined) return null;
+      last=undefined;
+      offSince=undefined;
+      boostUntil=gripUntil=0;
+      resets++;
+      return course.recovery(lastGate);
+    },
+    tick(now,position,grounded) {
+      if(now<startsAt || finished!==undefined) return;
+      const {x,y,z}=position;
+      const pose={x,y,z};
+      const distance=course.roadDistance(position);
+      const onRoad=distance<=ROAD_LIMIT**2;
+      if(onRoad) offSince=undefined;
+      else offSince ??= now;
+      if(distance>18**2 || y < -4 || offSince!==undefined && now-offSince>2400) return 'recover';
+      if(onRoad && last && Math.hypot(x-last.x,z-last.z)<20 && crosses(last,pose,course.gates[next])) {
+        lastGate=next;
+        next++;
+        if(next===course.gates.length) {
+          next=0;
+          if(++laps===RACE_LAPS) {
+            finished=Math.max(0,Math.round(now-startsAt));
+            return 'finished';
+          }
+          collected.fill(false);
+        }
+      }
+      last=pose;
+      if(!onRoad || !grounded) return;
+      for(const [i,{point,kind}] of course.pickups.entries()) {
+        if(collected[i] || Math.abs(y-point.y)>1.35 || (x-point.x)**2+(z-point.z)**2>PICKUP_RADIUS**2) continue;
+        if(kind==='nitro' && charges>=3) continue;
+        collected[i]=true;
+        if(kind==='nitro') charges++;
+        else gripUntil=now+4600;
+        return kind;
+      }
+    },
+  };
+}

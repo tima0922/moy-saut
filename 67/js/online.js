@@ -47,7 +47,7 @@ function acceptPose(pose,route) {
 
 export async function enterRoom({code,nick,model,color,route,mode,contacts,onRoster,onPose,onImpact,onMatch,onClose}) {
   const signing = await makeRelayIdentity();
-  const room = await request({action:code ? 'join' : 'create',code,nick,model,color,route,mode,contacts,games:6,socketKey:signing?.publicKey});
+  const room = await request({action:code ? 'join' : 'create',code,nick,model,color,route,mode,contacts,games:7,socketKey:signing?.publicKey});
   const {id,secret} = room;
   const send = (action, body, options) => request({action,id,secret,...body}, options);
   const peers = new Map();

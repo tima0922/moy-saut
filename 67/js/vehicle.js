@@ -260,7 +260,7 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       }
     }
 
-    function prepare({ gas = false, reverse = false, turn = 0, handbrake = false, occupied = false, parking = false, fault = '', gateY = 0, drift = false, speedLimit } = {}) {
+    function prepare({ gas = false, reverse = false, turn = 0, handbrake = false, occupied = false, parking = false, fault = '', gateY = 0, drift = false, speedLimit, nitro=false, raceGrip=false } = {}) {
       previousPose = currentPose;
       if (lifted) return;
 
@@ -306,8 +306,8 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       const freeRev = gas && !serviceBrake ? (drift ? 2200 + rearSlide * 1900 : 1800) : 780;
       rpm = damp(rpm, running ? clamp(Math.max(freeRev, engineRpm), 780, redline) : 0, 9, STEP);
 
-      const maxSpeed = throttle < 0 ? 22 : speedLimit ?? (drift ? 120 : 145);
-      const drive = model.force * (setup.power ?? 1) * (drift ? model.driveMultiplier ?? 1.38 : 1) * Math.max(0, 1 - (kmh / maxSpeed) ** 2);
+      const maxSpeed = throttle < 0 ? 22 : speedLimit ?? (nitro && grounded ? 182 : drift ? 120 : 145);
+      const drive = model.force * (setup.power ?? 1) * (nitro && grounded && throttle>0 ? 1.63 : 1) * (drift ? model.driveMultiplier ?? 1.38 : 1) * Math.max(0, 1 - (kmh / maxSpeed) ** 2);
       const torque = (handbrake ? 0 : drive * throttle * (drift ? 1 - brakeRelease : 1)) * (throttle < 0 ? .46 : shiftTime > .10 ? .58 : 1);
       const slideSpeed = clamp((kmh - 12) / 14, 0, 1);
       const slipDemand = clamp((Math.abs(slip) - .055) * 3.4, 0, 1);
@@ -340,8 +340,8 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
         const front = WHEEL_Z[i] < 0;
         const lowTire = fault === 'tires' && i === 0;
         suspension.setWheelSteering(i, front ? -steer + (lowTire && kmh > 6 ? .043 : 0) : 0);
-        suspension.setWheelFrictionSlip(i, customTires ? 0 : handbrake && !front ? .55 : lowTire ? .77 : 1.32);
-        suspension.setWheelSideFrictionStiffness(i, customTires ? 0 : lowTire ? .72 : 1.15);
+        suspension.setWheelFrictionSlip(i, customTires ? 0 : handbrake && !front ? .55 : lowTire ? .77 : raceGrip ? 1.59 : 1.32);
+        suspension.setWheelSideFrictionStiffness(i, customTires ? 0 : lowTire ? .72 : raceGrip ? 1.48 : 1.15);
         suspension.setWheelEngineForce(i, front || customTires ? 0 : torque / 2);
         const service = serviceBrake ? (setup.brakes ?? 1) * (fault === 'brakes' ? 14 : front ? 63 : 39) : 0;
         suspension.setWheelBrake(i, customTires ? 0 : !moving || parking ? 155 : handbrake && !front ? 155 : service || (throttle === 0 ? 2.1 : 0));

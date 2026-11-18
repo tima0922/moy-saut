@@ -1,4 +1,5 @@
 export const MATCH_MODES = {
+  race:{label:'Неоновые гонки',description:'Три круга на время. Собирай заряды нитро и бонусы сцепления.'},
   free:{label:'Свободный заезд',description:'Катайтесь в своём темпе.'},
   elimination:{label:'Кольцо на вылет',description:'Держи занос на «Стадионе». Побеждает последний на трассе.'},
   battle:{label:'Дрифт-баттл',description:'90 секунд на очки. Угол, скорость и клип-зоны приносят баллы.'},
@@ -19,7 +20,7 @@ export function rankRound(round) {
   const priority = row=>row.last ? 0 : row.status==='finished' ? 1 : row.status==='dnf' || round.finished ? 3 : 2;
   const score = row=>row.value+row.resets*RESET_PENALTY;
   return rows.sort((a,b)=>priority(a)-priority(b) ||
-    (a.status==='finished' && b.status==='finished' ? round.mode==='parkour' ? score(a)-score(b) : b.value-a.value : 0));
+    (a.status==='finished' && b.status==='finished' ? ['parkour','race'].includes(round.mode) ? score(a)-score(b) : b.value-a.value : 0));
 }
 
 export function eliminationRun(startsAt) {

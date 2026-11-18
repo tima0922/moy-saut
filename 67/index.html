@@ -7,7 +7,9 @@
   <meta name="description" content="GARAGE LIFE — дрифт на Контуре 67, тюнинг и свой гараж.">
   <title>GARAGE LIFE / Контур 67</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231a252b'/%3E%3Cpath d='M12 48V24l20-12 20 12v24H42V29H22v19Z' fill='%23ffad69'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./drive.css?v=029">
+  <link rel="stylesheet" href="../2/fonts/fonts.css">
+  <link rel="stylesheet" href="./drive.css?v=030">
+  <link rel="stylesheet" href="./glass.css?v=030">
   <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/addons/"}}</script>
 </head>
 <body>
@@ -17,7 +19,7 @@
     <a class="brand" href="./index.html"><span class="logo" aria-hidden="true">⌂</span> GARAGE<span>LIFE</span></a>
     <div class="location"><i></i> <b id="location-area">БОКС 01</b> <span> / </span> <b id="location-mode">ДРИФТ-КЛУБ</b></div>
     <nav>
-      <span class="version">0.29</span>
+      <span class="version">0.30</span>
       <select id="assist-level" aria-label="Помощь в дрифте">
         <option value="guided">Дрифт: с помощью</option>
         <option value="light">Дрифт: минимум помощи</option>
@@ -55,27 +57,41 @@
 
   <main id="welcome">
     <div class="hero">
-      <p class="label"><i></i> GARAGE LIFE · ДРИФТ-КЛУБ</p>
-      <h1>КОНТУР<br><em>67.</em></h1>
-      <p class="lead">Выбирай машину, настраивай её в гараже и выходи на «Контур 67». Тренируйся один или собери друзей в комнате.</p>
-      <div class="hero-buttons">
-        <button class="primary" id="online-open" disabled>Играть с друзьями <b aria-hidden="true">↗</b></button>
-        <button class="secondary" id="start" disabled>В гараж</button>
-        <button class="secondary" id="practice-open" disabled>Тренировка</button>
-        <button class="secondary" id="duo-open" disabled>Дрифт вдвоём</button>
-        <button class="secondary" id="shift" disabled>Заказы мастерской</button>
-      </div>
+      <p class="label"><i></i> GARAGE LIFE</p>
+      <h1>КОНТУР <em>67</em></h1>
+      <p class="lead">Гонки, дрифт и тюнинг в своём гараже.</p>
       <p id="loading" class="label" aria-live="polite">ГОТОВИМ БОКС…</p>
-      <a class="classic" href="./classic.html">Подробный ремонт · классический режим ↗</a>
     </div>
-    <div class="intro-card">
-      <h2>В гараже</h2>
-      <p>Тюнинг и обслуживание четырёх машин.</p>
-      <div><strong>E39</strong> · <strong>F90</strong> · <strong>C219</strong> · <strong>A80</strong></div>
-    </div>
+    <section class="mode-deck" aria-label="Выбор режима">
+      <button class="mode-pick mode-neon" id="neon-open" type="button" disabled>
+        <span class="mode-icon" aria-hidden="true">ϟ</span><span><strong>Неоновые гонки</strong><small>3 круга · нитро и бонусы</small></span><b aria-hidden="true">↗</b>
+      </button>
+      <button class="mode-pick mode-online" id="online-open" type="button" disabled>
+        <span class="mode-icon" aria-hidden="true">↔</span><span><strong>Играть с друзьями</strong><small>Комната до 4 игроков</small></span><b aria-hidden="true">↗</b>
+      </button>
+      <div class="mode-utilities">
+        <button class="secondary" id="start" type="button" disabled>Гараж и дрифт</button>
+        <button class="secondary" id="practice-open" type="button" disabled>Тренировка</button>
+        <button class="secondary" id="duo-open" type="button" disabled>Дрифт вдвоём</button>
+        <button class="secondary" id="shift" type="button" disabled>Мастерская</button>
+      </div>
+      <a class="classic" href="./classic.html">Подробный ремонт ↗</a>
+    </section>
     <footer><span>WASD · МЫШЬ · КЛАВИАТУРА</span><a href="./credits.html">Авторы и материалы ↗</a></footer>
   </main>
 
+  <dialog id="neon-dialog" aria-labelledby="neon-title">
+    <form id="neon-form">
+      <div class="online-heading"><h2 id="neon-title">Неоновые гонки</h2><button class="secondary" type="button" id="neon-close" aria-label="Закрыть">×</button></div>
+      <p>Три круга на время. Бирюзовый бонус заряжает нитро, фиолетовый улучшает сцепление.</p>
+      <div class="neon-selects">
+        <label>Машина <select id="neon-car" required></select></label>
+        <label>Трасса <select id="neon-route"><option value="main">Контур 67</option><option value="stadium">Стадион</option></select></label>
+      </div>
+      <p id="neon-best" class="label"></p>
+      <div class="neon-actions"><button type="submit" class="primary">Старт соло</button><button type="button" id="neon-friends" class="secondary">С друзьями</button></div>
+    </form>
+  </dialog>
   <dialog id="online-dialog" aria-labelledby="online-title">
     <form id="online-form">
       <div class="online-heading">
@@ -88,6 +104,7 @@
       <fieldset id="online-modes">
         <legend>Режим для новой комнаты</legend>
         <div class="mode-grid">
+          <label><input type="radio" name="online-mode" value="race"><span>Неоновые гонки</span></label>
           <label><input type="radio" name="online-mode" value="free" checked><span>Свободный заезд</span></label>
           <label><input type="radio" name="online-mode" value="elimination"><span>Кольцо на вылет</span></label>
           <label><input type="radio" name="online-mode" value="battle"><span>Дрифт-баттл</span></label>
@@ -120,6 +137,12 @@
       <div class="match-heading"><h2 id="match-title"></h2><time id="match-time" hidden></time></div>
       <p id="match-status"></p>
       <ol id="match-results" hidden></ol>
+    </aside>
+    <aside id="neon-hud" class="hud-card" hidden aria-label="Гонка">
+      <div class="neon-line"><span id="neon-lap">Круг 1 / 3</span><time id="neon-clock">0:00.00</time></div>
+      <p id="neon-status"></p>
+      <button type="button" class="secondary" id="neon-boost">Нитро <span id="neon-charge">1 / 3</span> <kbd id="neon-key">Shift</kbd></button>
+      <div id="neon-replay" class="race-actions" hidden><button class="primary" type="button" id="neon-retry">Повторить</button><button class="secondary" type="button" id="neon-back">Меню</button></div>
     </aside>
     <aside id="parkour-hud" class="hud-card" hidden aria-label="Тренировка в порту">
       <h2>Паркур в порту</h2>
@@ -276,6 +299,6 @@
     </div>
   </dialog>
   <script src="./js/music.js?v=020" defer></script>
-  <script type="module" src="./js/drive.js?v=029"></script>
+  <script type="module" src="./js/drive.js?v=030"></script>
 </body>
 </html>

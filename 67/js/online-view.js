@@ -1,7 +1,7 @@
 import { Group, Quaternion, Vector3, MathUtils } from 'three';
-import { enterRoom } from './online.js?v=029';
+import { enterRoom } from './online.js?v=030';
 
-import { MATCH_MODES,RESET_PENALTY,formatTime,rankRound } from './competition.js?v=027';
+import { MATCH_MODES,RESET_PENALTY,formatTime,rankRound } from './competition.js?v=030';
 
 const scoreFormat = new Intl.NumberFormat('ru-RU');
 const $ = selector => document.querySelector(selector);
@@ -45,11 +45,13 @@ export function createOnlineView({scene, models, selection,start,leave,spawn,pai
 
   function changeMode() {
     const mode = chosenMode();
-    const chooseRoute = mode==='free' || mode==='battle';
+    const chooseRoute = mode==='free' || mode==='battle' || mode==='race';
     $('#online-route-row').hidden = !chooseRoute;
     $('#online-contact-row').hidden = mode!=='free';
     const stadium = route.querySelector('[value="stadium"]');
     stadium.disabled = mode==='battle';
+    route.querySelector('[value=short]').disabled = mode==='race';
+    if (mode==='race' && route.value==='short') route.value='main';
     if (mode==='battle' && route.value==='stadium') route.value = 'main';
     $('#online-mode-description').textContent = MATCH_MODES[mode].description;
   }
@@ -277,7 +279,7 @@ export function createOnlineView({scene, models, selection,start,leave,spawn,pai
       $('#online-code').textContent = room.code;
       hud.hidden = false;
       updateRoster([{slot,id,nick:nick.value.trim() || 'Пилот ' + (slot + 1)}], 'waiting');
-      start(select.value,room.route);
+      start(select.value,room.route,room.mode);
       if (room.mode!=='free') {
         $('#match-title').textContent = MATCH_MODES[room.mode].label;
         matchPanel.hidden = false;
@@ -316,6 +318,13 @@ export function createOnlineView({scene, models, selection,start,leave,spawn,pai
 
   return {
     clear, show,
+    openRace(track,id) {
+      modes.querySelector('[value=race]').checked=true;
+      changeMode();
+      route.value=track;
+      show();
+      select.value=id;
+    },
     setLite(value) {
       if (lite===value) return;
       lite = value;

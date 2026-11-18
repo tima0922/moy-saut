@@ -1,0 +1,167 @@
+:root {
+  --bg:#101722;
+  --ink:#f1f5f6;
+  --sub:#b9c8d0;
+  --accent:#ffc08c;
+  --neon:#8af4ef;
+  --glass:#a7c4e637;
+  --glass-fill:linear-gradient(148deg,#4054679d,#1b2939e6 72%);
+  --glass-hover:linear-gradient(148deg,#4c647bb5,#283b4edf 78%);
+  --display:'Unbounded',Onest,system-ui,sans-serif;
+  --data:'JetBrains Mono',ui-monospace,monospace;
+  font-family:Onest,system-ui,sans-serif;
+}
+
+header {background:linear-gradient(180deg,#111b2aef,#121c2b9c);border-color:#a7bbd532}
+.brand {letter-spacing:.035em;white-space:nowrap}
+.logo {border-radius:8px}
+.label,.location,.version,kbd {font-family:var(--data)}
+button, input, select {font-family:inherit}
+:where(button,a,select,input):focus-visible {outline:2px solid var(--neon);outline-offset:3px}
+button:disabled {cursor:default}
+
+.primary,.secondary,.drift-button,nav button,.pit-car,.pit-row button,
+#touch-controls button,#touch-actions button,#action,#music-toggle {
+  border:1px solid var(--glass);
+  border-radius:10px;
+  background:var(--glass-fill);
+  box-shadow:inset 0 1px 0 #dcecff25,0 4px 14px #07101b25;
+  color:var(--ink);
+}
+.primary {
+  background:linear-gradient(128deg,#ffcc9f,#ef995e);
+  border-color:#ffdab66d;color:#271a16;
+  box-shadow:inset 0 1px 0 #fff4e28a,0 5px 17px #23141032;
+}
+.drift-button {background:linear-gradient(135deg,#d6f5c5,#a9ce9e);color:#142820}
+.secondary:hover,nav button:hover,.pit-car:hover,.pit-row button:hover,#action:hover,#music-toggle:hover {
+  background:var(--glass-hover);border-color:#b9d3f26e;
+}
+.primary:hover {background:linear-gradient(130deg,#ffe0bc,#ffb681)}
+.drift-button:hover {background:linear-gradient(130deg,#e6f9d8,#c2edb5)}
+button:active:not(:disabled) {filter:brightness(.93)}
+button[aria-pressed=true],.mode-grid input:checked + span {
+  border-color:#8af4ef89;background:#214b57bd;color:#dffefc;
+}
+#touch-controls button.held,#touch-actions button:active {background:#2c5a62}
+select,#assist-level,#graphics,#practice-setup select,#duo-setup select,.pit-row input,
+#online-form :is(select,input:not([type=radio])),#neon-form select {
+  background:#263449ea;border:1px solid var(--glass);border-radius:9px;color:var(--ink);
+}
+select option {background:#222d3c;color:var(--ink)}
+.hud-card,.intro-card,#dash,.duo-driver,.duo-race-control,#match-panel,#parkour-hud {
+  border-radius:13px;background:linear-gradient(151deg,#27364af2,#14202df2 76%);
+  border-color:#b3d5f039;box-shadow:inset 0 1px 0 #dceaff17,0 8px 20px #08111c47;
+}
+
+#welcome {
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,410px);align-items:center;
+  gap:clamp(26px,5vw,92px);padding:clamp(96px,14vh,160px) clamp(24px,7.8vw,140px) 88px;
+  background:radial-gradient(ellipse at 71% 57%,#0d647548,transparent 54%),
+    linear-gradient(90deg,#101827f7 0%,#111c2ae6 30%,#111c2a42 77%),
+    linear-gradient(0deg,#111927ef,transparent 32%);
+}
+#welcome .hero {max-width:none}
+.hero .label {font-size:11px;color:#cfdee9;letter-spacing:.20em}
+.hero h1 {
+  max-width:8ch;margin:20px 0 16px;font-family:var(--display);
+  font-weight:800;font-size:clamp(46px,7vw,122px);letter-spacing:-.077em;line-height:1.07;
+  text-shadow:0 5px 30px #09121f88;
+}
+.hero h1 em {display:block;color:var(--accent)}
+.hero .lead {margin:0;max-width:28ch;color:#dbe5ed;font-weight:480}
+#loading:not(:empty) {max-width:46ch;letter-spacing:.02em;color:#ffd7b9}
+#loading:empty {display:none}
+.mode-deck {
+  display:grid;gap:11px;padding:17px;border:1px solid #c2e0ff3d;border-radius:23px;
+  background:linear-gradient(145deg,#40587285,#172437d6);
+  box-shadow:inset 0 1px 0 #e9f5ff24,0 24px 60px #07152766;
+}
+.mode-pick {
+  display:grid;grid-template-columns:42px minmax(0,1fr) 16px;
+  align-items:center;gap:13px;width:100%;min-height:78px;padding:13px;
+  text-align:left;border:1px solid #b7e5f34a;border-radius:14px;color:#ecfaff;
+  background:linear-gradient(126deg,#466575ba,#30465aa3 56%,#283448c4);
+  box-shadow:inset 0 1px 0 #d9faff30;
+}
+.mode-pick:hover {border-color:#c2f8ff9b;background:linear-gradient(126deg,#507687da,#3d5870bd 62%,#34455aca)}
+.mode-neon {background:linear-gradient(126deg,#2e6771df,#2c5068ce 52%,#454366ca);border-color:#a9ffff74}
+.mode-neon:hover {background:linear-gradient(126deg,#387b86f5,#3d6380ec 52%,#55517feb)}
+.mode-icon {
+  display:grid;place-items:center;width:42px;height:42px;border-radius:11px;border:1px solid #e1f9ff50;
+  background:#c6f5ff1d;color:var(--neon);font-size:25px;font-weight:740;
+}
+.mode-online .mode-icon {color:#ffe0c1}
+.mode-pick strong,.mode-pick small {display:block}
+.mode-pick strong {font-size:17px;line-height:1.14;letter-spacing:-.015em}
+.mode-pick small {margin-top:5px;color:#d1e2e9;font-size:11px}
+.mode-pick b {font-size:16px;font-weight:500;color:#c8eaf3}
+.mode-utilities {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.mode-utilities button {min-height:40px;padding:8px 10px;font-size:12px}
+.mode-deck .classic {justify-self:start;padding:3px 2px 0}
+
+dialog,#pit-panel,#duo-setup,#practice-setup,#bindings-panel,#online-dialog {
+  max-width:calc(100vw - 20px);max-height:calc(100dvh - 24px);overflow:auto;
+  color:var(--ink);border:1px solid #c6e4ff53;border-radius:19px;
+  background:linear-gradient(146deg,#32465df8,#172439fb 66%);
+  box-shadow:inset 0 1px 0 #e3f5ff2a,0 24px 80px #070b18a0;
+}
+dialog::backdrop,#pit-panel::backdrop,#duo-setup::backdrop,#practice-setup::backdrop,#bindings-panel::backdrop,#online-dialog::backdrop {
+  background:#090f1db8;
+  backdrop-filter:none;
+}
+.mode-grid span {
+  border-radius:9px;background:linear-gradient(140deg,#c5e9ff18,#b3d3fa0a);
+  border-color:#a7c4e63e;
+}
+#neon-dialog {width:min(470px,95vw);padding:23px 25px}
+#neon-dialog h2 {margin:0;font-size:clamp(20px,5vw,28px);letter-spacing:-.025em}
+#neon-form>p {color:var(--sub);font-size:13px;margin:10px 0 15px}
+.neon-selects {display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.neon-selects label {display:grid;gap:5px;font-size:13px;font-weight:650}
+.neon-selects select {min-width:0;width:100%;padding:8px 9px;font-size:13px}
+.neon-actions {display:flex;gap:8px;flex-wrap:wrap;margin-top:15px}
+.neon-actions .primary {background:linear-gradient(130deg,#a9fded,#79cfd8);border-color:#c9fff38a;color:#142b35}
+.neon-actions .primary:hover {background:#bbfff1}
+#neon-hud {position:absolute;top:85px;left:25px;z-index:2;width:min(242px,64vw);padding:11px 13px}
+#play.race-online #neon-hud {left:auto;top:auto;right:24px;bottom:160px}
+.neon-line {display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-weight:700}
+#neon-clock {font:700 14px var(--data);color:var(--neon);white-space:nowrap}
+#neon-status {color:var(--sub);font-size:11px;margin:5px 0 7px}
+#neon-boost {width:100%;display:flex;justify-content:space-between;align-items:center;gap:5px;padding:7px 8px;font-size:12px;border-color:#96eceb65}
+#neon-boost.is-boosting {opacity:1;background:#315c68;color:#cafff6}
+#neon-charge {font:650 11px var(--data);color:var(--neon)}
+
+@media(min-width:1000px) {
+  .mode-deck {backdrop-filter:blur(12px)}
+}
+@media(max-width:900px) {
+  #welcome {padding-inline:30px;gap:22px}
+  .hero h1 {font-size:clamp(39px,8vw,75px)}
+  #neon-hud {top:75px;left:12px}
+}
+@media(max-width:680px) {
+  #welcome {grid-template-columns:minmax(0,1fr);align-content:start;overflow:auto;gap:16px;padding:104px 15px 70px}
+  .hero h1 {max-width:none;font-size:clamp(30px,9vw,51px);margin:9px 0 4px}
+  .hero h1 em {display:inline}
+  .hero .lead {font-size:14px;max-width:none}
+  #welcome footer {position:static;grid-column:1;padding:8px 0;gap:8px}
+  .mode-deck {gap:8px;padding:10px;border-radius:17px}
+  .mode-pick {min-height:63px;padding:9px;grid-template-columns:35px minmax(0,1fr) 14px;gap:10px}
+  .mode-icon {width:34px;height:34px;font-size:21px}
+  .mode-pick strong {font-size:15px}
+  #neon-hud {top:98px;width:min(206px,58vw)}
+  #play.race-online #neon-hud {right:8px;bottom:184px}
+}
+@media(pointer:coarse) {
+  #neon-key {display:none}
+  #neon-boost {min-height:39px}
+}
+@media(pointer:coarse) and (orientation:landscape) {
+  #welcome {padding-top:72px}
+  #neon-hud {top:48px}
+  #play.race-online #neon-hud {right:10px;bottom:97px;width:172px}
+}
+@media(prefers-reduced-motion:no-preference) {
+  .mode-pick,.mode-utilities button,.primary,.secondary {transition:background .16s,border-color .16s,box-shadow .16s}
+}

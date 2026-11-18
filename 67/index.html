@@ -30,7 +30,7 @@
     <a class="brand" href="./index.html"><span class="logo" aria-hidden="true">⌂</span> GARAGE<span>LIFE</span></a>
     <div class="location"><i></i> <b id="location-area">БОКС 01</b> <span> / </span> <b id="location-mode">ДРИФТ-КЛУБ</b></div>
     <nav>
-      <span class="version">0.34</span>
+      <span class="version">0.35</span>
       <select id="assist-level" aria-label="Помощь в дрифте">
         <option value="guided">Дрифт: с помощью</option>
         <option value="light">Дрифт: минимум помощи</option>
@@ -97,7 +97,7 @@
       <p>Три круга. Собирай нитро для прямых и используй метки торможения перед поворотами.</p>
       <div class="neon-selects">
         <label>Машина <select id="neon-car" required></select></label>
-        <label>Трасса <select id="neon-route"><option value="city2">Речной проспект</option><option value="main">Контур 67</option><option value="stadium">Стадион 67 · овал</option></select></label>
+        <label>Трасса <select id="neon-route"><option value="city2">Речной проспект</option><option value="main">Контур 67</option><option value="stadium">Стадион 67 · дрифт-кольцо</option></select></label>
       </div>
       <div class="route-brief"><svg id="neon-diagram" role="img" aria-label="Схема выбранной трассы"><path id="neon-outline"/><circle id="neon-origin"/></svg><div><strong id="neon-distance"></strong><small id="neon-districts"></small></div></div>
       <p id="neon-best" class="label"></p>
@@ -124,7 +124,7 @@
         </div>
         <p id="online-mode-description"></p>
       </fieldset>
-      <label id="online-route-row">Трасса <select id="online-route"><option value="city2" disabled>Речной проспект</option><option value="main" selected>Контур 67</option><option value="short">Короткая петля</option><option value="stadium">Стадион 67 · овал</option></select></label>
+      <label id="online-route-row">Трасса <select id="online-route"><option value="city2" disabled>Речной проспект</option><option value="main" selected>Контур 67</option><option value="short">Короткая петля</option><option value="stadium">Стадион 67 · дрифт-кольцо</option></select></label>
       <label id="online-contact-row">Столкновения <select id="online-contacts"><option value="off">Выкл. · призраки</option><option value="on">Вкл.</option></select></label>
       <button type="button" class="primary" id="online-create">Создать комнату</button>
       <div class="online-join">
@@ -172,7 +172,7 @@
       <h2 id="job-title"></h2>
       <p id="job-text"></p>
       <div id="job-reading" hidden></div>
-      <label id="solo-route-row" hidden>Маршрут <select id="solo-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option><option value="stadium">Стадион 67 · овал</option></select></label>
+      <label id="solo-route-row" hidden>Маршрут <select id="solo-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option><option value="stadium">Стадион 67 · дрифт-кольцо</option></select></label>
       <button type="button" class="primary" id="race-start" hidden>На трассу <kbd>Enter</kbd></button>
       <button type="button" class="secondary" id="pit-open" hidden>Гараж и тюнинг <kbd>P</kbd></button>
       <div class="job-footer"><span id="model"></span><strong id="money"></strong></div>
@@ -270,7 +270,7 @@
       <p class="label">КОНТУР 67 / СВОБОДНАЯ ТРЕНИРОВКА</p>
       <h2 id="practice-title">Тренировка без таймера</h2>
       <label>Машина <select id="practice-car"></select></label>
-      <label>Маршрут <select id="practice-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option><option value="stadium">Стадион 67 · овал</option><option value="port">Паркур в порту</option></select></label>
+      <label>Маршрут <select id="practice-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option><option value="stadium">Стадион 67 · дрифт-кольцо</option><option value="port">Паркур в порту</option></select></label>
       <label>Участок <select id="practice-zone"></select></label>
       <p>Пробел — ручник. T мгновенно возвращает на выбранный участок.</p>
       <div class="race-actions"><button type="submit" class="primary">Начать</button>
@@ -284,7 +284,7 @@
       <label>Игрок 1 <select id="duo-car-1"></select><small id="duo-bindings-1"></small></label>
       <label>Игрок 2 <select id="duo-car-2"></select><small id="duo-bindings-2"></small></label>
       <label>Режим <select id="duo-mode"><option value="free">Свободный заезд</option><option value="points">Битва за очки</option><option value="tandem">Тандем</option></select></label>
-      <label>Маршрут <select id="duo-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option><option value="stadium">Стадион 67 · овал</option></select></label>
+      <label>Маршрут <select id="duo-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option><option value="stadium">Стадион 67 · дрифт-кольцо</option></select></label>
       <label id="duo-contact-row">Столкновения игроков <select id="duo-contact"><option value="on">Включены</option><option value="off">Выключены</option></select></label>
       <p id="duo-rules">Катайтесь по трассе сколько хотите. T возвращает обе машины на старт.</p>
       <div class="race-actions"><button type="submit" class="primary">На трассу</button>
@@ -331,7 +331,7 @@
 
       retry.addEventListener('click', () => location.reload());
       const deadline = setTimeout(() => fail('Загрузка занимает слишком много времени. Попробуй ещё раз.'), 45000);
-      import('./js/drive.js?v=034').then(() => {
+      import('./js/drive.js?v=035').then(() => {
         clearTimeout(deadline);
         splash.classList.add('startup-ready');
         splash.setAttribute('aria-hidden', 'true');

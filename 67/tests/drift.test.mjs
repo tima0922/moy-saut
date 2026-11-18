@@ -569,27 +569,27 @@ test('all default drift setups can link opposite angles and straighten when the 
   }
 });
 
-test('the stadium tracks continuous forward drift around the oval and leaves the center road available', async () => {
-  const { createStadiumLayout, OVAL_LENGTH, ovalPoint, stadiumSurface } = await import('../js/stadium-layout.js');
+test('the stadium tracks continuous forward drift around the ring and leaves the center road available', async () => {
+  const { createStadiumLayout, RING_LENGTH, ringPoint, stadiumSurface } = await import('../js/stadium-layout.js');
   const layout = createStadiumLayout();
   const race = createRun(layout,{free:true});
   function drive(position) {
     race.tick(STEP,{position,speed:12,slip:.43,grounded:true,hit:false,up:1});
   }
-  for (let i=0;i<=600;i++) drive(ovalPoint(i*OVAL_LENGTH/600));
+  for (let i=0;i<=600;i++) drive(ringPoint(i*RING_LENGTH/600));
   assert.ok(Math.abs(race.run.bestCircle-100)<.01);
   assert.equal(race.run.lap,1);
-  const middle = layout.connector[24];
+  const middle = layout.connector.at(Math.floor(layout.connector.length/2));
   assert.equal(stadiumSurface(middle.x,middle.z),1);
   drive(middle);
   assert.equal(race.run.circle,0);
   assert.equal(race.run.lap,1);
   assert.equal(race.run.warning,'');
   assert.ok(race.run.bestCircle>99);
-  drive({x:80,z:layout.arena.z});
+  drive({x:40,z:layout.arena.z});
   assert.equal(race.run.warning,'За разметкой');
   race.recover();
-  for (let i=0;i<200;i++) drive(ovalPoint(-i*OVAL_LENGTH/600));
+  for (let i=0;i<200;i++) drive(ringPoint(-i*RING_LENGTH/600));
   assert.equal(race.run.circle,0);
 });
 
@@ -612,39 +612,44 @@ test('hidden map props cannot collide, while visible poles stop a fast car', asy
 });
 
 
-test('all four cars hold a drift through a stadium bend with stock setups', async () => {
-  const { createStadiumLayout,stadiumSurface,RADIUS,STADIUM,OVAL_LENGTH,ovalPoint } = await import('../js/stadium-layout.js');
-  const route = createStadiumLayout();
-  const halfStraight=(OVAL_LENGTH-2*Math.PI*RADIUS)/4;
-  const start=ovalPoint(2*halfStraight-55+12);
-  const yaw=Math.atan2(-start.tx,-start.tz);
-  const car = await createPhysics([],undefined,undefined,undefined,undefined,{...STADIUM,gripAt:stadiumSurface});
-  const pit = loadPit();
-  const controls = {
-    sedan:[-.034,3.336,.113,.139,74,.353],
-    f90:[-.062,5.067,.121,.218,75,.337],
-    cls:[.057,3.156,.132,.025,77,.226],
-    supra:[-.081,4.249,.053,.239,78,.278],
+test('all four stock setups hold a full stadium lap with discrete throttle and steering', async () => {
+  const {createStadiumLayout,stadiumSurface,RADIUS,STADIUM}=await import('../js/stadium-layout.js');
+  const route=createStadiumLayout();
+  const car=await createPhysics([],undefined,undefined,undefined,undefined,{...STADIUM,gripAt:stadiumSurface});
+  const pit=loadPit();
+  const controls={
+    sedan:[-.14,3.336,.113,.139,82,.31],
+    f90:[.03,5.067,.121,.218,87,.30],
+    cls:[-.06,3.156,.132,.125,82,.27],
+    supra:[-.14,4.249,.083,.239,87,.28],
   };
-  const clamp = (number,min,max) => Math.max(min,Math.min(max,number));
+  const clamp=(number,min,max)=>Math.max(min,Math.min(max,number));
   for (const [id,[bias,angleGain,radiusGain,outwardGain,speed,angle]] of Object.entries(controls)) {
     car.setModel(MODELS[id]);
     car.setSetup(setupFor(pit.cars[id]));
-    car.reset(start.x,start.z,yaw-.42);
-    car.running = true;
-    car.applyRoomImpact([0,0,start.tx*speed/3.6,start.tz*speed/3.6]);
-    const race = createRun(route,{free:true});
-    for (let frame=0;frame<700 && race.run.bestCircle<16;frame++) {
-      const {x,z} = car.position;
-      const localZ = z-STADIUM.z;
-      const radius = Math.hypot(x-halfStraight,localZ);
-      const v = car.velocity;
-      const outward = (v.x*(x-halfStraight)+v.z*localZ)/radius;
-      const turn = clamp(bias+radiusGain*(radius-RADIUS)+outwardGain*outward+angleGain*(angle+car.slip),-1,1);
-      const gas = clamp(.75+(speed-car.totalSpeed*3.6)*.06,0,1);
+    car.reset(route.spawn.x,route.spawn.z,route.spawn.yaw-.42);
+    car.running=true;
+    car.applyRoomImpact([0,0,0,speed/3.6]);
+    const race=createRun(route,{free:true});
+    let steeringError=0,throttleError=0,gas=0,turn=0;
+    for (let frame=0;frame<5000 && race.run.bestCircle<100;frame++) {
+      if (frame%5===0) {
+        const x=car.position.x-STADIUM.x,z=car.position.z-STADIUM.z;
+        const radius=Math.hypot(x,z);
+        const outward=(car.velocity.x*x+car.velocity.z*z)/radius;
+        // Apply the reference driver's corrections as key states, not analog input.
+        steeringError+=clamp(bias+radiusGain*(radius-RADIUS)+outwardGain*outward+angleGain*(angle+car.slip),-1,1);
+        turn=Math.round(steeringError);
+        steeringError-=turn;
+        throttleError+=clamp(.75+(speed-car.totalSpeed*3.6)*.06,0,1);
+        gas=Math.round(throttleError);
+        throttleError-=gas;
+      }
       car.tick({occupied:true,drift:true,gas,turn});
+      assert.ok(car.slip<=.03,`${id}: slip changed sides`);
       race.tick(STEP,{position:car.position,speed:car.totalSpeed,slip:car.slip,grounded:car.grounded,hit:car.hit,up:car.up});
     }
-    assert.ok(race.run.bestCircle>=16, `${id}: ${race.run.bestCircle}%`);
+    assert.ok(race.run.bestCircle>=100,`${id}: ${race.run.bestCircle}%`);
+    assert.ok(race.run.lap>=1,id);
   }
 });

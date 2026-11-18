@@ -3,7 +3,7 @@ import { createWorld } from './world.js?v=034';
 import { GRAPHICS, createGraphicsController, createMaterialQuality, renderRatio, createRenderDiagnostics } from './graphics.js?v=033';
 import { batchSharedMeshes } from './garage-visuals.js?v=019';
 import { BATTERY, fitE39 } from './bmw.js?v=034';
-import { CLUB_ARENA, createClubLayout, createShortLayout, createRun, safeCircuitStart } from './drift.js?v=034';
+import { CLUB_ARENA, createClubLayout, createShortLayout, createRun, safeCircuitStart } from './drift.js?v=035';
 import { createDriftWorld, createTireEffects } from './drift-world.js?v=034';
 import { createDistrict, SHOP, TRACK } from './district.js?v=032';
 import { createPhysics, MODELS, STEP } from './vehicle.js?v=032';
@@ -19,13 +19,13 @@ import { createCityWorld } from './city.js?v=032';
 import { createCarReflections } from './car-reflections.js?v=033';
 import { loadTrackCar } from './track-car.js?v=032';
 import { chaseFraction,indexCameraBarriers } from './chase-collision.js?v=032';
-import { STADIUM, stadiumSurface, createStadiumLayout, createStadiumWorld } from './stadium.js?v=034';
+import { STADIUM, stadiumSurface, createStadiumLayout, createStadiumWorld } from './stadium.js?v=035';
 import { circuitTerrain } from './circuit-terrain.js?v=019';
 import { PRACTICE_PAD, TANDEM_HEAT, practiceStart, createPracticePad, createTandem } from './drift-modes.js?v=022';
 import { createDriftAudio } from './drift-audio.js?v=017';
 import { createReplayPlayer, createReplayRecorder } from './drift-replay.js';
-import { createOnlineView } from './online-view.js?v=034';
-import { createGuest, raceTelemetry } from './local-duo.js?v=034';
+import { createOnlineView } from './online-view.js?v=035';
+import { createGuest, raceTelemetry } from './local-duo.js?v=035';
 import { DEFAULT_KEYS, DRIVING_ACTIONS, allowedKey, keyLabel, loadBindings } from './drive-bindings.js';
 import { createOrbitCamera } from './orbit-camera.js?v=013';
 import { JOBS, advance, loadCareer, saveCareer, makeRoadTest } from './career.js?v=08';
@@ -124,13 +124,13 @@ async function boot() {
   const parkourLayout = portLayout();
   const routes = new Map([['main',mainLayout],['short',shortLayout],['stadium',stadiumLayout],
     ['city2',cityLayout],['port',parkourLayout],['port6',parkourLayout],['port7',parkourLayout],
-    ['race-main',mainLayout],['oval',stadiumLayout],['race-oval',stadiumLayout]]);
+    ['race-main',mainLayout],['ring',stadiumLayout],['race-ring',stadiumLayout]]);
   const routeFor = value => routes.get(value) ?? mainLayout;
   let layout = mainLayout;
   const terrain = circuitTerrain(mainLayout,shortLayout.connector);
   const arena = createDriftWorld(world,mainLayout,district.asphalt,terrain,shortLayout);
   const stadium = createStadiumWorld(world,district.asphalt);
-  const neonTracks = new Map([[mainLayout,'main'],[stadiumLayout,'oval'],[cityLayout,'city2']].map(([track,id])=>{
+  const neonTracks = new Map([[mainLayout,'main'],[stadiumLayout,'ring'],[cityLayout,'city2']].map(([track,id])=>{
     const course=createRaceCourse(track,id==='main' ? terrain.heightAt : undefined);
     return [track,{id,course}];
   }));
@@ -1689,7 +1689,7 @@ async function boot() {
     $('#neon-origin').setAttribute('cy',-road[0].z);
     $('#neon-origin').setAttribute('r',w*.027);
     $('#neon-distance').textContent=Math.round(neonTracks.get(track).course.length)+' м / круг';
-    $('#neon-districts').textContent=track.city ? 'Бульвар · Речной мост · Рынок · Тоннель' : track.stadium ? 'Две прямые · широкие дуги' : 'Связки и перепады высоты';
+    $('#neon-districts').textContent=track.city ? 'Бульвар · Речной мост · Рынок · Тоннель' : track.stadium ? 'Круг постоянного радиуса' : 'Связки и перепады высоты';
     const record=$('#neon-best');
     record.hidden=best===null;
     record.textContent=best===null ? '' : 'Твой рекорд · '+formatTime(best,2);

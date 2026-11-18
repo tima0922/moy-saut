@@ -1,7 +1,7 @@
 import { useDistantCar } from './graphics.js?v=033';
 import { Group, Quaternion, Vector3, MathUtils } from 'three';
 import { draftStrength } from './neon-race.js?v=032';
-import { enterRoom } from './online.js?v=034';
+import { enterRoom } from './online.js?v=035';
 
 import { MATCH_MODES,RESET_PENALTY,formatTime,rankRound } from './competition.js?v=030';
 

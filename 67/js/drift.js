@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { OVAL_LENGTH, ovalSample, stadiumSurface } from './stadium-layout.js?v=034';
+import { RING_LENGTH, ringSample, stadiumSurface } from './stadium-layout.js?v=035';
 
 export const ARENA = { x: 0, z: 171, w: 112, d: 112 };
 export const CLUB_ARENA = { x: 0, z: 180, w: 178, d: 147 };
@@ -160,14 +160,14 @@ export function createRun({ road, gates, stadium }, { startImmediately = false, 
         run.status = 'running';
       }
       if (!free) run.time = Math.max(0, run.time - dt);
-      const sample = stadium ? ovalSample(x,z) : null;
+      const sample = stadium ? ringSample(x,z) : null;
       const {onRoad,tangentX,tangentZ} = sample ?? (pad ? {
         onRoad: Math.abs(x-pad.x) < pad.w/2-.8 && Math.abs(z-pad.z) < pad.d/2-.8, tangentX:0,tangentZ:0,
       } : closestSegment(road,x,z));
       const dx = lastPosition ? x - lastPosition.x : 0;
       const dz = lastPosition ? z - lastPosition.z : 0;
-      const ovalAdvance = sample && lastMeters !== undefined
-        ? THREE.MathUtils.euclideanModulo(sample.meters-lastMeters+OVAL_LENGTH/2,OVAL_LENGTH)-OVAL_LENGTH/2 : 0;
+      const ringAdvance = sample && lastMeters !== undefined
+        ? THREE.MathUtils.euclideanModulo(sample.meters-lastMeters+RING_LENGTH/2,RING_LENGTH)-RING_LENGTH/2 : 0;
       lastMeters = sample?.meters;
       lastPosition = { x, z };
       const distance = Math.hypot(dx, dz);
@@ -187,7 +187,7 @@ export function createRun({ road, gates, stadium }, { startImmediately = false, 
       run.sliding = onRoad && !penaltyTime && grounded && kmh >= ENTRY_SPEED && angle >= ENTRY_ANGLE &&
         angle < EXIT_ANGLE && (pad ? distance > .001 : progress > distance*.44);
       if (stadium) {
-        run.circle = run.sliding ? run.circle + Math.max(0,ovalAdvance)/OVAL_LENGTH*100 : 0;
+        run.circle = run.sliding ? run.circle + Math.max(0,ringAdvance)/RING_LENGTH*100 : 0;
         run.bestCircle = Math.max(run.bestCircle,run.circle);
       }
       if (run.sliding) {

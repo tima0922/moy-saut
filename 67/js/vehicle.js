@@ -260,7 +260,7 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       }
     }
 
-    function prepare({ gas = false, reverse = false, turn = 0, handbrake = false, occupied = false, parking = false, fault = '', gateY = 0, drift = false, speedLimit, nitro=false, raceGrip=false } = {}) {
+    function prepare({ gas = false, reverse = false, turn = 0, handbrake = false, occupied = false, parking = false, fault = '', gateY = 0, drift = false, speedLimit, nitro=false, raceGrip=false, racing=false, draft=0 } = {}) {
       previousPose = currentPose;
       if (lifted) return;
 
@@ -306,9 +306,10 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       const freeRev = gas && !serviceBrake ? (drift ? 2200 + rearSlide * 1900 : 1800) : 780;
       rpm = damp(rpm, running ? clamp(Math.max(freeRev, engineRpm), 780, redline) : 0, 9, STEP);
 
-      const maxSpeed = throttle < 0 ? 22 : speedLimit ?? (nitro && grounded ? 182 : drift ? 120 : 145);
+      const maxSpeed = throttle < 0 ? 22 : speedLimit ?? (nitro && grounded ? 182 : drift ? 120 : racing ? 158 : 145);
       const drive = model.force * (setup.power ?? 1) * (nitro && grounded && throttle>0 ? 1.63 : 1) * (drift ? model.driveMultiplier ?? 1.38 : 1) * Math.max(0, 1 - (kmh / maxSpeed) ** 2);
-      const torque = (handbrake ? 0 : drive * throttle * (drift ? 1 - brakeRelease : 1)) * (throttle < 0 ? .46 : shiftTime > .10 ? .58 : 1);
+      const wake = racing && grounded && throttle>0 ? 1+.14*clamp(draft,0,1) : 1;
+      const torque = (handbrake ? 0 : drive * wake * throttle * (drift ? 1 - brakeRelease : 1)) * (throttle < 0 ? .46 : shiftTime > .10 ? .58 : 1);
       const slideSpeed = clamp((kmh - 12) / 14, 0, 1);
       const slipDemand = clamp((Math.abs(slip) - .055) * 3.4, 0, 1);
       const diffEffect = 1 + ((setup.diff ?? .8) - .8) * .70;
@@ -326,7 +327,8 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       const modelLock = model.steer ?? .73;
       const maxLock = setup.steerAngle ? THREE.MathUtils.lerp(THREE.MathUtils.degToRad(setup.steerAngle),
         modelLock * (1+(setup.steerAngle-52)*.011), THREE.MathUtils.smoothstep(kmh,5,26)) : modelLock;
-      const lock = drift ? maxLock / (1 + kmh * .009) : .53 / (1 + kmh * .019);
+      const raceSpeed = racing ? THREE.MathUtils.smoothstep(kmh, 35, 120) : 0;
+      const lock = drift ? maxLock / (1 + kmh * .009) : racing ? (.59 - .045*raceSpeed) / (1 + kmh * .018) : .53 / (1 + kmh * .019);
       // Blend small countersteer corrections continuously. Full opposite input
       // remains available for transitions; the assist never steers for the driver.
       const assistWeight = drift && moving && grounded && speed > 3 && !handbrake
@@ -334,16 +336,18 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       const assist = clamp(slip * (model.assist ?? .65), -.48, .48) * assistWeight * (assistMode === 'sim' ? 0 : assistMode === 'light' ? .26 : 1) * (1-Math.abs(turn)*.85);
       const transition = terrain && drift && turn*steer < 0 && Math.abs(slip) > .15;
       const steerResponse = model.response ?? 15;
-      steer = damp(steer, clamp(turn * lock + assist, -lock, lock), drift ? (transition ? steerResponse + (setup.steerAngle ? 2.5 : 0) : 12) : 8, STEP);
+      steer = damp(steer, clamp(turn * lock + assist, -lock, lock), drift ? (transition ? steerResponse + (setup.steerAngle ? 2.5 : 0) : 12) : racing ? 12-4*raceSpeed : 8, STEP);
       const customTires = drift && moving && !parking;
       for (let i = 0; i < 4; i++) {
         const front = WHEEL_Z[i] < 0;
         const lowTire = fault === 'tires' && i === 0;
         suspension.setWheelSteering(i, front ? -steer + (lowTire && kmh > 6 ? .043 : 0) : 0);
-        suspension.setWheelFrictionSlip(i, customTires ? 0 : handbrake && !front ? .55 : lowTire ? .77 : raceGrip ? 1.59 : 1.32);
+        // Under braking the front axle gains load and the rear lightens.
+        const raceLoad = racing ? (front ? 1 : -1)*clamp(loadTransfer,-.07,.11) : 0;
+        suspension.setWheelFrictionSlip(i, customTires ? 0 : handbrake && !front ? .55 : lowTire ? .77 : (raceGrip ? 1.59 : 1.32) + raceLoad);
         suspension.setWheelSideFrictionStiffness(i, customTires ? 0 : lowTire ? .72 : raceGrip ? 1.48 : 1.15);
         suspension.setWheelEngineForce(i, front || customTires ? 0 : torque / 2);
-        const service = serviceBrake ? (setup.brakes ?? 1) * (fault === 'brakes' ? 14 : front ? 63 : 39) : 0;
+        const service = serviceBrake ? (setup.brakes ?? 1) * (fault === 'brakes' ? 14 : front ? (racing ? 72 : 63) : (racing ? 42 : 39)) : 0;
         suspension.setWheelBrake(i, customTires ? 0 : !moving || parking ? 155 : handbrake && !front ? 155 : service || (throttle === 0 ? 2.1 : 0));
       }
       if (customTires && (grounded || inArena(currentPose.position.x,currentPose.position.z))) {

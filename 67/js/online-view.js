@@ -1,5 +1,6 @@
 import { Group, Quaternion, Vector3, MathUtils } from 'three';
-import { enterRoom } from './online.js?v=030';
+import { draftStrength } from './neon-race.js?v=031';
+import { enterRoom } from './online.js?v=031';
 
 import { MATCH_MODES,RESET_PENALTY,formatTime,rankRound } from './competition.js?v=030';
 
@@ -48,6 +49,8 @@ export function createOnlineView({scene, models, selection,start,leave,spawn,pai
     const chooseRoute = mode==='free' || mode==='battle' || mode==='race';
     $('#online-route-row').hidden = !chooseRoute;
     $('#online-contact-row').hidden = mode!=='free';
+    route.querySelector('[value=city]').disabled=mode!=='race';
+    if(mode!=='race' && route.value==='city') route.value='main';
     const stadium = route.querySelector('[value="stadium"]');
     stadium.disabled = mode==='battle';
     route.querySelector('[value=short]').disabled = mode==='race';
@@ -329,6 +332,14 @@ export function createOnlineView({scene, models, selection,start,leave,spawn,pai
       if (lite===value) return;
       lite = value;
       for (const remote of remotes.values()) remote.car.setLite(lite);
+    },
+    draftAt(position,velocity,now) {
+      let strength=0;
+      for(const remote of remotes.values()) {
+        const sample=remote.frames.at(-1);
+        if(sample && now-sample.time<450) strength=Math.max(strength,draftStrength(position,velocity,sample.pose));
+      }
+      return strength;
     },
     get active() { return Boolean(room); },
     get slot() { return room?.slot ?? 0; },

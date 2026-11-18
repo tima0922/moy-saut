@@ -59,7 +59,9 @@ export function createDistrict(world, renderer) {
       sunset+=vec3(.35,.18,.055)*pow(toward,10.);
       sunset=mix(sunset,vec3(1.,.92,.69),smoothstep(.9985,.9992,toward));
       sunset=mix(sunset,vec3(.93,.75,.65),clouds*.48);
-      gl_FragColor=vec4(mix(c,sunset,circuit),1.);
+      vec3 evening=mix(vec3(.57,.62,.70),vec3(.13,.20,.36),smoothstep(-.04,.62,h));
+      evening+=vec3(.38,.14,.06)*pow(toward,6.);
+      gl_FragColor=vec4(circuit>1.5 ? evening : mix(c,sunset,circuit),1.);
     }`,
   }));
   sky.frustumCulled = false;

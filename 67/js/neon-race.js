@@ -1,3 +1,4 @@
+import { RESET_PENALTY } from './competition.js?v=030';
 import * as THREE from 'three';
 
 export const RACE_LAPS = 3;
@@ -18,6 +19,19 @@ export function saveRaceBest(storage,track,time) {
   if (best!==null && best<=time) return best;
   try { storage?.setItem(keyFor(track),String(time)); } catch { /* Storage is optional. */ }
   return time;
+}
+
+// Wake grows behind a moving car and drops out when the follower pulls alongside.
+export function draftStrength(position,velocity,other) {
+  const speed=Math.hypot(velocity.x,velocity.z);
+  const leadSpeed=Math.hypot(other[7],other[8]);
+  if(speed<10 || leadSpeed<10 || Math.abs(position.y-other[1])>1.5) return 0;
+  const fx=other[7]/leadSpeed,fz=other[8]/leadSpeed;
+  if((fx*velocity.x+fz*velocity.z)/speed<.94) return 0;
+  const dx=other[0]-position.x,dz=other[2]-position.z;
+  const gap=dx*fx+dz*fz, sideways=Math.abs(dx*fz-dz*fx);
+  if(gap<4 || gap>=25 || sideways>=2.6) return 0;
+  return Math.min(1,(gap-4)/3,(25-gap)/10)*(1-sideways/2.6);
 }
 
 export function createRaceCourse(layout,height=()=>0) {
@@ -49,6 +63,7 @@ export function createRaceCourse(layout,height=()=>0) {
   const grid=slot=>place(gates.at(-1).point,gates.at(-1).dir,slot===undefined ? -7 : -7-Math.floor(slot/2)*6,
     slot===undefined ? 0 : slot%2 ? 2.65 : -2.65);
 
+  let nearest=0;
   function roadDistance(position) {
     let distance=Infinity;
     for(let i=0;i<road.length;i++) {
@@ -56,13 +71,20 @@ export function createRaceCourse(layout,height=()=>0) {
       const x=b.x-a.x,z=b.z-a.z,rx=position.x-a.x,rz=position.z-a.z;
       const t=Math.max(0,Math.min(1,(rx*x+rz*z)/(x*x+z*z)));
       const square=(rx-x*t)**2+(rz-z*t)**2;
-      if(square<distance) distance=square;
+      if(square<distance) { distance=square; nearest=i; }
       if(distance<.04) break;
     }
     return distance;
   }
+  const length=road.reduce((sum,p,i)=>sum+p.distanceTo(road[(i+1)%road.length]),0);
+  function nextCorner() {
+    if(!layout.corners?.length)return null;
+    const corner=layout.corners.find(c=>c.i>=nearest) ?? layout.corners[0];
+    const steps=(corner.i-nearest+road.length)%road.length;
+    return {left:corner.angle>0,meters:steps*length/road.length};
+  }
   const recovery=index=>index<0 ? grid() : place(gates[index].point,gates[index].dir,2.9);
-  return {gates,pickups,grid,recovery,roadDistance};
+  return {gates,pickups,grid,recovery,roadDistance,nextCorner,length, get tangent(){return directions[nearest];}};
 }
 
 function crosses(from,to,{point,dir}) {
@@ -79,9 +101,11 @@ function crosses(from,to,{point,dir}) {
 export function createNeonRun(course,startsAt) {
   let last, lastGate=-1, next=0, laps=0, resets=0, charges=1, finished, offSince;
   let boostUntil=0,gripUntil=0;
+  let reverseSince, wrongWay=false, lapStarted=startsAt, lapResets=0, bestLap, lastLap;
   const collected=course.pickups.map(()=>false);
   return {
     startsAt, get lap(){return Math.min(laps+1,RACE_LAPS);},
+    get bestLap(){return bestLap;},get lastLap(){return lastLap;},get wrongWay(){return wrongWay;},
     get next(){return next;},get charges(){return charges;},get resets(){return resets;},get elapsed(){return finished;},
     get gate(){return course.gates[next];},get offRoad(){return offSince!==undefined;},
     available:index=>!collected[index],
@@ -96,6 +120,7 @@ export function createNeonRun(course,startsAt) {
     recover(now) {
       if(now<startsAt || finished!==undefined) return null;
       last=undefined;
+      reverseSince=undefined; wrongWay=false;
       offSince=undefined;
       boostUntil=gripUntil=0;
       resets++;
@@ -107,6 +132,12 @@ export function createNeonRun(course,startsAt) {
       const pose={x,y,z};
       const distance=course.roadDistance(position);
       const onRoad=distance<=ROAD_LIMIT**2;
+      if(last) {
+        const along=(x-last.x)*course.tangent.x+(z-last.z)*course.tangent.z;
+        if(onRoad && along<-.025) reverseSince ??= now;
+        else if(along>.01 || !onRoad) reverseSince=undefined;
+        wrongWay=reverseSince!==undefined && now-reverseSince>650;
+      }
       if(onRoad) offSince=undefined;
       else offSince ??= now;
       if(distance>18**2 || y < -4 || offSince!==undefined && now-offSince>2400) return 'recover';
@@ -115,6 +146,9 @@ export function createNeonRun(course,startsAt) {
         next++;
         if(next===course.gates.length) {
           next=0;
+          lastLap=Math.round(now-lapStarted)+(resets-lapResets)*RESET_PENALTY;
+          bestLap=Math.min(bestLap ?? Infinity,lastLap);
+          lapStarted=now; lapResets=resets;
           if(++laps===RACE_LAPS) {
             finished=Math.max(0,Math.round(now-startsAt));
             return 'finished';

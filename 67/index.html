@@ -9,7 +9,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231a252b'/%3E%3Cpath d='M12 48V24l20-12 20 12v24H42V29H22v19Z' fill='%23ffad69'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="../2/fonts/fonts.css">
   <link rel="stylesheet" href="./drive.css?v=030">
-  <link rel="stylesheet" href="./glass.css?v=0301">
+  <link rel="stylesheet" href="./glass.css?v=031">
   <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/addons/"}}</script>
 </head>
 <body>
@@ -19,7 +19,7 @@
     <a class="brand" href="./index.html"><span class="logo" aria-hidden="true">⌂</span> GARAGE<span>LIFE</span></a>
     <div class="location"><i></i> <b id="location-area">БОКС 01</b> <span> / </span> <b id="location-mode">ДРИФТ-КЛУБ</b></div>
     <nav>
-      <span class="version">0.30</span>
+      <span class="version">0.31</span>
       <select id="assist-level" aria-label="Помощь в дрифте">
         <option value="guided">Дрифт: с помощью</option>
         <option value="light">Дрифт: минимум помощи</option>
@@ -64,7 +64,8 @@
     </div>
     <section class="mode-deck" aria-label="Выбор режима">
       <button class="mode-pick mode-neon" id="neon-open" type="button" disabled>
-        <span class="mode-icon" aria-hidden="true">ϟ</span><span><strong>Неоновые гонки</strong><small>3 круга · нитро и бонусы</small></span><b aria-hidden="true"></b>
+        <span class="race-cover" aria-hidden="true"><svg viewBox="-133 -684 261 226" focusable="false"><path d="M-30.0 -478.0 L-22.1 -477.3 L-14.2 -477.1 L-6.3 -477.1 L1.6 -477.4 L9.5 -477.7 L17.4 -477.9 L25.3 -478.0 L33.2 -477.8 L41.1 -477.6 L49.0 -477.3 L56.9 -477.2 L64.8 -477.4 L72.7 -478.1 L80.5 -479.0 L88.3 -480.4 L95.6 -483.2 L100.9 -489.0 L103.3 -496.5 L104.6 -504.3 L105.6 -512.1 L105.9 -520.0 L105.8 -527.9 L105.5 -535.8 L105.2 -543.7 L105.0 -551.6 L105.0 -559.5 L105.1 -567.4 L105.3 -575.3 L105.4 -583.2 L105.4 -591.1 L105.2 -599.0 L104.7 -606.9 L103.7 -614.8 L102.7 -622.6 L101.4 -630.4 L99.6 -638.1 L96.6 -645.4 L91.5 -651.4 L84.9 -655.7 L77.6 -658.6 L69.8 -659.9 L61.9 -659.2 L54.5 -656.5 L47.8 -652.4 L42.5 -646.6 L39.6 -639.3 L37.2 -631.8 L33.1 -625.1 L26.5 -620.8 L19.0 -618.3 L11.1 -618.1 L3.9 -621.1 L-2.5 -625.9 L-8.2 -631.2 L-12.9 -637.6 L-16.6 -644.6 L-20.4 -651.5 L-25.2 -657.8 L-31.9 -661.8 L-39.5 -663.8 L-47.4 -664.4 L-55.3 -663.8 L-62.8 -661.6 L-69.6 -657.5 L-75.1 -651.9 L-78.3 -644.8 L-78.3 -636.9 L-77.6 -629.0 L-77.9 -621.1 L-81.6 -614.3 L-87.8 -609.3 L-94.3 -604.9 L-100.2 -599.7 L-105.1 -593.5 L-109.1 -586.6 L-111.4 -579.1 L-112.4 -571.3 L-112.5 -563.4 L-111.4 -555.6 L-107.9 -548.6 L-101.2 -544.5 L-93.7 -542.0 L-86.3 -539.2 L-79.4 -535.3 L-72.7 -531.2 L-66.7 -526.0 L-65.0 -518.6 L-67.8 -511.3 L-70.0 -503.7 L-70.0 -495.8 L-67.4 -488.5 L-60.9 -484.1 L-53.4 -481.8 L-45.7 -480.2 L-37.8 -479.0Z"/><circle cx="-30" cy="-478" r="7"/></svg></span>
+        <span class="race-cover-label"><small>Речной проспект</small><strong>Неоновые гонки</strong><small>3 круга · соло или с друзьями</small></span><b aria-hidden="true"></b>
       </button>
       <button class="mode-pick mode-online" id="online-open" type="button" disabled>
         <span class="mode-icon" aria-hidden="true">↔</span><span><strong>Играть с друзьями</strong><small>Комната до 4 игроков</small></span><b aria-hidden="true"></b>
@@ -86,8 +87,9 @@
       <p>Три круга на время. Бирюзовый бонус заряжает нитро, фиолетовый улучшает сцепление.</p>
       <div class="neon-selects">
         <label>Машина <select id="neon-car" required></select></label>
-        <label>Трасса <select id="neon-route"><option value="main">Контур 67</option><option value="stadium">Стадион</option></select></label>
+        <label>Трасса <select id="neon-route"><option value="city">Речной проспект</option><option value="main">Контур 67</option><option value="stadium">Стадион</option></select></label>
       </div>
+      <div class="route-brief"><svg id="neon-diagram" role="img" aria-label="Схема выбранной трассы"><path id="neon-outline"/><circle id="neon-origin"/></svg><div><strong id="neon-distance"></strong><small id="neon-districts"></small></div></div>
       <p id="neon-best" class="label"></p>
       <div class="neon-actions"><button type="submit" class="primary">Старт соло</button><button type="button" id="neon-friends" class="secondary">С друзьями</button></div>
     </form>
@@ -112,7 +114,7 @@
         </div>
         <p id="online-mode-description"></p>
       </fieldset>
-      <label id="online-route-row">Трасса <select id="online-route"><option value="main">Контур 67</option><option value="short">Короткая петля</option><option value="stadium">Стадион</option></select></label>
+      <label id="online-route-row">Трасса <select id="online-route"><option value="city" disabled>Речной проспект</option><option value="main" selected>Контур 67</option><option value="short">Короткая петля</option><option value="stadium">Стадион</option></select></label>
       <label id="online-contact-row">Столкновения <select id="online-contacts"><option value="off">Выкл. · призраки</option><option value="on">Вкл.</option></select></label>
       <button type="button" class="primary" id="online-create">Создать комнату</button>
       <div class="online-join">
@@ -140,6 +142,9 @@
     </aside>
     <aside id="neon-hud" class="hud-card" hidden aria-label="Гонка">
       <div class="neon-line"><span id="neon-lap">Круг 1 / 3</span><time id="neon-clock">0:00.00</time></div>
+      <progress id="neon-progress" max="48" value="0" aria-label="Дистанция гонки"></progress>
+      <strong id="neon-corner" hidden></strong>
+      <small id="neon-lap-detail" hidden></small>
       <p id="neon-status"></p>
       <button type="button" class="secondary" id="neon-boost">Нитро <span id="neon-charge">1 / 3</span> <kbd id="neon-key">Shift</kbd></button>
       <div id="neon-replay" class="race-actions" hidden><button class="primary" type="button" id="neon-retry">Повторить</button><button class="secondary" type="button" id="neon-back">Меню</button></div>
@@ -299,6 +304,6 @@
     </div>
   </dialog>
   <script src="./js/music.js?v=020" defer></script>
-  <script type="module" src="./js/drive.js?v=030"></script>
+  <script type="module" src="./js/drive.js?v=031"></script>
 </body>
 </html>

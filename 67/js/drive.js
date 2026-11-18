@@ -5,21 +5,22 @@ import { bakeParkedCar, batchSharedMeshes } from './garage-visuals.js?v=019';
 import { BATTERY, fitE39 } from './bmw.js?v=013';
 import { CLUB_ARENA, createClubLayout, createShortLayout, createRun, safeCircuitStart } from './drift.js?v=022';
 import { createDriftWorld, createTireEffects } from './drift-world.js?v=024';
-import { createDistrict, SHOP, TRACK } from './district.js?v=022';
-import { createPhysics, MODELS, STEP } from './vehicle.js?v=030';
+import { createDistrict, SHOP, TRACK } from './district.js?v=031';
+import { createPhysics, MODELS, STEP } from './vehicle.js?v=031';
 import { buildPitCar, loadPitCar } from './pit-cars.js?v=022';
 import { FLEET, SETUPS, DRIFT_SETUP, loadPit, savePit, setupFor } from './pit-save.js?v=022';
 import { CLUB_FLOOR, STALLS, STALL_Z, SERVICE_STEPS, createClubGarage } from './club-garage.js?v=022';
 import { portLayout,portWorld,portCourse,portMapView,outOfPort,PORT_GATES } from './port.js?v=029';
 import { eliminationRun,formatTime,RESET_PENALTY } from './competition.js?v=030';
-import { createRaceCourse,createNeonRun,RACE_LAPS,readRaceBest,saveRaceBest } from './neon-race.js?v=030';
+import { createRaceCourse,createNeonRun,RACE_LAPS,readRaceBest,saveRaceBest } from './neon-race.js?v=031';
 import { createRaceLights } from './neon-race-world.js?v=030';
+import { createCityLayout, createCityWorld } from './city.js?v=031';
 import { STADIUM, stadiumSurface, createStadiumLayout, createStadiumWorld } from './stadium.js?v=022';
 import { circuitTerrain } from './circuit-terrain.js?v=019';
 import { PRACTICE_PAD, TANDEM_HEAT, practiceStart, createPracticePad, createTandem } from './drift-modes.js?v=022';
 import { createDriftAudio } from './drift-audio.js?v=017';
 import { createReplayPlayer, createReplayRecorder } from './drift-replay.js';
-import { createOnlineView } from './online-view.js?v=030';
+import { createOnlineView } from './online-view.js?v=031';
 import { createGuest, raceTelemetry } from './local-duo.js?v=019';
 import { DEFAULT_KEYS, DRIVING_ACTIONS, allowedKey, keyLabel, loadBindings } from './drive-bindings.js';
 import { createOrbitCamera } from './orbit-camera.js?v=013';
@@ -82,23 +83,25 @@ async function boot() {
   const mainLayout = createClubLayout();
   const shortLayout = createShortLayout(mainLayout);
   const stadiumLayout = createStadiumLayout();
+  const cityLayout = createCityLayout();
   const parkourLayout = portLayout();
-  const routeFor = value => (value==='port' || value==='port6') ? parkourLayout : value==='stadium' ? stadiumLayout : value==='short' ? shortLayout : mainLayout;
+  const routeFor = value => (value==='port' || value==='port6') ? parkourLayout : value==='city' ? cityLayout : value==='stadium' ? stadiumLayout : value==='short' ? shortLayout : mainLayout;
   let layout = mainLayout;
   const terrain = circuitTerrain(mainLayout,shortLayout.connector);
   const arena = createDriftWorld(world,mainLayout,district.asphalt,terrain,shortLayout);
   const stadium = createStadiumWorld(world,district.asphalt);
   const port = portWorld(world);
-  const neonTracks = new Map([[mainLayout,'main'],[stadiumLayout,'stadium']].map(([track,id])=>{
-    const course=createRaceCourse(track,id==='stadium' ? undefined : (x,z)=>terrain.heightAt(x,z));
+  const city = createCityWorld(world,cityLayout,district.asphalt);
+  const neonTracks = new Map([[mainLayout,'main'],[stadiumLayout,'stadium'],[cityLayout,'city']].map(([track,id])=>{
+    const course=createRaceCourse(track,id==='main' ? (x,z)=>terrain.heightAt(x,z) : undefined);
     return [track,{id,course,visual:createRaceLights(world,course)}];
   }));
-  const raceWorld = () => layout.port ? port : layout.stadium ? stadium : arena;
+  const raceWorld = () => layout.city ? city : layout.port ? port : layout.stadium ? stadium : arena;
   const club = createClubGarage(world);
   const practice = createPracticePad(world,district.asphalt);
   const padEffects = createTireEffects(practice.root);
   await Promise.all([arena.kit,club.equipment]);
-  const regions = {district:district.obstacles,circuit:arena.obstacles,garage:club.obstacles,pad:practice.obstacles,stadium:stadium.obstacles,port:port.obstacles};
+  const regions = {district:district.obstacles,circuit:arena.obstacles,garage:club.obstacles,pad:practice.obstacles,stadium:stadium.obstacles,port:port.obstacles,city:city.obstacles};
   const barriers = Object.entries(regions).flatMap(([region,items]) => items.map(item => ({...item,region})));
   const physics = await createPhysics(barriers,CLUB_ARENA,CLUB_FLOOR,terrain,PRACTICE_PAD,{...STADIUM,gripAt:stadiumSurface});
   const { car, scene, door, key: workLight } = world;
@@ -196,6 +199,7 @@ async function boot() {
 
   let brakeResult;
   let driftRun,roundPlan,roundOutcome,elimination,parkour,practiceStarted;
+  let wakeStrength=0;
   let neon, neonSelected=false, neonBest, neonResetAt=-Infinity;
   let lastRespawn = -Infinity;
   let lastScore;
@@ -377,7 +381,7 @@ async function boot() {
   $('#practice-car').innerHTML = duoOptions;
   $('#duo-car-1').value = pit.selected;
   $('#duo-car-2').value = 'cls';
-  const mapPaths = new Map([mainLayout,shortLayout,stadiumLayout,parkourLayout].map(route =>
+  const mapPaths = new Map([mainLayout,shortLayout,stadiumLayout,cityLayout,parkourLayout].map(route =>
     [route,'M ' + route.road.map(p => `${p.x.toFixed(2)} ${(-p.z).toFixed(2)}`).join(' L ') + (route.port ? '' : ' Z')]));
 
   const condition = () => pit.cars[modelId];
@@ -393,7 +397,7 @@ async function boot() {
     if (!driftRun || neon) return;
     driftRun.finish(bank);
     recorder?.tick(0,physics,driftRun.run);
-    if (bank && !guest && !training && !layout.stadium && !layout.port) {
+    if (bank && !guest && !training && !layout.stadium && !layout.port && !layout.city) {
       lastScore = driftRun.run.score;
       const key = layout.short ? 'shortBest' : 'best';
       condition()[key] = Math.max(condition()[key], lastScore);
@@ -406,10 +410,10 @@ async function boot() {
   function syncScene() {
     const workshop = state === 'pit' && !onCircuit || state === 'menu';
     const practicePad = padActive();
-    physics.setRegion(onCircuit ? practicePad ? 'pad' : layout.port ? 'port' : layout.stadium ? 'stadium' : 'circuit' : workshop ? 'garage' : 'district');
+    physics.setRegion(onCircuit ? practicePad ? 'pad' : layout.city ? 'city' : layout.port ? 'port' : layout.stadium ? 'stadium' : 'circuit' : workshop ? 'garage' : 'district');
     const locations = [[club.room,workshop],[legacyScenery,state === 'shift'],
-      [arena.group,onCircuit && !practicePad && !layout.stadium && !layout.port],
-      [stadium.group,onCircuit && layout.stadium],[port.group,onCircuit && layout.port],[practice.root,practicePad]];
+      [arena.group,onCircuit && !practicePad && !layout.stadium && !layout.port && !layout.city],
+      [city.group,onCircuit && layout.city],[stadium.group,onCircuit && layout.stadium],[port.group,onCircuit && layout.port],[practice.root,practicePad]];
     for (const [root,visible] of locations) {
       root.visible = visible;
       if (visible && root.parent !== scene) scene.add(root);
@@ -424,8 +428,8 @@ async function boot() {
     }
     hud.classList.toggle('race-online',Boolean(neon && online.active));
     neonHud.hidden = !neon || !onCircuit || online.active && !roundPlan;
-    scene.fog.density = onCircuit && layout.port ? .0055 : .0085;
-    scene.fog.color.setHex(onCircuit && layout.port ? 0x829ba9 : onCircuit ? 0xc8a991 : 0xa2b6c4);
+    scene.fog.density = onCircuit && layout.city ? .006 : onCircuit && layout.port ? .0055 : .0085;
+    scene.fog.color.setHex(onCircuit && layout.city ? 0x8596ab : onCircuit && layout.port ? 0x829ba9 : onCircuit ? 0xc8a991 : 0xa2b6c4);
     const shadow = district.sunlight.shadow.camera;
     const span = guest ? 100 : 53;
     Object.assign(shadow,{left:-span,right:span,top:span,bottom:-span,far:guest ? 220 : 132});
@@ -434,12 +438,12 @@ async function boot() {
     $('#map-pit').toggleAttribute('hidden', !workshop);
     $('#map-arena').toggleAttribute('hidden', !onCircuit);
     mapGate.style.display = online.active || layout.stadium || layout.port ? 'none' : '';
-    $('#map-arena rect').toggleAttribute('hidden',layout.stadium || layout.port);
+    $('#map-arena rect').toggleAttribute('hidden',layout.stadium || layout.port || layout.city);
     $('#map-legend').hidden = state !== 'shift';
-    $('#map-svg').setAttribute('viewBox', onCircuit ? layout.port ? portMapView(physics.position.z) : layout.stadium ? '-82 -455 164 164' : '-91 -256 182 152'
+    $('#map-svg').setAttribute('viewBox', onCircuit ? layout.city ? '-133 -684 261 226' : layout.port ? portMapView(physics.position.z) : layout.stadium ? '-82 -455 164 164' : '-91 -256 182 152'
       : workshop ? '-15 45 30 22' : '-39 -94 78 114');
-    $('#map-title').textContent = onCircuit ? layout.port ? 'ПОРТ' : layout.stadium ? 'СТАДИОН' : 'КОНТУР 67' : workshop ? 'ГАРАЖ' : 'РАЙОН 01';
-    $('#location-area').textContent = padActive() ? 'ВОСЬМЁРКИ' : onCircuit ? (layout.port ? 'ПОРТ' : layout.stadium ? 'СТАДИОН' : layout.short ? 'КОРОТКАЯ ПЕТЛЯ' : 'КОНТУР 67') : workshop ? 'ГАРАЖ' : 'БОКС 01';
+    $('#map-title').textContent = onCircuit ? layout.city ? 'РЕЧНОЙ ПРОСПЕКТ' : layout.port ? 'ПОРТ' : layout.stadium ? 'СТАДИОН' : 'КОНТУР 67' : workshop ? 'ГАРАЖ' : 'РАЙОН 01';
+    $('#location-area').textContent = padActive() ? 'ВОСЬМЁРКИ' : onCircuit ? (layout.city ? 'РЕЧНОЙ ПРОСПЕКТ' : layout.port ? 'ПОРТ' : layout.stadium ? 'СТАДИОН' : layout.short ? 'КОРОТКАЯ ПЕТЛЯ' : 'КОНТУР 67') : workshop ? 'ГАРАЖ' : 'БОКС 01';
     $('#map-course').setAttribute('d', mapPaths.get(layout));
     $('#map-alternates').toggleAttribute('hidden',!layout.port);
     if (layout.port) {
@@ -491,6 +495,7 @@ async function boot() {
     elimination = nextRound?.mode==='elimination' ? eliminationRun(nextRound.startsAt) : undefined;
     practiceStarted = performance.now();
     lastRespawn = neonResetAt = -Infinity;
+    wakeStrength=0;
     const racingTrack=neonSelected ? neonTracks.get(layout) : undefined;
     neon = racingTrack ? createNeonRun(racingTrack.course,nextRound?.startsAt ?? (online.active ? Infinity : practiceStarted+3000)) : undefined;
     neonBest = racingTrack && !online.active ? readRaceBest(storage,racingTrack.id) : null;
@@ -1230,7 +1235,7 @@ async function boot() {
   }
 
   const shutter = { x: 0, z: 7.95, w: 5.12, d: .25, h: 4.35 };
-  const walkingBarriers = barriers.filter(shape=>shape.region!=='port');
+  const walkingBarriers = barriers.filter(shape=>shape.region!=='port' && shape.region!=='city');
   const garageWithShutter = [...walkingBarriers,shutter];
   function hitsRectangle(x, z, radius, box) {
     return Math.hypot(Math.max(0,Math.abs(x-box.x)-box.w/2),
@@ -1582,6 +1587,18 @@ async function boot() {
   for (const [id,model] of Object.entries(FLEET)) neonCar.add(new Option(model.code,id));
   function updateNeonRecord() {
     const best=readRaceBest(storage,neonRoute.value);
+    const track=routeFor(neonRoute.value), {road}=track;
+    const xs=road.map(p=>p.x), zs=road.map(p=>p.z);
+    const x=Math.min(...xs), z=Math.max(...zs);
+    const w=Math.max(...xs)-x,h=z-Math.min(...zs);
+    const diagram=$('#neon-diagram'), pad=Math.max(w,h)*.12;
+    diagram.setAttribute('viewBox',[x-pad,-z-pad,w+2*pad,h+2*pad].join(' '));
+    $('#neon-outline').setAttribute('d',mapPaths.get(track));
+    $('#neon-origin').setAttribute('cx',road[0].x);
+    $('#neon-origin').setAttribute('cy',-road[0].z);
+    $('#neon-origin').setAttribute('r',w*.027);
+    $('#neon-distance').textContent=Math.round(neonTracks.get(track).course.length)+' м / круг';
+    $('#neon-districts').textContent=track.city ? 'Проспект · Набережная · Старый рынок' : track.stadium ? 'Скоростное кольцо' : 'Связки и перепады высоты';
     const record=$('#neon-best');
     record.hidden=best===null;
     record.textContent=best===null ? '' : 'Твой рекорд · '+formatTime(best,2);
@@ -1725,7 +1742,7 @@ async function boot() {
       curbing:onCircuit && !padActive() && driver.totalSpeed>4 &&
         [0,1,2,3].some(index => {
           const contact=driver.wheelContact(index);
-          return !layout.stadium && contact && terrain.curbAt(contact.x,contact.z);
+          return !layout.city && !layout.stadium && contact && terrain.curbAt(contact.x,contact.z);
         }),
       gain:driver.running ? (seated ? .076 : .035/(1+player.distanceTo(car.position)*.13)) : 0,
     });
@@ -1812,6 +1829,8 @@ async function boot() {
     const canDrive = !frozen && seated && (!garageMode() || onCircuit);
     const guestBrake = guest && (guestTap || drivingKey(1,'handbrake'));
     guestTap = false;
+    const wakeTarget=neon && online.roundLive && canDrive ? online.draftAt(physics.position,physics.velocity,performance.now()) : 0;
+    wakeStrength=damp(wakeStrength,wakeTarget,wakeTarget>0 ? 2.4 : 6,STEP);
     physics.tick({
       gas: canDrive && !unsecured && (onCircuit ? drivingKey(0,'gas') : walkKey('gas', 'KeyW', 'ArrowUp')),
       reverse: canDrive && !unsecured && (onCircuit ? drivingKey(0,'brake') : walkKey('brake', 'KeyS', 'ArrowDown')),
@@ -1820,13 +1839,13 @@ async function boot() {
       handbrake, drift: drifting,
       occupied: canDrive, parking: !!frozen || leaving || unsecured || garageMode() && !onCircuit, fault: broken(), gateY: door.position.y,
       portTime:parkour ? portTime(now) : undefined,
-      nitro:neon?.boosted(driveTime),raceGrip:neon?.grip(driveTime),
+      nitro:neon?.boosted(driveTime),raceGrip:neon?.grip(driveTime),racing:Boolean(neon),draft:wakeStrength,
     }, guest && {
       gas: drivingKey(1,'gas'), reverse: drivingKey(1,'brake'),
       turn: Number(drivingKey(1,'right'))-Number(drivingKey(1,'left')),
       handbrake: guestBrake, drift: true, occupied: true,
     });
-    if (garageMode() && !guest && !training) updateCondition(handbrake);
+    if (garageMode() && !guest && !training && !neon) updateCondition(handbrake);
     if (onCircuit) (padActive() ? padEffects : raceWorld().fx).tick(STEP,physics,profile.smoke && !performanceHud.disableSmoke,handbrake);
     if (guest) {
       guest.effects.tick(STEP,guest.physics,profile.smoke && !performanceHud.disableSmoke,guestBrake);
@@ -1944,9 +1963,17 @@ async function boot() {
     $('#neon-lap').textContent=done ? 'Финиш' : `Круг ${neon.lap} / ${RACE_LAPS}`;
     $('#neon-clock').textContent=active ? formatTime((neon.elapsed ?? (now-neon.startsAt))+neon.resets*RESET_PENALTY,2)
       : String(Math.ceil((neon.startsAt-now)/1000));
+    $('#neon-progress').value=done ? 48 : (neon.lap-1)*16+neon.next;
+    const callout=$('#neon-corner');
+    const corner=layout.city && active && !done && !neon.offRoad && !neon.wrongWay && neonTracks.get(layout).course.nextCorner();
+    callout.hidden=!corner || corner.meters>Math.max(28,physics.totalSpeed*2.7);
+    if(!callout.hidden)callout.textContent=(corner.left ? 'Поворот налево' : 'Поворот направо')+' · '+(Math.round(corner.meters/5)*5)+' м';
+    const lapDetail=$('#neon-lap-detail');
+    lapDetail.hidden=neon.lastLap===undefined;
+    if(!lapDetail.hidden) lapDetail.textContent='Круг '+formatTime(neon.lastLap,2)+' · лучший '+formatTime(neon.bestLap,2);
     $('#neon-status').textContent=done ? neonBest===null ? 'Ждём результаты' : 'Рекорд · '+formatTime(neonBest,2)
-      : !active ? 'Приготовься к старту' : neon.offRoad ? 'Вернись на асфальт' : neon.grip(now) ? 'Улучшенное сцепление'
-      : `Створ ${neon.next+1} / 16`;
+      : !active ? 'Приготовься к старту' : neon.wrongWay ? 'Развернись · встречное направление' : neon.offRoad ? 'Вернись на асфальт' : neon.grip(now) ? 'Улучшенное сцепление'
+       : wakeStrength>.27 ? 'Слипстрим · готовь обгон' : layout.city ? (neon.next<3 || neon.next>=15 ? 'Проспект' : neon.next<7 ? 'Набережная' : neon.next<12 ? 'Старый рынок' : 'Вокзальные улицы')+` · створ ${neon.next+1}/16` : `Створ ${neon.next+1} / 16`;
     $('#neon-charge').textContent=neon.charges+' / 3';
     $('#neon-key').textContent=keyLabel(boostCode());
     neonBoost.hidden=done;
@@ -2003,6 +2030,7 @@ async function boot() {
     const cameraBarriers = onCircuit ? (padActive() ? practice.obstacles : layout.port ? port.cameraNear(lookAt.z) : raceWorld().obstacles) : garageMode() ? club.obstacles
       : door.position.y < 3.6 ? garageWithShutter : walkingBarriers;
     for (const box of cameraBarriers) {
+      if (layout.city && (Math.abs(lookAt.x-box.x)>box.w/2+box.d/2+12 || Math.abs(lookAt.z-box.z)>box.w/2+box.d/2+12)) continue;
       if (box.drivable) continue;
       let entry = 0;
       let exit = fraction;
@@ -2026,7 +2054,7 @@ async function boot() {
       if (entry > .02 && entry <= exit) fraction = Math.max(.08, entry - .025);
     }
     desired.copy(lookAt).addScaledVector(delta,fraction);
-    if (onCircuit && !padActive()) desired.y = Math.max(desired.y,(layout.port ? -3.7 : layout.stadium ? 0 : terrain.heightAt(desired.x,desired.z))+.54);
+    if (onCircuit && !padActive()) desired.y = Math.max(desired.y,(layout.port ? -3.7 : layout.stadium || layout.city ? 0 : terrain.heightAt(desired.x,desired.z))+.54);
     return desired;
   }
 
@@ -2240,13 +2268,13 @@ async function boot() {
   }
 
   function placeContact(mesh, {x,z}) {
-    if (onCircuit && !padActive() && !layout.stadium && !layout.port) {
+    if (onCircuit && !padActive() && !layout.stadium && !layout.port && !layout.city) {
       const { heightAt } = terrain;
       mesh.position.set(x,heightAt(x,z)+.075,z);
       groundNormal.set(heightAt(x-1,z)-heightAt(x+1,z),2,heightAt(x,z-1)-heightAt(x,z+1)).normalize();
       mesh.quaternion.setFromUnitVectors(planeNormal,groundNormal);
     } else {
-      mesh.position.set(x,.023,z);
+      mesh.position.set(x,onCircuit && layout.city ? .059 : .023,z);
       mesh.rotation.set(-Math.PI/2,0,0);
     }
   }
@@ -2312,9 +2340,9 @@ async function boot() {
     if (workLight.castShadow !== workShadow) shadowDirty = true;
     workLight.castShadow = workShadow;
     world.fill.visible = world.worklight.visible = !profile.lite || state === 'shift' && inWorkshop;
-    district.sky.material.uniforms.circuit.value = onCircuit && !layout.port ? 1 : 0;
-    scene.background.setHex(onCircuit && layout.port ? 0x829ba9 : onCircuit ? 0xa98d82 : 0xa2b6c4);
-    district.sunlight.color.setHex(onCircuit && layout.port ? 0xf9e7cd : onCircuit ? 0xffc791 : 0xfff1db);
+    district.sky.material.uniforms.circuit.value = onCircuit && layout.city ? 2 : onCircuit && !layout.port ? 1 : 0;
+    scene.background.setHex(onCircuit && layout.city ? 0x8596ab : onCircuit && layout.port ? 0x829ba9 : onCircuit ? 0xa98d82 : 0xa2b6c4);
+    district.sunlight.color.setHex(onCircuit && layout.city ? 0xffe4cf : onCircuit && layout.port ? 0xf9e7cd : onCircuit ? 0xffc791 : 0xfff1db);
     district.sunlight.position.x = onCircuit ? -45 : -24;
     district.sunlight.position.y = onCircuit ? 19 : 32;
     district.sunlight.castShadow = renderer.shadowMap.enabled && !inWorkshop;
@@ -2326,9 +2354,9 @@ async function boot() {
     district.sunlight.position.z = lightZ + (onCircuit ? 34 : 13);
     district.sunlight.target.position.z = lightZ;
     if (!pitPanel.open && !replay) {
-      const fieldOfView = neon?.boosted(neonNow()) && !cockpit ? 68 : garageMode() && !onCircuit && !seated ? 72 : 62;
-      if (camera.fov !== fieldOfView) {
-        camera.fov = fieldOfView;
+      const fieldOfView = neon && !cockpit ? 61+4*THREE.MathUtils.smoothstep(physics.totalSpeed,8,36)+(neon.boosted(neonNow()) ? 4 : 0) : garageMode() && !onCircuit && !seated ? 72 : 62;
+      if (Math.abs(camera.fov-fieldOfView)>.035) {
+        camera.fov = neon ? damp(camera.fov,fieldOfView,5,dt) : fieldOfView;
         camera.updateProjectionMatrix();
       }
       view(dt, now);
@@ -2361,12 +2389,12 @@ async function boot() {
   $('#audio').textContent = career.muted ? 'Звук: выкл' : 'Звук: вкл';
   show('menu');
   const [, equipment, trackKit] = await Promise.all([world.assetsReady, club.equipment, arena.kit]);
-  for (const root of [scene, club.room, arena.group, stadium.group, port.group, practice.root, legacyScenery, bmw.root, f90.root, cls.root, supra.root]) {
+  for (const root of [scene, club.room, arena.group, stadium.group, city.group, port.group, practice.root, legacyScenery, bmw.root, f90.root, cls.root, supra.root]) {
     materials.collect(root);
   }
   profile = undefined;
   const keep = new Set([car, world.contact, guestContact, district.sky, district.sunlight, district.sunlight.target,
-    district.marker, arena.group, stadium.group, port.group, club.room, practice.root, legacyScenery]);
+    district.marker, arena.group, stadium.group, city.group, port.group, club.room, practice.root, legacyScenery]);
   for (const object of [...scene.children]) {
     if (!keep.has(object) && !object.isLight) legacyScenery.add(object);
   }
@@ -2379,7 +2407,7 @@ async function boot() {
       mode: state, seated, cockpit, running: physics.running, speed: physics.speed * 3.6,
       car: physics.position.toArray(), player: player.toArray(), yaw: camera.rotation.y, gate: door.position.y, lifted,
       hood: hoodOpen, trunk: trunkOpen, batteryHatch: hatchOpen, drift: driftRun ? { ...driftRun.run } : null, leaving, phase: phase(), job: job().id, money: career.money, completed: career.completed,
-      practice: training ?? null, route: layout.port ? 'port' : layout.stadium ? 'stadium' : layout.short ? 'short' : 'main', replay: !!replay, bestReplay: bestReplay()?.clip.points ?? null,
+      practice: training ?? null, route: layout.city ? 'city' : layout.port ? 'port' : layout.stadium ? 'stadium' : layout.short ? 'short' : 'main', replay: !!replay, bestReplay: bestReplay()?.clip.points ?? null,
       tandem: tandem ? { heat:tandem.heat, leader:tandem.leader+1, done:tandem.done } : null,
       duo: guest ? { car: guest.physics.position.toArray(), speed: guest.physics.totalSpeed*3.6,
         drift: { ...guest.race.run } } : null,

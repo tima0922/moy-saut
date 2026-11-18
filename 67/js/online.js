@@ -8,7 +8,7 @@ const errors = {
   server: 'Сервер комнат временно недоступен.',
   players: 'Для старта нужен ещё один игрок.',
   running: 'Раунд уже запущен.',
-  update: 'Обнови страницу, чтобы войти в соревновательную комнату.',
+  update: 'Для комнаты нужна та же версия игры. Обновите страницы и создайте новую комнату.',
   round: 'Этот раунд уже закончился.',
 };
 
@@ -39,15 +39,17 @@ function waitForIce(peer) {
 }
 
 function acceptPose(pose,route) {
+  const city=route==='city2';
+  const limitZ=city ? 1170 : route==='port7' || route==='port6' ? 5150 : 700;
   return Array.isArray(pose) && pose.length === 9 && pose.every(Number.isFinite) &&
-    Math.abs(pose[0]) < 150 && Math.abs(pose[1]) < 50 && pose[2] >= 60 && pose[2] <= (route==='port6' ? 5150 : 700) &&
+    Math.abs(pose[0]) < (city ? 340 : 150) && Math.abs(pose[1]) < 50 && pose[2] >= (city ? 686 : 60) && pose[2] <= limitZ &&
     pose.slice(3,7).every(value => Math.abs(value) <= 1.01) &&
     Math.abs(pose[7]) < 150 && Math.abs(pose[8]) < 150;
 }
 
 export async function enterRoom({code,nick,model,color,route,mode,contacts,onRoster,onPose,onImpact,onMatch,onClose}) {
   const signing = await makeRelayIdentity();
-  const room = await request({action:code ? 'join' : 'create',code,nick,model,color,route,mode,contacts,games:8,socketKey:signing?.publicKey});
+  const room = await request({action:code ? 'join' : 'create',code,nick,model,color,route,mode,contacts,games:9,socketKey:signing?.publicKey});
   const {id,secret} = room;
   const send = (action, body, options) => request({action,id,secret,...body}, options);
   const peers = new Map();

@@ -1,6 +1,6 @@
 import { Group, Quaternion, Vector3, MathUtils } from 'three';
-import { draftStrength } from './neon-race.js?v=031';
-import { enterRoom } from './online.js?v=031';
+import { draftStrength } from './neon-race.js?v=032';
+import { enterRoom } from './online.js?v=032';
 
 import { MATCH_MODES,RESET_PENALTY,formatTime,rankRound } from './competition.js?v=030';
 
@@ -49,8 +49,8 @@ export function createOnlineView({scene, models, selection,start,leave,spawn,pai
     const chooseRoute = mode==='free' || mode==='battle' || mode==='race';
     $('#online-route-row').hidden = !chooseRoute;
     $('#online-contact-row').hidden = mode!=='free';
-    route.querySelector('[value=city]').disabled=mode!=='race';
-    if(mode!=='race' && route.value==='city') route.value='main';
+    route.querySelector('[value=city2]').disabled=mode!=='race';
+    if(mode!=='race' && route.value==='city2') route.value='main';
     const stadium = route.querySelector('[value="stadium"]');
     stadium.disabled = mode==='battle';
     route.querySelector('[value=short]').disabled = mode==='race';

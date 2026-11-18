@@ -7,6 +7,8 @@ test('desktop Auto responds to severe drops and waits before raising quality', (
   const graphics = createGraphicsController('auto', false);
   assert.equal(graphics.level, 'balanced');
   assert.equal(graphics.sample(15), true);
+  assert.equal(graphics.level, 'integrated');
+  assert.equal(graphics.sample(15), true);
   assert.equal(graphics.level, 'performance');
   assert.equal(graphics.sample(15), true);
   assert.equal(graphics.level, 'minimum');
@@ -15,7 +17,7 @@ test('desktop Auto responds to severe drops and waits before raising quality', (
   assert.equal(graphics.level, 'performance');
 });
 
-test('mobile Auto stays below Ultra and manual Minimum stays selected', () => {
+test('Auto stays below Ultra and manual Minimum stays selected', () => {
   const graphics = createGraphicsController('auto', true);
   assert.equal(graphics.level, 'performance');
   for (let i=0; i<30; i++) graphics.sample(60);

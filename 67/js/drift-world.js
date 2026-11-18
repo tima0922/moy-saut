@@ -131,7 +131,7 @@ export function createDriftWorld(world, layout, asphalt, terrain, shortLayout) {
   let active, guestActive;
   const fx = createTireEffects(group);
   return {
-    group, obstacles, fx, kit, setLite: floor.setLite, makeGuestEffects: () => createTireEffects(group),
+    group, obstacles, fx, kit, collectMaterials:floor.surfaces, setQuality: floor.setQuality, makeGuestEffects: () => createTireEffects(group),
     markGate(index, guestIndex = -1, route = layout) {
       const playerGate = route.gates[index], guestGate = route.gates[guestIndex];
       if (active === playerGate && guestActive === guestGate) return;
@@ -309,26 +309,24 @@ function makeCircuitFloor(terrain, asphalt, curbColors, details) {
       `);
   };
 
-  const full = new THREE.Mesh(geometry,material);
-  full.receiveShadow = true;
+  const medium=new THREE.MeshLambertMaterial({map:material.map});
+  medium.onBeforeCompile=material.onBeforeCompile;
   const root = new THREE.Group();
-  const tiles = new THREE.Group();
-  root.add(full,tiles);
   const { stride, rows } = terrain;
-  const tileSize = 24;
+  const tileSize = 32;
   for (let z=0; z<rows; z+=tileSize) for (let x=0; x<stride-1; x+=tileSize) {
     const cols = Math.min(tileSize,stride-1-x);
     const height = Math.min(tileSize,rows-z);
     const width = cols+1;
     const tile = new THREE.BufferGeometry();
-    for (const name of ['position','normal','circuitSurface']) {
-      const source = geometry.getAttribute(name).array;
-      const data = new Float32Array(width*(height+1)*3);
+    for (const name of ['position','normal','circuitSurface','uv']) {
+      const {array:source,itemSize}=geometry.getAttribute(name);
+      const data = new Float32Array(width*(height+1)*itemSize);
       for (let row=0; row<=height; row++) {
-        const start = ((z+row)*stride+x)*3;
-        data.set(source.subarray(start,start+width*3),row*width*3);
+        const start = ((z+row)*stride+x)*itemSize;
+        data.set(source.subarray(start,start+width*itemSize),row*width*itemSize);
       }
-      tile.setAttribute(name,new THREE.BufferAttribute(data,3));
+      tile.setAttribute(name,new THREE.BufferAttribute(data,itemSize));
     }
     const indices = new Uint16Array(cols*height*6);
     for (let row=0; row<height; row++) for (let col=0; col<cols; col++) {
@@ -337,14 +335,16 @@ function makeCircuitFloor(terrain, asphalt, curbColors, details) {
     }
     tile.setIndex(new THREE.BufferAttribute(indices,1));
     tile.computeBoundingSphere();
-    tiles.add(new THREE.Mesh(tile,lite));
+    const mesh=new THREE.Mesh(tile,material);
+    mesh.receiveShadow=true;
+    root.add(mesh);
   }
-  tiles.visible = false;
+  geometry.dispose();
   return {
-    root,
-    setLite(enabled) {
-      full.visible = !enabled;
-      tiles.visible = enabled;
+    root, surfaces:[lite,medium,material],
+    setQuality(profile) {
+      const surface=profile.lite ? lite : profile.shadows ? material : medium;
+      for (const tile of root.children) tile.material=surface;
     },
   };
 }

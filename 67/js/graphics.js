@@ -1,17 +1,17 @@
 export const GRAPHICS = {
-  ultra: { pixels: 3_700_000, dpr: 1.5, far: 185, shadows: true, shadowMs: 1000/20, smoke: true },
-  balanced: { pixels: 1_100_000, dpr: 1, far: 160, smoke: 'light' },
-  integrated: { pixels: 880_000, dpr: 1, far: 115, lite: true },
-  performance: { pixels: 520_000, dpr: .85, far: 115, lite: true },
-  minimum: { pixels: 260_000, dpr: .65, far: 85, lite: true },
+  ultra: { pixels: 3_100_000, dpr: 1.5, far: 185, shadows: true, shadowMs: 1000/20, smoke: true },
+  balanced: { pixels: 980_000, dpr: 1, far: 154, smoke: 'light', trackLOD:true },
+  integrated: { pixels: 710_000, dpr: 1, far: 112, lite:true, trackLOD:true },
+  performance: { pixels: 520_000, dpr: .85, far: 105, lite:true, trackLOD:true },
+  minimum: { pixels: 260_000, dpr: .65, far: 85, lite:true, trackLOD:true },
 };
 
-const AUTO_LEVELS = ['minimum', 'performance', 'balanced', 'ultra'];
+const AUTO_LEVELS = ['minimum', 'performance', 'integrated', 'balanced'];
 
 export function createGraphicsController(mode, touch) {
-  // Keep mobile Auto below Ultra. Desktop starts without shadow maps.
-  const ceiling = touch ? 2 : 3;
-  const initial = touch ? 1 : 2;
+  // Keep expensive shadow-map and environment compilation out of automatic upgrades.
+  const ceiling = AUTO_LEVELS.length-1;
+  const initial = touch ? 1 : ceiling;
   let level = initial;
   let good = 0;
   let bad = 0;
@@ -53,9 +53,9 @@ export function renderRatio(profile, width, height, deviceRatio, touch, split) {
 // Change the existing materials so paint, tint and brake light updates still reach every mesh.
 export function createMaterialQuality() {
   const materials = new Map();
-  const textures = new Set();
   const cheaper = { normalMap: null, bumpMap: null, roughnessMap: null, metalnessMap: null,
     aoMap: null, clearcoat: 0, anisotropy: 0, specularIntensity: 0 };
+  const tracked = new Map();
   return {
     clone(material) {
       const clone = material.clone();
@@ -63,26 +63,50 @@ export function createMaterialQuality() {
       return clone;
     },
     forget(list) {
-      for (const material of list) materials.delete(material);
+      for (const material of list) {
+        materials.delete(material);
+        tracked.delete(material);
+      }
+    },
+    register(material) {
+      if (tracked.has(material)) return;
+      tracked.set(material,new Set(Object.values(material).filter(value=>value?.isTexture)));
+      if (!material.isMeshStandardMaterial || materials.has(material)) return;
+      const values={};
+      for (const [name,fallback] of Object.entries(cheaper)) {
+        if (name in material && material[name]!==fallback) values[name]=material[name];
+      }
+      if (material.metalness>.25) values.metalness=material.metalness;
+      materials.set(material,values);
     },
     collect(root) {
-      root.traverse(object => {
+      root.traverse(object=>{
         if (!object.isMesh) return;
-        const list = Array.isArray(object.material) ? object.material : [object.material];
+        const list=Array.isArray(object.material) ? object.material : [object.material];
+        for (const material of list) this.register(material);
+      });
+    },
+    release(root,sharedGeometry) {
+      const geometry=new Set(),textures=new Set(),owned=new Set();
+      root.removeFromParent();
+      root.traverse(object=>{
+        if (!object.isMesh) return;
+        if (object.isInstancedMesh) object.dispose();
+        if (object.geometry!==sharedGeometry) geometry.add(object.geometry);
+        const list=Array.isArray(object.material) ? object.material : [object.material];
         for (const material of list) {
-          const map = material.map;
-          if (map) textures.add(map);
-          if (!material.isMeshStandardMaterial || materials.has(material)) continue;
-          const values = {};
-          for (const name of Object.keys(cheaper)) {
-            if (!(name in material) || material[name] === cheaper[name]) continue;
-            values[name] = material[name];
-            if (material[name]?.isTexture) textures.add(material[name]);
-          }
-          if (material.metalness > .25) values.metalness = material.metalness;
-          materials.set(material, values);
+          owned.add(material);
+          for (const texture of tracked.get(material) ?? []) textures.add(texture);
         }
       });
+      for (const [material,references] of tracked) {
+        if (owned.has(material)) continue;
+        for (const texture of references) textures.delete(texture);
+      }
+      for (const item of geometry) item.dispose();
+      for (const item of textures) item.dispose();
+      for (const item of owned) item.dispose();
+      this.forget(owned);
     },
     apply(lite, anisotropy) {
       for (const [material, values] of materials) {
@@ -95,6 +119,7 @@ export function createMaterialQuality() {
         }
         if (changed) material.needsUpdate = true;
       }
+      const textures=new Set([...tracked.values()].flatMap(items=>[...items]));
       for (const texture of textures) {
         if (texture.anisotropy === anisotropy) continue;
         texture.anisotropy = anisotropy;

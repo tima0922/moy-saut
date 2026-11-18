@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { registerHooks } from 'node:module';
 import { test } from 'node:test';
 import {rankRound,RESET_PENALTY} from '../js/competition.js';
@@ -59,7 +60,7 @@ test('a race counts three ordered laps, rejects wrong-way and skipped gates, and
     assert.equal(run.next,1);
     const spawn=run.recover(time);
     assert.equal(run.resets,1);
-    assert.ok(Math.hypot(spawn.x-course.gates[0].point.x,spawn.z-course.gates[0].point.z)<3);
+    assert.ok(Math.hypot(spawn.x-course.gates[0].point.x,spawn.z-course.gates[0].point.z)<4);
     assert.equal(run.next,1);
     for (let i=1;i<course.gates.length;i++) cross(i);
     for (let lap=1;lap<RACE_LAPS;lap++) for (let i=0;i<course.gates.length;i++) cross(i);
@@ -103,11 +104,11 @@ test('the ranking charges recovery time and records the fastest local lap total 
   assert.equal(readRaceBest(storage,'main'),43000);
 });
 
-test('a physical car completes the race on all three circuits with race handling',async()=>{
-  const player=await createPhysics(cityWorld.obstacles,CLUB_ARENA,undefined,terrain,undefined,{...STADIUM,gripAt:stadiumSurface});
+test('the original circuits remain driveable with the new race handling',async()=>{
+  const player=await createPhysics([],CLUB_ARENA,undefined,terrain,undefined,{...STADIUM,gripAt:stadiumSurface});
   const clamp=(n,a,b)=>Math.max(a,Math.min(n,b));
   const f=new Vector3(0,0,-1);
-  for(const layout of [stadium,contour,city]) {
+  for(const layout of [stadium,contour]) {
     const course=createRaceCourse(layout,layout!==contour ? undefined : (x,z)=>terrain.heightAt(x,z));
     const run=createNeonRun(course,0);
     const spawn=course.grid();
@@ -129,7 +130,7 @@ test('a physical car completes the race on all three circuits with race handling
       const angle=Math.atan2((look.z-p.z)*dir.x-(look.x-p.x)*dir.z,(look.x-p.x)*dir.x+(look.z-p.z)*dir.z);
       const a=layout.directions[index], b=layout.directions[(index+8)%n];
       const corner=Math.acos(clamp(a.x*b.x+a.z*b.z,-1,1));
-      const target=layout.city ? clamp(76-36*corner,35,76) : layout.stadium ? 62 : clamp(49-16*corner,29,49);
+      const target=layout.stadium ? 62 : clamp(49-16*corner,29,49);
       steering+=clamp(angle*2.3,-1,1);
       const turn=Math.abs(steering)>.5 ? Math.sign(steering) : 0;
       steering-=turn;
@@ -166,7 +167,7 @@ test('the lap includes recovery penalties and reversing shows a direction warnin
     run.tick(t+=100,gate.point.clone().addScaledVector(gate.dir,-1),true);
     run.tick(t+=100,gate.point.clone().addScaledVector(gate.dir,1),true);
   }
-  assert.equal(run.lastLap,t+RESET_PENALTY);
+  assert.equal(run.lastLap,t-50+RESET_PENALTY);
   assert.equal(run.bestLap,run.lastLap);
 });
 
@@ -176,4 +177,86 @@ test('the slipstream only assists a moving follower in the same lane and directi
   for(const wrong of [{x:4,y:0,z:0},{x:0,y:3,z:0},{x:0,y:0,z:15}]) assert.equal(draftStrength(wrong,v,pose),0);
   assert.equal(draftStrength(p,{x:0,z:-20},pose),0);
   assert.equal(draftStrength(p,{x:0,z:3},pose),0);
+});
+
+
+test('all four cars clear three city laps at race pace on the real bridge and barriers',async()=>{
+  const driver=await createPhysics([]);
+  const empty=driver.activeColliderCount();
+  driver.registerRegion('city',cityWorld.obstacles);
+  assert.equal(driver.activeColliderCount(),empty);
+  driver.setRegion('city');
+  assert.ok(driver.activeColliderCount()>empty+300);
+  const course=createRaceCourse(city);
+  const {road,directions,spacing}=city;
+  const count=road.length;
+  const curvature=directions.map((_,i)=>{
+    const a=directions[(i+count-3)%count],b=directions[(i+3)%count];
+    return Math.acos(Math.max(-1,Math.min(1,a.dot(b))))/(6*spacing);
+  });
+  assert.ok(course.length>=1500);
+  assert.ok(Math.max(...road.map(p=>p.y))>7);
+  const forward=new Vector3();
+  for (const id of ['sedan','f90','cls','supra']) {
+    driver.setModel(MODELS[id]);
+    const run=createNeonRun(course,0);
+    const start=course.grid();
+    driver.reset(start.x,start.z,start.yaw,start.y);
+    driver.running=true;
+    let steeringError=0,turn=0,hint,peak=0;
+    for (let frame=0;frame<14400 && run.elapsed===undefined;frame++) {
+      const position=driver.position;
+      const velocity=driver.totalSpeed;
+      const sample=course.project(position,hint);
+      hint=sample.nearest;
+      const look=road[(hint+Math.round((5.6+velocity*.24)/spacing))%count];
+      const heading=forward.set(0,0,-1).applyQuaternion(driver.rotation);
+      const dx=look.x-position.x,dz=look.z-position.z;
+      const angle=Math.atan2(dz*heading.x-dx*heading.z,dx*heading.x+dz*heading.z);
+      let target=195/3.6;
+      for (let ahead=1;ahead<=64;ahead+=3) {
+        const corner=curvature[(hint+ahead)%count];
+        if (corner<.003) continue;
+        const approach=Math.max(0,ahead*spacing-8-velocity*.25);
+        target=Math.min(target,Math.sqrt(9.4/corner+approach*17.6));
+      }
+      if (frame%3===0) {
+        steeringError+=Math.max(-1,Math.min(1,angle*3.2));
+        turn=Math.abs(steeringError)>.5 ? Math.sign(steeringError) : 0;
+        steeringError-=turn;
+      }
+      const time=frame*STEP*1000;
+      if (target>45 && velocity>23 && sample.distance<3 && Math.abs(angle)<.08) run.activate(time);
+      driver.tick({racing:true,occupied:true,turn,gas:velocity<target,reverse:velocity>target+.6,
+        nitro:run.boosted(time),raceGrip:run.grip(time)});
+      const event=run.tick(time,driver.position,driver.grounded);
+      assert.notEqual(event,'recover',`${id}, lap ${run.lap}, gate ${run.next}`);
+      assert.equal(driver.hit,false,`${id} hit a barrier at ${position.toArray()}`);
+      peak=Math.max(peak,velocity*3.6);
+    }
+    assert.ok(run.elapsed>0 && run.elapsed<200_000,id);
+    assert.ok(peak>160,`${id} peak ${peak}`);
+  }
+  driver.setRegion('circuit');
+  driver.forgetRegion('city');
+  assert.equal(driver.activeColliderCount(),empty);
+});
+
+test('each reduced car retains paint and the four independent front/rear wheel assemblies',async()=>{
+  const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
+  const {createTrackCar}=await import('../js/track-car.js');
+  for (const id of ['sedan','f90','cls','supra']) {
+    const asset=await readFile(new URL('../assets/track/'+id+'.glb',import.meta.url));
+    const {scene}=await new GLTFLoader().parseAsync(asset.buffer.slice(asset.byteOffset,asset.byteOffset+asset.byteLength),'');
+    const rig=createTrackCar(scene,id);
+    assert.ok(rig.paints.size>0 && rig.brakeLamps);
+    assert.ok(rig.wheels.every(wheel=>wheel.children.length>0));
+    let triangles=0,meshes=0;
+    rig.root.traverse(obj=>{
+      if (!obj.isMesh) return;
+      triangles+=(obj.geometry.index?.count ?? obj.geometry.attributes.position.count)/3;
+      meshes++;
+    });
+    assert.ok(triangles<23_000 && meshes<35,`${id}: ${triangles} triangles, ${meshes} meshes`);
+  }
 });

@@ -138,8 +138,8 @@ const rebuilt = {
     alternate:{speed:72,line:[[30,0],[46,6],[70,6.9],[88,7.9],[102,7.5],[132,0],[146,0]]}},
   30:{title:'Финиш над кораблём',speed:81,
     routeDecks:[[30,51,0,0,0,0,14],[51,74,0,4.15,0,5.45,8],
-      [90,115,7.2,10,1.45,1.45,5.75],[115,137,10,0,1.45,0,9],[137,154,0,0,0,0,14]],
-    line:[[44,0],[61,2],[75,4.25],[94,7.75],[116,9.5],[138,0]]},
+      [90,117,7.2,8.4,1.45,1.45,7.6],[117,137,8.4,0,1.45,0,10.8],[137,154,0,0,0,0,14]],
+    line:[[44,0],[61,2],[75,4.25],[94,7.6],[116,8.3],[138,0]]},
 };
 for (const [number,layout] of Object.entries(rebuilt)) {
   const {x} = sections[number-1];
@@ -274,14 +274,12 @@ export function portWorld(world) {
   water.rotation.x=-Math.PI/2;
   water.position.set(0,HARBOR_WATER,arena.z);
   group.add(water);
-  const chunks = [], cameraShapes = [];
+  const chunks = [];
   let visibleFirst=-1,visibleLast=-1;
 
   PORT_SECTORS.forEach((section,index)=>{
     const chunk = new THREE.Group();
     chunks.push(chunk);
-    const sectionObstacles = [];
-    cameraShapes.push(sectionObstacles);
     group.add(chunk);
     const block=(x,y,z,w,h,d,paint,pitch=0,yaw=0)=>{
       const mesh=box(chunk,[w,h,d],[x,y,z],paint,[pitch,yaw,0,'YXZ']);
@@ -292,7 +290,6 @@ export function portWorld(world) {
       const mesh=block(x,y,z,w,h,d,paint,pitch,yaw);
       const shape = {x,y:y-h/2,z,w,h,d,pitch,yaw,drivable};
       obstacles.push(shape);
-      if (!drivable) sectionObstacles.push(shape);
       return mesh;
     }
     const deckTops = [];
@@ -400,7 +397,6 @@ export function portWorld(world) {
     batchSharedMeshes(chunk);
   });
 
-  const cameraBuckets = cameraShapes.map((_,i)=>cameraShapes.slice(Math.max(0,i-1),i+2).flat());
   return {
     group,obstacles,fx:createTireEffects(group),markGate() {},
     animate(now,time) {
@@ -420,9 +416,6 @@ export function portWorld(world) {
       if (!hazard) return null;
       const [state,remaining]=portSignal(hazard,time);
       return {state,remaining,distance:Math.max(0,hazard.z-z)};
-    },
-    cameraNear(z) {
-      return cameraBuckets[THREE.MathUtils.clamp(Math.floor((z-START)/SPAN),0,chunks.length-1)];
     },
     showAround(z,far) {
       const first=Math.max(0,Math.floor((z-Math.min(far,90)-START)/SPAN));

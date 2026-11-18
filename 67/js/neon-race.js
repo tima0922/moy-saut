@@ -2,8 +2,7 @@ import { RESET_PENALTY } from './competition.js?v=030';
 import * as THREE from 'three';
 
 export const RACE_LAPS = 3;
-const ROAD_LIMIT = 9;
-const GATE_HALF = 8;
+const DEFAULT_HALF_WIDTH = 8;
 const PICKUP_RADIUS = 2.3;
 const keyFor = track => 'garage-life-neon-'+track;
 
@@ -34,77 +33,103 @@ export function draftStrength(position,velocity,other) {
   return Math.min(1,(gap-4)/3,(25-gap)/10)*(1-sideways/2.6);
 }
 
-export function createRaceCourse(layout,height=()=>0) {
-  const {road,directions}=layout;
+export function createRaceCourse(layout,height=layout.heightAt ?? (()=>0)) {
+  const {road,directions,widths}=layout;
+  const count=road.length;
+  const intervalCount=layout.city ? 24 : 16;
+  const halfWidth=i=>widths?.[i] ?? DEFAULT_HALF_WIDTH;
   const at=index=>{
-    const point=road[index];
-    return new THREE.Vector3(point.x,height(point.x,point.z),point.z);
+    const {x,z}=road[index];
+    return new THREE.Vector3(x,height(x,z),z);
   };
-  const gates=[], pickups=[];
-  const intervals=16;
-  for(let i=1;i<=intervals;i++) {
-    const index=Math.floor(i*road.length/intervals)%road.length;
-    gates.push({point:at(index),dir:directions[index]});
-  }
-  for(let i=0;i<8;i++) {
-    const index=Math.floor((i+.55)*road.length/8);
+  const gates=Array.from({length:intervalCount},(_,i)=>{
+    const index=Math.floor((i+1)*count/intervalCount)%count;
+    return {point:at(index),dir:directions[index],half:halfWidth(index)+.32,index};
+  });
+  const pickupCount=layout.city ? 12 : 8;
+  const pickups=Array.from({length:pickupCount},(_,i)=>{
+    const index=Math.floor((i+.55)*count/pickupCount);
     const point=at(index),dir=directions[index];
-    const offset=i%2 ? -3.55 : 3.55;
+    const offset=(i%2 ? -1 : 1)*(layout.city ? halfWidth(index)*.53 : 3.55);
     point.x+=dir.z*offset;
     point.z-=dir.x*offset;
     point.y=height(point.x,point.z);
-    pickups.push({point,kind:i%3===1 ? 'grip' : 'nitro'});
-  }
+    return {point,kind:i%3===1 ? 'grip' : 'nitro'};
+  });
+
   function place(point,dir,along,across=0) {
     const x=point.x+along*dir.x+across*dir.z;
     const z=point.z+along*dir.z-across*dir.x;
     return {x,z,y:height(x,z),yaw:Math.atan2(-dir.x,-dir.z)};
   }
-  const grid=slot=>place(gates.at(-1).point,gates.at(-1).dir,slot===undefined ? -7 : -7-Math.floor(slot/2)*6,
-    slot===undefined ? 0 : slot%2 ? 2.65 : -2.65);
-
-  let nearest=0;
-  function roadDistance(position) {
-    let distance=Infinity;
-    for(let i=0;i<road.length;i++) {
-      const a=road[i], b=road[(i+1)%road.length];
-      const x=b.x-a.x,z=b.z-a.z,rx=position.x-a.x,rz=position.z-a.z;
-      const t=Math.max(0,Math.min(1,(rx*x+rz*z)/(x*x+z*z)));
-      const square=(rx-x*t)**2+(rz-z*t)**2;
-      if(square<distance) { distance=square; nearest=i; }
-      if(distance<.04) break;
+  const grid=slot=>place(gates.at(-1).point,gates.at(-1).dir,
+    slot===undefined ? -7 : -7-Math.floor(slot/2)*6,slot===undefined ? 0 : slot%2 ? 2.65 : -2.65);
+  const segments=road.map((a,i)=>{
+    const b=road[(i+1)%count];
+    const dx=b.x-a.x,dz=b.z-a.z;
+    return {a,dx,dz,inverse:1/(dx*dx+dz*dz)};
+  });
+  const distanceAt=[0];
+  for (const {dx,dz} of segments) distanceAt.push(distanceAt.at(-1)+Math.hypot(dx,dz));
+  const length=distanceAt.at(-1);
+  function project({x,z},hint) {
+    let nearest=0,fraction=0,distance=Infinity;
+    function scan(start,steps) {
+      for (let j=0;j<steps;j++) {
+        const i=(start+j+count)%count;
+        const {a,dx,dz,inverse}=segments[i];
+        const rx=x-a.x,rz=z-a.z;
+        const t=Math.max(0,Math.min(1,(rx*dx+rz*dz)*inverse));
+        const square=(rx-dx*t)**2+(rz-dz*t)**2;
+        if (square>=distance) continue;
+        distance=square;
+        nearest=i;
+        fraction=t;
+      }
     }
-    return distance;
+    if (hint!==undefined) scan(hint-14,29);
+    // A respawn or a large step can leave the previous search window.
+    if (distance>(halfWidth(nearest)+1.2)**2) scan(0,count);
+    const meters=THREE.MathUtils.lerp(distanceAt[nearest],distanceAt[nearest+1],fraction);
+    return {nearest,fraction,distance,meters,half:halfWidth(nearest),tangent:directions[nearest]};
   }
-  const length=road.reduce((sum,p,i)=>sum+p.distanceTo(road[(i+1)%road.length]),0);
-  function nextCorner() {
-    if(!layout.corners?.length)return null;
-    const corner=layout.corners.find(c=>c.i>=nearest) ?? layout.corners[0];
-    const steps=(corner.i-nearest+road.length)%road.length;
-    return {left:corner.angle>0,meters:steps*length/road.length};
+  const sectors=layout.sections?.map(({i,name})=>({meters:distanceAt[i],name})) ?? [];
+  function sector(meters) {
+    return sectors.findLast(entry=>meters>=entry.meters)?.name ?? '';
   }
-  const recovery=index=>index<0 ? grid() : place(gates[index].point,gates[index].dir,2.9);
-  return {gates,pickups,grid,recovery,roadDistance,nextCorner,length, get tangent(){return directions[nearest];}};
+  const corners=layout.corners?.map(c=>({...c,meters:distanceAt[c.i]})) ?? [];
+  function nextCorner(meters) {
+    if (!corners.length) return null;
+    const corner=corners.find(c=>c.meters>=meters) ?? corners[0];
+    return {left:corner.angle>0,meters:(corner.meters-meters+length)%length,speed:corner.speed};
+  }
+  const recovery=index=>index<0 ? grid() : place(gates[index].point,gates[index].dir,3.7);
+  return {gates,pickups,grid,recovery,project,length,sector,nextCorner,distanceAt,
+    roadDistance:position=>project(position).distance};
 }
 
-function crosses(from,to,{point,dir}) {
+function crossingFraction(from,to,{point,dir,half}) {
   const a=(from.x-point.x)*dir.x+(from.z-point.z)*dir.z;
   const b=(to.x-point.x)*dir.x+(to.z-point.z)*dir.z;
-  if(a>=0 || b<0 || b-a<.0001) return false;
+  if (a>=0 || b<0 || b-a<.0001) return null;
   const t=-a/(b-a);
   const x=from.x+(to.x-from.x)*t-point.x;
   const z=from.z+(to.z-from.z)*t-point.z;
   const y=from.y+(to.y-from.y)*t-point.y;
-  return Math.abs(x*dir.z-z*dir.x)<=GATE_HALF && Math.abs(y)<3;
+  return Math.abs(x*dir.z-z*dir.x)<=half && Math.abs(y)<3 ? t : null;
 }
 
 export function createNeonRun(course,startsAt) {
   let last, lastGate=-1, next=0, laps=0, resets=0, charges=1, finished, offSince;
   let boostUntil=0,gripUntil=0;
   let reverseSince, wrongWay=false, lapStarted=startsAt, lapResets=0, bestLap, lastLap;
+  let progress=0, missed=false, sample;
   const collected=course.pickups.map(()=>false);
   return {
-    startsAt, get lap(){return Math.min(laps+1,RACE_LAPS);},
+    startsAt, get progress(){return progress;}, get missed(){return missed;},
+    get corner(){return sample ? course.nextCorner(sample.meters) : null;},
+    get sector(){return sample ? course.sector(sample.meters) : '';},
+    get lap(){return Math.min(laps+1,RACE_LAPS);},
     get bestLap(){return bestLap;},get lastLap(){return lastLap;},get wrongWay(){return wrongWay;},
     get next(){return next;},get charges(){return charges;},get resets(){return resets;},get elapsed(){return finished;},
     get gate(){return course.gates[next];},get offRoad(){return offSince!==undefined;},
@@ -119,7 +144,8 @@ export function createNeonRun(course,startsAt) {
     },
     recover(now) {
       if(now<startsAt || finished!==undefined) return null;
-      last=undefined;
+      last=sample=undefined;
+      missed=false;
       reverseSince=undefined; wrongWay=false;
       offSince=undefined;
       boostUntil=gripUntil=0;
@@ -129,28 +155,45 @@ export function createNeonRun(course,startsAt) {
     tick(now,position,grounded) {
       if(now<startsAt || finished!==undefined) return;
       const {x,y,z}=position;
-      const pose={x,y,z};
-      const distance=course.roadDistance(position);
-      const onRoad=distance<=ROAD_LIMIT**2;
-      if(last) {
-        const along=(x-last.x)*course.tangent.x+(z-last.z)*course.tangent.z;
+      const pose={x,y,z,now};
+      sample=course.project(pose,sample?.nearest);
+      const onRoad=sample.distance<=(sample.half+1)**2;
+      const gate=course.gates[next];
+      const gateMeters=course.distanceAt[gate.index] || course.length;
+      let beyond=sample.meters-gateMeters;
+      if (beyond < -course.length/2) beyond+=course.length;
+      if (beyond > course.length/2) beyond-=course.length;
+      missed=onRoad && beyond>16 && beyond<Math.min(course.length/3,course.length/course.gates.length*2.3);
+      if (onRoad) {
+        const previous=next>0 ? course.distanceAt[course.gates[next-1].index] : 0;
+        progress=laps+THREE.MathUtils.clamp(gateMeters+beyond,previous,gateMeters)/course.length;
+      }
+      if (last) {
+        const {tangent}=sample;
+        const along=(x-last.x)*tangent.x+(z-last.z)*tangent.z;
         if(onRoad && along<-.025) reverseSince ??= now;
         else if(along>.01 || !onRoad) reverseSince=undefined;
         wrongWay=reverseSince!==undefined && now-reverseSince>650;
       }
-      if(onRoad) offSince=undefined;
+      if (onRoad) offSince=undefined;
       else offSince ??= now;
-      if(distance>18**2 || y < -4 || offSince!==undefined && now-offSince>2400) return 'recover';
-      if(onRoad && last && Math.hypot(x-last.x,z-last.z)<20 && crosses(last,pose,course.gates[next])) {
-        lastGate=next;
-        next++;
-        if(next===course.gates.length) {
+      if (sample.distance>(sample.half+10)**2 || y < -4 ||
+          offSince!==undefined && now-offSince>2400) return 'recover';
+      const fraction=onRoad && last && Math.hypot(x-last.x,z-last.z)<20
+        ? crossingFraction(last,pose,gate) : null;
+      if (fraction!==null) {
+        missed=false;
+        lastGate=next++;
+        if (next===course.gates.length) {
           next=0;
-          lastLap=Math.round(now-lapStarted)+(resets-lapResets)*RESET_PENALTY;
+          const crossedAt=THREE.MathUtils.lerp(last.now,now,fraction);
+          lastLap=Math.round(crossedAt-lapStarted)+(resets-lapResets)*RESET_PENALTY;
           bestLap=Math.min(bestLap ?? Infinity,lastLap);
-          lapStarted=now; lapResets=resets;
-          if(++laps===RACE_LAPS) {
-            finished=Math.max(0,Math.round(now-startsAt));
+          lapStarted=crossedAt;
+          lapResets=resets;
+          if (++laps===RACE_LAPS) {
+            progress=RACE_LAPS;
+            finished=Math.max(0,Math.round(crossedAt-startsAt));
             return 'finished';
           }
           collected.fill(false);

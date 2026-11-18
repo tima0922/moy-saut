@@ -61,23 +61,30 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
   const events = new RAPIER.EventQueue(true);
   const regions = new Map();
   let currentRegion;
-  const driveableShapes = [];
   const movingShapes = [];
-  for (const { x, z, w, d, h, y = 0, yaw = 0, radius, region, pitch = 0, drivable, motion } of obstacles) {
-    const collider = radius ? RAPIER.ColliderDesc.cylinder(h/2,radius) : RAPIER.ColliderDesc.cuboid(w/2,h/2,d/2);
+  const regionColliders = [];
+  function addObstacle({ x, z, w, d, h, y = 0, yaw = 0, radius, pitch = 0, drivable, motion, vertices, indices }, regional) {
+    const collider = vertices
+      ? RAPIER.ColliderDesc.trimesh(vertices,indices,RAPIER.TriMeshFlags.FIX_INTERNAL_EDGES)
+      : radius ? RAPIER.ColliderDesc.cylinder(h/2,radius) : RAPIER.ColliderDesc.cuboid(w/2,h/2,d/2);
     const rotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch,yaw,0,'YXZ'));
     const body = motion && physics.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased()
       .setTranslation(x,y+h/2,z));
     const shape = body ? physics.createCollider(collider.setRotation(rotation),body)
-      : physics.createCollider(collider.setTranslation(x,y+h/2,z).setRotation(rotation));
-    if (body) movingShapes.push({body,shape,z,motion,drivable,active:false});
-    if (drivable) driveableShapes.push(shape.handle);
-    if (region) {
-      if (!regions.has(region)) regions.set(region,[]);
-      regions.get(region).push(shape);
-    }
+      : physics.createCollider(vertices ? collider : collider.setTranslation(x,y+h/2,z).setRotation(rotation));
+    const item = {body,shape,z,motion,drivable,active:false,regional};
+    if (body) movingShapes.push(item);
+    if (drivable) groundHandles.add(shape.handle);
+    if (regional) regionColliders.push(item);
+  }
+
+  function registerRegion(name,items) {
+    if (regions.has(name)) return;
+    regions.set(name,items);
+    if (currentRegion===name) items.forEach(item=>addObstacle(item,true));
   }
   const gate = physics.createCollider(RAPIER.ColliderDesc.cuboid(2.56, 2.18, .13).setTranslation(0, 2.18, 7.95));
+  let gateHeight = 2.18;
   const cars = new Set();
   const impacts = new Set();
   let trapHit = false;
@@ -85,7 +92,14 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
   let carContacts = true;
   const hullGroups = () => (HULL_GROUP << 16) | STATIC_GROUP | (carContacts ? HULL_GROUP : 0);
   const groundHandles = new Set([floor,arenaFloor,garageFloor,connectorFloor,practiceFloor,stadiumFloor]
-    .filter(Boolean).map(item=>item.handle).concat(driveableShapes));
+    .filter(Boolean).map(item=>item.handle));
+  for (const item of obstacles) {
+    if (!item.region) addObstacle(item,false);
+    else {
+      if (!regions.has(item.region)) regions.set(item.region,[]);
+      regions.get(item.region).push(item);
+    }
+  }
 
   function createCar() {
     const body = physics.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
@@ -96,6 +110,7 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
     let setup = {};
     let assistMode = 'guided';
     let steer = 0;
+    let usingRaceDamping = false;
     let rpm = 0;
     let running = false;
     let lifted = false;
@@ -260,9 +275,13 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       }
     }
 
-    function prepare({ gas = false, reverse = false, turn = 0, handbrake = false, occupied = false, parking = false, fault = '', gateY = 0, drift = false, speedLimit, nitro=false, raceGrip=false, racing=false, draft=0 } = {}) {
+    function prepare({ gas = false, reverse = false, turn = 0, handbrake = false, occupied = false, parking = false, fault = '', gateY = 0, drift = false, speedLimit, nitro = false, raceGrip = false, racing = false, draft = 0 } = {}) {
       previousPose = currentPose;
       if (lifted) return;
+      if (racing !== usingRaceDamping) {
+        usingRaceDamping = racing;
+        body.setLinearDamping(racing ? .033 : .09);
+      }
 
       const velocity = body.linvel();
       const total = Math.hypot(velocity.x, velocity.z);
@@ -299,17 +318,23 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
         const downshift = gear > 1 && gearRpm < (gas ? 3100 : 2250);
         if (upshift || downshift) {
           gear += upshift ? 1 : -1;
-          shiftTime = .24;
+          shiftTime = racing ? .155 : .24;
         }
       }
       const engineRpm = wheelRpm * (throttle < 0 ? 3.75 : ratios[gear - 1]) * final;
       const freeRev = gas && !serviceBrake ? (drift ? 2200 + rearSlide * 1900 : 1800) : 780;
       rpm = damp(rpm, running ? clamp(Math.max(freeRev, engineRpm), 780, redline) : 0, 9, STEP);
 
-      const maxSpeed = throttle < 0 ? 22 : speedLimit ?? (nitro && grounded ? 182 : drift ? 120 : racing ? 158 : 145);
-      const drive = model.force * (setup.power ?? 1) * (nitro && grounded && throttle>0 ? 1.63 : 1) * (drift ? model.driveMultiplier ?? 1.38 : 1) * Math.max(0, 1 - (kmh / maxSpeed) ** 2);
+      const boost = nitro && grounded && throttle > 0;
+      const maxSpeed = throttle < 0 ? 22 : speedLimit ?? (racing ? (boost ? 254 : 216) : boost ? 182 : drift ? 120 : 145);
+      const speedFactor = Math.max(0,1-(kmh/maxSpeed)**(racing && throttle>0 ? 3 : 2));
+      const engineForce = model.force * (setup.power ?? 1);
       const wake = racing && grounded && throttle>0 ? 1+.14*clamp(draft,0,1) : 1;
-      const torque = (handbrake ? 0 : drive * wake * throttle * (drift ? 1 - brakeRelease : 1)) * (throttle < 0 ? .46 : shiftTime > .10 ? .58 : 1);
+      const power = racing && throttle>0 ? (boost ? 1.94 : 1.45) * wake : boost ? 1.63 : 1;
+      const shiftCut = shiftTime > (racing ? .075 : .10);
+      const drive = engineForce * power * speedFactor * (drift ? model.driveMultiplier ?? 1.38 : 1);
+      const torque = handbrake ? 0 : drive * throttle * (drift ? 1-brakeRelease : 1) *
+        (throttle<0 ? .46 : shiftCut ? .58 : 1);
       const slideSpeed = clamp((kmh - 12) / 14, 0, 1);
       const slipDemand = clamp((Math.abs(slip) - .055) * 3.4, 0, 1);
       const diffEffect = 1 + ((setup.diff ?? .8) - .8) * .70;
@@ -327,8 +352,8 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       const modelLock = model.steer ?? .73;
       const maxLock = setup.steerAngle ? THREE.MathUtils.lerp(THREE.MathUtils.degToRad(setup.steerAngle),
         modelLock * (1+(setup.steerAngle-52)*.011), THREE.MathUtils.smoothstep(kmh,5,26)) : modelLock;
-      const raceSpeed = racing ? THREE.MathUtils.smoothstep(kmh, 35, 120) : 0;
-      const lock = drift ? maxLock / (1 + kmh * .009) : racing ? (.59 - .045*raceSpeed) / (1 + kmh * .018) : .53 / (1 + kmh * .019);
+      const raceLock = .57 / (1+(kmh/80)**1.65);
+      const lock = drift ? maxLock / (1 + kmh * .009) : racing ? raceLock : .53 / (1 + kmh * .019);
       // Blend small countersteer corrections continuously. Full opposite input
       // remains available for transitions; the assist never steers for the driver.
       const assistWeight = drift && moving && grounded && speed > 3 && !handbrake
@@ -336,18 +361,41 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       const assist = clamp(slip * (model.assist ?? .65), -.48, .48) * assistWeight * (assistMode === 'sim' ? 0 : assistMode === 'light' ? .26 : 1) * (1-Math.abs(turn)*.85);
       const transition = terrain && drift && turn*steer < 0 && Math.abs(slip) > .15;
       const steerResponse = model.response ?? 15;
-      steer = damp(steer, clamp(turn * lock + assist, -lock, lock), drift ? (transition ? steerResponse + (setup.steerAngle ? 2.5 : 0) : 12) : racing ? 12-4*raceSpeed : 8, STEP);
+      const raceResponse = Math.abs(turn) < .05 || turn*steer<0 ? 20 : 16;
+      steer = damp(steer, clamp(turn*lock+assist,-lock,lock), drift
+        ? (transition ? steerResponse + (setup.steerAngle ? 2.5 : 0) : 12) : racing ? raceResponse : 8, STEP);
+      const racingOnGround = racing && moving && grounded && !parking && speed>3;
+      const surface = racingOnGround && inArena(currentPose.position.x,currentPose.position.z)
+        ? terrain.gripAt(currentPose.position.x,currentPose.position.z)
+        : racingOnGround && inStadium(currentPose.position.x,currentPose.position.z)
+          ? stadium.gripAt(currentPose.position.x,currentPose.position.z) : 1;
+      if (racingOnGround && !handbrake) {
+        // Help tire response under digital steering while keeping authority with the driver.
+        const grip = (raceGrip ? 13.6 : 11.8)*surface;
+        const yawBudget = grip/Math.max(8,speed);
+        const yawRate = body.angvel().y;
+        const desiredYaw = clamp(-speed*Math.tan(steer)/(2.83*model.length),-yawBudget,yawBudget);
+        const correction = clamp(desiredYaw-yawRate,-.75,.75);
+        yawTorque.y = correction*model.mass*1.85*STEP*(serviceBrake ? 5.4 : 4.5);
+        body.applyTorqueImpulse(yawTorque,true);
+        const lateral = velocity.x*right.x+velocity.z*right.z;
+        const slipControl = -clamp(lateral*2.7,-1.7,1.7)*model.mass*surface*STEP;
+        impulse.set(right.x*slipControl,0,right.z*slipControl);
+        body.applyImpulse(impulse,true);
+      }
       const customTires = drift && moving && !parking;
       for (let i = 0; i < 4; i++) {
         const front = WHEEL_Z[i] < 0;
         const lowTire = fault === 'tires' && i === 0;
         suspension.setWheelSteering(i, front ? -steer + (lowTire && kmh > 6 ? .043 : 0) : 0);
-        // Under braking the front axle gains load and the rear lightens.
-        const raceLoad = racing ? (front ? 1 : -1)*clamp(loadTransfer,-.07,.11) : 0;
-        suspension.setWheelFrictionSlip(i, customTires ? 0 : handbrake && !front ? .55 : lowTire ? .77 : (raceGrip ? 1.59 : 1.32) + raceLoad);
-        suspension.setWheelSideFrictionStiffness(i, customTires ? 0 : lowTire ? .72 : raceGrip ? 1.48 : 1.15);
+        const raceLoad = (front ? 1 : -1)*clamp(loadTransfer,-.08,.1);
+        const grip = racing ? ((raceGrip ? 2.32 : 1.96) + raceLoad)*surface : 1.32;
+        const stiffness = racing ? (front ? 1.42 : 1.52)*surface : 1.15;
+        suspension.setWheelFrictionSlip(i, customTires ? 0 : handbrake && !front ? .55 : lowTire ? .77 : grip);
+        suspension.setWheelSideFrictionStiffness(i, customTires ? 0 : lowTire ? .72 : stiffness);
         suspension.setWheelEngineForce(i, front || customTires ? 0 : torque / 2);
-        const service = serviceBrake ? (setup.brakes ?? 1) * (fault === 'brakes' ? 14 : front ? (racing ? 72 : 63) : (racing ? 42 : 39)) : 0;
+        const brakingForce = racing ? (front ? 113 : 65) : front ? 63 : 39;
+        const service = serviceBrake ? (setup.brakes ?? 1) * (fault === 'brakes' ? 14 : brakingForce) : 0;
         suspension.setWheelBrake(i, customTires ? 0 : !moving || parking ? 155 : handbrake && !front ? 155 : service || (throttle === 0 ? 2.1 : 0));
       }
       if (customTires && (grounded || inArena(currentPose.position.x,currentPose.position.z))) {
@@ -375,7 +423,7 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
         drag.applyQuaternion(currentPose.rotation);
         suspension.wheelContactPoint(0) && body.applyImpulseAtPoint(drag.multiplyScalar(STEP), suspension.wheelContactPoint(0), true);
       }
-      suspension.updateVehicle(STEP, undefined, undefined, collider => drift && driftGround
+      suspension.updateVehicle(STEP, undefined, undefined, collider => (drift && driftGround || racing)
         ? groundHandles.has(collider.handle) : !hullHandles.has(collider.handle));
       return handbrake;
     }
@@ -461,10 +509,20 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
   const player = createCar();
   return Object.assign(player, {
     addCar: createCar,
+    registerRegion,
+    forgetRegion(name) { if (name!==currentRegion) regions.delete(name); },
+    activeColliderCount() { return physics.colliders.len(); },
     setRegion(region) {
       if (region===currentRegion) return;
+      for (const {body,shape,drivable} of regionColliders) {
+        if (drivable) groundHandles.delete(shape.handle);
+        if (body) physics.removeRigidBody(body);
+        else physics.removeCollider(shape,false);
+      }
+      regionColliders.length = 0;
+      for (let i=movingShapes.length-1;i>=0;i--) if (movingShapes[i].regional) movingShapes.splice(i,1);
       currentRegion = region;
-      for (const [name,shapes] of regions) for (const shape of shapes) shape.setEnabled(name===region);
+      for (const item of regions.get(region) ?? []) addObstacle(item,true);
       gate.setEnabled(region==='district');
     },
     setCarContacts(enabled) {
@@ -481,7 +539,13 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
         }
         item.active=active;
       }
-      gate.setTranslation({ x: 0, y: (input.gateY ?? 0) + 2.18, z: 7.95 });
+      if (currentRegion==='district' || currentRegion===undefined) {
+        const y=(input.gateY ?? 0)+2.18;
+        if (y!==gateHeight) {
+          gateHeight=y;
+          gate.setTranslation({x:0,y,z:7.95});
+        }
+      }
       const brakes = [];
       for (const car of cars) brakes.push(car.prepare(car === player ? input : guestInput));
       physics.step(events);

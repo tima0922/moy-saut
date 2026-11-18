@@ -393,5 +393,5 @@ export function createWorld(renderer,{districtMode=false,deferredEnvironment=fal
     const anisotropy=q==='low'?1:q==='balanced'?4:8;
     for(const t of loadedTextures){t.anisotropy=Math.min(anisotropy,renderer.capabilities.getMaxAnisotropy());t.needsUpdate=true;}
   }
-  return {scene,setEnvironment,mats,car,engine,hood,door,carDoors,wheels,floor,steering,batteryCase:batt,lift,arms,crane,chain,stand,standEnginePosition,targets,partObjects,bolts,installSlots,partsTray,newPart,contact,highlight,key,fill,worklight,dust,assetsReady,assetStatus,rayTargets,box,cylinder,textPlane,setTextureQuality};
+  return {scene,setEnvironment,mats,car,engine,hood,door,carDoors,wheels,floor,steering,batteryCase:batt,lift,arms,crane,chain,stand,standEnginePosition,targets,partObjects,bolts,installSlots,partsTray,newPart,contact,highlight,key,fill,worklight,dust,assetsReady,assetStatus,rayTargets,boxGeometry:boxGeo,box,cylinder,textPlane,setTextureQuality};
 }

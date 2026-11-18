@@ -1,3 +1,4 @@
+import { withAssetDeadline } from './asset-deadline.js?v=034';
 import * as THREE from 'three';
 import { windowTint } from './window-tint.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -75,7 +76,7 @@ function openCompartments(shell, hood, trunk) {
 export async function fitE39(world) {
   const { car, engine, box, mats } = world;
   const draco = new DRACOLoader().setDecoderPath('./vendor/draco/').setWorkerLimit(2);
-  const gltf = await new GLTFLoader().setDRACOLoader(draco).loadAsync('./assets/bmw/e39.glb')
+  const gltf = await withAssetDeadline(new GLTFLoader().setDRACOLoader(draco).loadAsync('./assets/bmw/e39.glb'))
     .finally(() => draco.dispose());
   for (const child of [...car.children]) if (child !== engine) child.removeFromParent();
   buildS62(world);

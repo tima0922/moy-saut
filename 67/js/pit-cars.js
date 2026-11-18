@@ -1,3 +1,4 @@
+import { withAssetDeadline } from './asset-deadline.js?v=034';
 import * as THREE from 'three';
 import { windowTint } from './window-tint.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -249,7 +250,7 @@ export async function loadPitCar(world, id) {
   const draco = new DRACOLoader().setDecoderPath('./vendor/draco/');
   const loader = new GLTFLoader().setDRACOLoader(draco);
   try {
-    const { scene: shell } = await loader.loadAsync('./assets/club/' + spec.file);
+    const { scene: shell } = await withAssetDeadline(loader.loadAsync('./assets/club/' + spec.file));
     const { root, hood, trunk, engine, battery, batteryHatch, bayLight, cargoLight, wheels, hubs } = visual;
     const parts = [];
     const paints = new Set();

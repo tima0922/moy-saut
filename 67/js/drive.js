@@ -1,15 +1,15 @@
 import * as THREE from 'three';
-import { createWorld } from './world.js?v=032';
+import { createWorld } from './world.js?v=034';
 import { GRAPHICS, createGraphicsController, createMaterialQuality, renderRatio, createRenderDiagnostics } from './graphics.js?v=033';
 import { batchSharedMeshes } from './garage-visuals.js?v=019';
-import { BATTERY, fitE39 } from './bmw.js?v=013';
-import { CLUB_ARENA, createClubLayout, createShortLayout, createRun, safeCircuitStart } from './drift.js?v=022';
-import { createDriftWorld, createTireEffects } from './drift-world.js?v=032';
+import { BATTERY, fitE39 } from './bmw.js?v=034';
+import { CLUB_ARENA, createClubLayout, createShortLayout, createRun, safeCircuitStart } from './drift.js?v=034';
+import { createDriftWorld, createTireEffects } from './drift-world.js?v=034';
 import { createDistrict, SHOP, TRACK } from './district.js?v=032';
 import { createPhysics, MODELS, STEP } from './vehicle.js?v=032';
-import { buildPitCar, loadPitCar } from './pit-cars.js?v=022';
+import { buildPitCar, loadPitCar } from './pit-cars.js?v=034';
 import { FLEET, SETUPS, DRIFT_SETUP, loadPit, savePit, setupFor } from './pit-save.js?v=022';
-import { CLUB_FLOOR, STALLS, STALL_Z, SERVICE_STEPS, createClubGarage } from './club-garage.js?v=022';
+import { CLUB_FLOOR, STALLS, STALL_Z, SERVICE_STEPS, createClubGarage } from './club-garage.js?v=034';
 import { portLayout,portWorld,portCourse,portMapView,outOfPort,PORT_GATES } from './port.js?v=032';
 import { eliminationRun,formatTime,RESET_PENALTY } from './competition.js?v=030';
 import { createRaceCourse,createNeonRun,RACE_LAPS,readRaceBest,saveRaceBest } from './neon-race.js?v=032';
@@ -19,13 +19,13 @@ import { createCityWorld } from './city.js?v=032';
 import { createCarReflections } from './car-reflections.js?v=033';
 import { loadTrackCar } from './track-car.js?v=032';
 import { chaseFraction,indexCameraBarriers } from './chase-collision.js?v=032';
-import { STADIUM, stadiumSurface, createStadiumLayout, createStadiumWorld } from './stadium.js?v=022';
+import { STADIUM, stadiumSurface, createStadiumLayout, createStadiumWorld } from './stadium.js?v=034';
 import { circuitTerrain } from './circuit-terrain.js?v=019';
 import { PRACTICE_PAD, TANDEM_HEAT, practiceStart, createPracticePad, createTandem } from './drift-modes.js?v=022';
 import { createDriftAudio } from './drift-audio.js?v=017';
 import { createReplayPlayer, createReplayRecorder } from './drift-replay.js';
-import { createOnlineView } from './online-view.js?v=033';
-import { createGuest, raceTelemetry } from './local-duo.js?v=019';
+import { createOnlineView } from './online-view.js?v=034';
+import { createGuest, raceTelemetry } from './local-duo.js?v=034';
 import { DEFAULT_KEYS, DRIVING_ACTIONS, allowedKey, keyLabel, loadBindings } from './drive-bindings.js';
 import { createOrbitCamera } from './orbit-camera.js?v=013';
 import { JOBS, advance, loadCareer, saveCareer, makeRoadTest } from './career.js?v=08';
@@ -61,14 +61,11 @@ function clearControls() {
 }
 let renderer;
 try {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance' });
-  await boot();
-} catch (error) {
-  console.error(error);
-  $('#loading').textContent = renderer
-    ? 'Не удалось загрузить файлы игры. Обнови страницу и попробуй ещё раз.'
-    : 'В этом браузере недоступен WebGL 2. Включи аппаратное ускорение или открой игру в другом браузере.';
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'default' });
+} catch (cause) {
+  throw Object.assign(new Error('WebGL 2 недоступен', {cause}), {code:'webgl'});
 }
+await boot();
 
 async function boot() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -80,6 +77,7 @@ async function boot() {
   camera.rotation.order = 'YXZ';
   const world = createWorld(renderer, { districtMode: true, deferredEnvironment: true });
   const materials = createMaterialQuality();
+  $('#loading').textContent = 'Загружаем модели машин…';
   const performanceHud = createRenderDiagnostics(renderer,$('#render-diagnostics'));
   const district = createDistrict(world, renderer);
   const [importedBMW,f90,cls,supra] = await Promise.all([fitE39(world).catch(error=>{
@@ -118,6 +116,7 @@ async function boot() {
   for (const object of [world.scene, world.car, world.engine, world.lift, world.arms]) {
     batchSharedMeshes(object);
   }
+  $('#loading').textContent = 'Готовим трассы и физику…';
   const mainLayout = createClubLayout();
   const shortLayout = createShortLayout(mainLayout);
   const stadiumLayout = createStadiumLayout();
@@ -125,13 +124,13 @@ async function boot() {
   const parkourLayout = portLayout();
   const routes = new Map([['main',mainLayout],['short',shortLayout],['stadium',stadiumLayout],
     ['city2',cityLayout],['port',parkourLayout],['port6',parkourLayout],['port7',parkourLayout],
-    ['race-main',mainLayout],['race-stadium',stadiumLayout]]);
+    ['race-main',mainLayout],['oval',stadiumLayout],['race-oval',stadiumLayout]]);
   const routeFor = value => routes.get(value) ?? mainLayout;
   let layout = mainLayout;
   const terrain = circuitTerrain(mainLayout,shortLayout.connector);
   const arena = createDriftWorld(world,mainLayout,district.asphalt,terrain,shortLayout);
   const stadium = createStadiumWorld(world,district.asphalt);
-  const neonTracks = new Map([[mainLayout,'main'],[stadiumLayout,'stadium'],[cityLayout,'city2']].map(([track,id])=>{
+  const neonTracks = new Map([[mainLayout,'main'],[stadiumLayout,'oval'],[cityLayout,'city2']].map(([track,id])=>{
     const course=createRaceCourse(track,id==='main' ? terrain.heightAt : undefined);
     return [track,{id,course}];
   }));
@@ -532,7 +531,7 @@ async function boot() {
     nextHud=0;
     fpsTime=fpsFrames=0;
     fpsSampleFrom=performance.now()+900;
-    scene.fog.density = onCircuit && layout.city ? .006 : onCircuit && layout.port ? .0055 : .0085;
+    scene.fog.density = onCircuit && layout.stadium ? .0045 : onCircuit && layout.city ? .006 : onCircuit && layout.port ? .0055 : .0085;
     scene.fog.color.setHex(onCircuit && layout.city ? 0x8596ab : onCircuit && layout.port ? 0x829ba9 : onCircuit ? 0xc8a991 : 0xa2b6c4);
     const shadow = district.sunlight.shadow.camera;
     const span = guest ? 100 : 53;
@@ -544,14 +543,15 @@ async function boot() {
     mapGate.style.display = online.active || layout.stadium || layout.port ? 'none' : '';
     $('#map-arena rect').toggleAttribute('hidden',layout.stadium || layout.port || layout.city);
     $('#map-legend').hidden = state !== 'shift';
-    $('#map-svg').setAttribute('viewBox', onCircuit ? layout.city ? cityLayout.mapViewBox : layout.port ? portMapView(physics.position.z) : layout.stadium ? '-82 -455 164 164' : '-91 -256 182 152'
+    $('#map-svg').setAttribute('viewBox', onCircuit ? layout.city ? cityLayout.mapViewBox : layout.port ? portMapView(physics.position.z) : layout.stadium ? stadiumLayout.mapViewBox : '-91 -256 182 152'
       : workshop ? '-15 45 30 22' : '-39 -94 78 114');
     $('#map-title').textContent = onCircuit ? layout.city ? 'РЕЧНОЙ ПРОСПЕКТ' : layout.port ? 'ПОРТ' : layout.stadium ? 'СТАДИОН' : 'КОНТУР 67' : workshop ? 'ГАРАЖ' : 'РАЙОН 01';
     $('#location-area').textContent = padActive() ? 'ВОСЬМЁРКИ' : onCircuit ? (layout.city ? 'РЕЧНОЙ ПРОСПЕКТ' : layout.port ? 'ПОРТ' : layout.stadium ? 'СТАДИОН' : layout.short ? 'КОРОТКАЯ ПЕТЛЯ' : 'КОНТУР 67') : workshop ? 'ГАРАЖ' : 'БОКС 01';
     $('#map-course').setAttribute('d', mapPaths.get(layout));
-    $('#map-alternates').toggleAttribute('hidden',!layout.port);
-    if (layout.port) {
-      $('#map-alternates').setAttribute('d',layout.branches.map(points=>
+    $('#map-alternates').toggleAttribute('hidden',!layout.port && !layout.stadium);
+    if (layout.port || layout.stadium) {
+      const branches = layout.stadium ? [layout.connector] : layout.branches;
+      $('#map-alternates').setAttribute('d',branches.map(points=>
         'M '+points.map(p=>`${p.x.toFixed(2)} ${(-p.z).toFixed(2)}`).join(' L ')).join(' '));
     }
     $('#race-start-banner .label').textContent = `${$('#location-area').textContent} / СТАРТ`;
@@ -852,8 +852,9 @@ async function boot() {
   }
 
   function updateRenderCamera(viewCamera) {
-    if (viewCamera.far === profile.far) return;
-    viewCamera.far = profile.far;
+    const far = onCircuit && layout.stadium && !profile.lite ? Math.max(profile.far,240) : profile.far;
+    if (viewCamera.far === far) return;
+    viewCamera.far = far;
     viewCamera.updateProjectionMatrix();
   }
 
@@ -1676,8 +1677,8 @@ async function boot() {
   };
   for (const [id,model] of Object.entries(FLEET)) neonCar.add(new Option(model.code,id));
   function updateNeonRecord() {
-    const best=readRaceBest(storage,neonRoute.value);
     const track=routeFor(neonRoute.value), {road}=track;
+    const best=readRaceBest(storage,neonTracks.get(track).id);
     const xs=road.map(p=>p.x), zs=road.map(p=>p.z);
     const x=Math.min(...xs), z=Math.max(...zs);
     const w=Math.max(...xs)-x,h=z-Math.min(...zs);
@@ -1688,7 +1689,7 @@ async function boot() {
     $('#neon-origin').setAttribute('cy',-road[0].z);
     $('#neon-origin').setAttribute('r',w*.027);
     $('#neon-distance').textContent=Math.round(neonTracks.get(track).course.length)+' м / круг';
-    $('#neon-districts').textContent=track.city ? 'Бульвар · Речной мост · Рынок · Тоннель' : track.stadium ? 'Скоростное кольцо' : 'Связки и перепады высоты';
+    $('#neon-districts').textContent=track.city ? 'Бульвар · Речной мост · Рынок · Тоннель' : track.stadium ? 'Две прямые · широкие дуги' : 'Связки и перепады высоты';
     const record=$('#neon-best');
     record.hidden=best===null;
     record.textContent=best===null ? '' : 'Твой рекорд · '+formatTime(best,2);
@@ -2372,7 +2373,7 @@ async function boot() {
       groundNormal.set(heightAt(x-1,z)-heightAt(x+1,z),2,heightAt(x,z-1)-heightAt(x,z+1)).normalize();
       mesh.quaternion.setFromUnitVectors(planeNormal,groundNormal);
     } else {
-      const y=onCircuit && layout.city ? layout.heightAt(x,z)+.054 : .023;
+      const y=onCircuit && layout.city ? layout.heightAt(x,z)+.054 : onCircuit && layout.stadium ? .031 : .023;
       mesh.position.set(x,y,z);
       mesh.rotation.set(-Math.PI/2,0,0);
     }
@@ -2395,8 +2396,8 @@ async function boot() {
     }
   }
 
-  function frame(now) {
-    requestAnimationFrame(frame);
+  function frame(now, schedule = true) {
+    if (schedule) requestAnimationFrame(frame);
     clock.update(now);
     const elapsed = clock.getDelta();
     if (document.hidden || contextLost) { accumulated=0; return; }
@@ -2447,7 +2448,7 @@ async function boot() {
     district.sunlight.position.y = onCircuit ? 19 : 32;
     district.sunlight.castShadow = renderer.shadowMap.enabled && !inWorkshop;
     district.sunlight.intensity = damp(district.sunlight.intensity, inWorkshop ? .55 : onCircuit ? 2.6 : 2.05, 6, dt);
-    const lightZ = replay ? replayTarget.car.position.z : guest ? layout.arena.z : Math.max(23,position().z);
+    const lightZ = replay ? replayTarget.car.position.z : guest ? layout.arena.z : onCircuit ? position().z : Math.max(23,position().z);
     const lightX = replay ? replayTarget.car.position.x : onCircuit && !guest ? position().x : 0;
     district.sunlight.position.x += lightX;
     district.sunlight.target.position.x = lightX;
@@ -2503,7 +2504,8 @@ async function boot() {
     if (!keep.has(object) && !object.isLight) legacyScenery.add(object);
   }
   syncScene();
-  $('#loading').textContent = '';
+  $('#loading').textContent = 'Запускаем гараж…';
+  frame(performance.now(),false);
   $('#neon-open').disabled = $('#online-open').disabled = $('#start').disabled = $('#shift').disabled = $('#duo-open').disabled = $('#practice-open').disabled = false;
   online.openInvite();
   Object.defineProperty(window, 'garageLife', { value: Object.freeze({

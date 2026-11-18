@@ -8,19 +8,29 @@
   <title>GARAGE LIFE / Контур 67</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231a252b'/%3E%3Cpath d='M12 48V24l20-12 20 12v24H42V29H22v19Z' fill='%23ffad69'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="../2/fonts/fonts.css">
-  <link rel="stylesheet" href="./drive.css?v=030">
-  <link rel="stylesheet" href="./glass.css?v=032">
+  <link rel="stylesheet" href="./drive.css?v=034">
+  <link rel="stylesheet" href="./glass.css?v=034">
   <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/addons/"}}</script>
 </head>
 <body>
   <canvas id="scene" aria-label="Трёхмерная игра GARAGE LIFE"></canvas>
+  <div id="startup" aria-labelledby="startup-title">
+    <div class="startup-content">
+      <p class="startup-brand"><span></span> GARAGE LIFE / КОНТУР 67</p>
+      <h1 id="startup-title">Готовим гараж</h1>
+      <div class="startup-track" aria-hidden="true"><span></span></div>
+      <p id="loading" role="status">Запускаем игру…</p>
+      <button type="button" id="startup-retry" class="secondary" hidden>Попробовать снова</button>
+      <noscript>Для запуска игры включи JavaScript.</noscript>
+    </div>
+  </div>
   <output id="render-diagnostics" hidden></output>
   <div id="graphics-recovery" role="status" hidden>Восстанавливаем графику…</div>
   <header>
     <a class="brand" href="./index.html"><span class="logo" aria-hidden="true">⌂</span> GARAGE<span>LIFE</span></a>
     <div class="location"><i></i> <b id="location-area">БОКС 01</b> <span> / </span> <b id="location-mode">ДРИФТ-КЛУБ</b></div>
     <nav>
-      <span class="version">0.33</span>
+      <span class="version">0.34</span>
       <select id="assist-level" aria-label="Помощь в дрифте">
         <option value="guided">Дрифт: с помощью</option>
         <option value="light">Дрифт: минимум помощи</option>
@@ -61,7 +71,6 @@
       <p class="label"><i></i> GARAGE LIFE</p>
       <h1>КОНТУР <em>67</em></h1>
       <p class="lead">Гонки, дрифт и тюнинг в своём гараже.</p>
-      <p id="loading" class="label" aria-live="polite">ГОТОВИМ БОКС…</p>
     </div>
     <section class="mode-deck" aria-label="Выбор режима">
       <button class="mode-pick mode-neon" id="neon-open" type="button" disabled>
@@ -88,7 +97,7 @@
       <p>Три круга. Собирай нитро для прямых и используй метки торможения перед поворотами.</p>
       <div class="neon-selects">
         <label>Машина <select id="neon-car" required></select></label>
-        <label>Трасса <select id="neon-route"><option value="city2">Речной проспект</option><option value="main">Контур 67</option><option value="stadium">Стадион</option></select></label>
+        <label>Трасса <select id="neon-route"><option value="city2">Речной проспект</option><option value="main">Контур 67</option><option value="stadium">Стадион 67 · овал</option></select></label>
       </div>
       <div class="route-brief"><svg id="neon-diagram" role="img" aria-label="Схема выбранной трассы"><path id="neon-outline"/><circle id="neon-origin"/></svg><div><strong id="neon-distance"></strong><small id="neon-districts"></small></div></div>
       <p id="neon-best" class="label"></p>
@@ -115,7 +124,7 @@
         </div>
         <p id="online-mode-description"></p>
       </fieldset>
-      <label id="online-route-row">Трасса <select id="online-route"><option value="city2" disabled>Речной проспект</option><option value="main" selected>Контур 67</option><option value="short">Короткая петля</option><option value="stadium">Стадион</option></select></label>
+      <label id="online-route-row">Трасса <select id="online-route"><option value="city2" disabled>Речной проспект</option><option value="main" selected>Контур 67</option><option value="short">Короткая петля</option><option value="stadium">Стадион 67 · овал</option></select></label>
       <label id="online-contact-row">Столкновения <select id="online-contacts"><option value="off">Выкл. · призраки</option><option value="on">Вкл.</option></select></label>
       <button type="button" class="primary" id="online-create">Создать комнату</button>
       <div class="online-join">
@@ -163,7 +172,7 @@
       <h2 id="job-title"></h2>
       <p id="job-text"></p>
       <div id="job-reading" hidden></div>
-      <label id="solo-route-row" hidden>Маршрут <select id="solo-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option><option value="stadium">Стадион</option></select></label>
+      <label id="solo-route-row" hidden>Маршрут <select id="solo-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option><option value="stadium">Стадион 67 · овал</option></select></label>
       <button type="button" class="primary" id="race-start" hidden>На трассу <kbd>Enter</kbd></button>
       <button type="button" class="secondary" id="pit-open" hidden>Гараж и тюнинг <kbd>P</kbd></button>
       <div class="job-footer"><span id="model"></span><strong id="money"></strong></div>
@@ -261,7 +270,7 @@
       <p class="label">КОНТУР 67 / СВОБОДНАЯ ТРЕНИРОВКА</p>
       <h2 id="practice-title">Тренировка без таймера</h2>
       <label>Машина <select id="practice-car"></select></label>
-      <label>Маршрут <select id="practice-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option><option value="stadium">Стадион</option><option value="port">Паркур в порту</option></select></label>
+      <label>Маршрут <select id="practice-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option><option value="stadium">Стадион 67 · овал</option><option value="port">Паркур в порту</option></select></label>
       <label>Участок <select id="practice-zone"></select></label>
       <p>Пробел — ручник. T мгновенно возвращает на выбранный участок.</p>
       <div class="race-actions"><button type="submit" class="primary">Начать</button>
@@ -275,7 +284,7 @@
       <label>Игрок 1 <select id="duo-car-1"></select><small id="duo-bindings-1"></small></label>
       <label>Игрок 2 <select id="duo-car-2"></select><small id="duo-bindings-2"></small></label>
       <label>Режим <select id="duo-mode"><option value="free">Свободный заезд</option><option value="points">Битва за очки</option><option value="tandem">Тандем</option></select></label>
-      <label>Маршрут <select id="duo-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option><option value="stadium">Стадион</option></select></label>
+      <label>Маршрут <select id="duo-route"><option value="main">Полный контур</option><option value="short">Короткая петля</option><option value="stadium">Стадион 67 · овал</option></select></label>
       <label id="duo-contact-row">Столкновения игроков <select id="duo-contact"><option value="on">Включены</option><option value="off">Выключены</option></select></label>
       <p id="duo-rules">Катайтесь по трассе сколько хотите. T возвращает обе машины на старт.</p>
       <div class="race-actions"><button type="submit" class="primary">На трассу</button>
@@ -306,6 +315,36 @@
     </div>
   </dialog>
   <script src="./js/music.js?v=020" defer></script>
-  <script type="module" src="./js/drive.js?v=033"></script>
+  <script>
+    (() => {
+      const splash = document.querySelector('#startup');
+      const title = document.querySelector('#startup-title');
+      const message = document.querySelector('#loading');
+      const retry = document.querySelector('#startup-retry');
+
+      function fail(text) {
+        splash.classList.add('startup-error');
+        title.textContent = 'Гараж не открылся';
+        message.textContent = text;
+        retry.hidden = false;
+      }
+
+      retry.addEventListener('click', () => location.reload());
+      const deadline = setTimeout(() => fail('Загрузка занимает слишком много времени. Попробуй ещё раз.'), 45000);
+      import('./js/drive.js?v=034').then(() => {
+        clearTimeout(deadline);
+        splash.classList.add('startup-ready');
+        splash.setAttribute('aria-hidden', 'true');
+        splash.inert = true;
+        setTimeout(() => { splash.hidden = true; }, 360);
+      }).catch(error => {
+        clearTimeout(deadline);
+        console.error('Garage startup failed', error);
+        fail(error?.code === 'webgl'
+          ? 'WebGL 2 недоступен. Проверь аппаратное ускорение браузера.'
+          : 'Не удалось запустить игру. Проверь соединение и попробуй ещё раз.');
+      });
+    })();
+  </script>
 </body>
 </html>

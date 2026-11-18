@@ -1,3 +1,4 @@
+import { withAssetDeadline } from './asset-deadline.js?v=034';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -75,7 +76,7 @@ export function createClubGarage(world) {
     { match: 'tool-chest', x: 7, z: -64.6, w: 2.4, d: .95, h: 1.55 },
     { match: 'compressor', x: 11.6, z: -64.5, w: 1.6, d: .95, h: 1.2 },
   ];
-  const equipment = new GLTFLoader().loadAsync('./assets/club/workshop.glb').then(({scene: source}) => {
+  const equipment = withAssetDeadline(new GLTFLoader().loadAsync('./assets/club/workshop.glb')).then(({scene: source}) => {
     source.updateMatrixWorld(true);
     const allMeshes = [];
     source.traverse(mesh => { if (mesh.isMesh && !Array.isArray(mesh.material)) allMeshes.push(mesh); });

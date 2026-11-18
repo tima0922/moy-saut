@@ -1,5 +1,5 @@
 import { Group, MathUtils, PerspectiveCamera, Quaternion, Vector3, Euler } from 'three';
-import { createRun } from './drift.js?v=015';
+import { createRun } from './drift.js?v=034';
 
 export function createGuest({ scene, rig, world, spec, setup, layout, effects, color, clonePaint = material => material.clone() }) {
   const car = new Group();

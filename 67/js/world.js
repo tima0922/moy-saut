@@ -1,3 +1,4 @@
+import { withAssetDeadline } from './asset-deadline.js?v=034';
 import * as THREE from 'three';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
@@ -376,7 +377,7 @@ export function createWorld(renderer,{districtMode=false,deferredEnvironment=fal
   target('exit',exitSign);
   // A real GLB prop pack, local and licensed CC0. Failures never block the repair.
   const loader=new GLTFLoader();const assetStatus={loaded:0,failed:0};
-  async function addProp(name,pos,height,rotation=0){try{const gltf=await loader.loadAsync(`./assets/kenney/${name}.glb`);const model=gltf.scene;const bounds=new THREE.Box3().setFromObject(model),size=bounds.getSize(V());model.scale.setScalar(height/Math.max(size.y,.01));const b=new THREE.Box3().setFromObject(model),center=b.getCenter(V());model.position.set(-center.x,-b.min.y,-center.z);const root=group(scene,pos);root.rotation.y=rotation;root.add(model);model.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});assetStatus.loaded++;}catch(e){assetStatus.failed++;console.warn(`Optional prop ${name} unavailable`,e.message);}}
+  async function addProp(name,pos,height,rotation=0){try{const gltf=await withAssetDeadline(loader.loadAsync(`./assets/kenney/${name}.glb`));const model=gltf.scene;const bounds=new THREE.Box3().setFromObject(model),size=bounds.getSize(V());model.scale.setScalar(height/Math.max(size.y,.01));const b=new THREE.Box3().setFromObject(model),center=b.getCenter(V());model.position.set(-center.x,-b.min.y,-center.z);const root=group(scene,pos);root.rotation.y=rotation;root.add(model);model.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});assetStatus.loaded++;}catch(e){assetStatus.failed++;console.warn(`Optional prop ${name} unavailable`,e.message);}}
   const assetsReady=Promise.all([addProp('barrel',[-5.9,0,5.3],.95),addProp('barrel',[-5,0,5.6],.95),addProp('box',[5.95,0,4.9],.65),addProp('box',[5.95,.65,4.9],.45,.3),addProp('bucket',[-3.8,0,-3.2],.4),addProp('tool-hammer',[-3.8,1.07,-1.72],.08,Math.PI/2)]);
   // A soft grounding contact decal helps low graphics modes retain depth.
   const shadowCanvas=document.createElement('canvas');shadowCanvas.width=shadowCanvas.height=128;const sc=shadowCanvas.getContext('2d'),grad=sc.createRadialGradient(64,64,6,64,64,64);grad.addColorStop(0,'rgba(0,0,0,.55)');grad.addColorStop(.65,'rgba(0,0,0,.27)');grad.addColorStop(1,'rgba(0,0,0,0)');sc.fillStyle=grad;sc.fillRect(0,0,128,128);const contact=new THREE.Mesh(new THREE.PlaneGeometry(3.8,6),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(shadowCanvas),transparent:true,depthWrite:false}));contact.rotation.x=-Math.PI/2;contact.position.y=.024;scene.add(contact);

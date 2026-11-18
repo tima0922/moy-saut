@@ -70,8 +70,26 @@ select option {background:#222d3c;color:var(--ink)}
 }
 .hero h1 em {display:block;color:var(--accent)}
 .hero .lead {margin:0;max-width:28ch;color:#dbe5ed;font-weight:480}
-#loading:not(:empty) {max-width:46ch;letter-spacing:.02em;color:#ffd7b9}
-#loading:empty {display:none}
+#startup {
+  position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:24px;
+  background:radial-gradient(ellipse at 20% 12%,#253941 0%,transparent 64%),#10191e;
+  color:#fffaeb;transition:opacity .32s ease,visibility .32s ease;
+}
+#startup.startup-ready {opacity:0;visibility:hidden;pointer-events:none}
+.startup-content {width:min(100%,680px);padding-bottom:5vh}
+.startup-brand {display:flex;align-items:center;gap:11px;margin:0 0 21px;color:#dcc6b4;font-size:.79rem;font-weight:700;letter-spacing:.18em}
+.startup-brand span {width:19px;height:3px;background:#ffad69;transform:skewX(-26deg)}
+#startup-title {margin:0;font-size:clamp(2.65rem,8.2vw,6rem);line-height:.98;font-weight:800;letter-spacing:-.065em}
+.startup-track {overflow:hidden;width:min(100%,424px);height:3px;margin:31px 0 13px;background:#405056}
+.startup-track span {display:block;width:32%;height:100%;background:#ffad69;animation:startup-sweep 1.55s ease-in-out infinite alternate}
+#loading {margin:0 0 20px;max-width:52ch;line-height:1.55;color:#c0ced1}
+.startup-error .startup-track span {width:100%;animation:none;background:#e99574}
+#startup-retry {width:auto;padding:.74rem 1.25rem}
+@keyframes startup-sweep {from{transform:translateX(-70%)}to{transform:translateX(290%)}}
+@media (prefers-reduced-motion:reduce) {
+  #startup {transition:none}
+  .startup-track span {animation:none}
+}
 .mode-deck {
   display:grid;gap:11px;padding:17px;border:1px solid #c2e0ff3d;border-radius:23px;
   background:linear-gradient(145deg,#40587285,#172437d6);

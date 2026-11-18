@@ -31,7 +31,6 @@ h1 em{font-style:normal;color:var(--accent)}
 .primary b{margin-left:14px}
 .secondary{border:1px solid #aabdbd61;background:#1d2c34e6}
 .classic{color:var(--sub);font-size:13px}
-#loading{min-height:15px;color:var(--accent);margin:11px 0 5px}
 .intro-card,.hud-card{background:#16232bea;border:1px solid var(--line);box-shadow:0 12px 36px #040a0e55;border-radius:6px}
 .intro-card{align-self:flex-end;max-width:252px;padding:17px 20px;margin-bottom:22px}
 .intro-card h2,.job h2{margin:0;font-size:24px;line-height:1.12}

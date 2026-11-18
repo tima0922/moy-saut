@@ -1,3 +1,4 @@
+import { withAssetDeadline } from './asset-deadline.js?v=034';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { batchSharedMeshes } from './garage-visuals.js';
@@ -419,7 +420,7 @@ function addTrackKit(group,obstacles,heightAt) {
     ...[[-78,129],[-81,183],[81,150],[83,201],[37,241],[-50,238]].map(([x,z]) =>
       ['lamp', x, z, 1.9, 7, 1.9, Math.PI]),
   ];
-  return new GLTFLoader().loadAsync('./assets/club/track-kit.glb').then(({scene}) => {
+  return withAssetDeadline(new GLTFLoader().loadAsync('./assets/club/track-kit.glb')).then(({scene}) => {
     for (const [name,x,z,w,h,d,yaw] of placements) {
       const source = scene.getObjectByName(name);
       if (!source) continue;

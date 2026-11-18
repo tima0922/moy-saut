@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { OVAL_LENGTH, ovalSample, stadiumSurface } from './stadium-layout.js?v=034';
 
 export const ARENA = { x: 0, z: 171, w: 112, d: 112 };
 export const CLUB_ARENA = { x: 0, z: 180, w: 178, d: 147 };
@@ -100,13 +101,14 @@ function closestSegment(road, x, z) {
   return { onRoad: best <= ROAD_HALF ** 2, tangentX, tangentZ };
 }
 
-export function createRun({ road, gates, stadium, arena }, { startImmediately = false, duration = RUN_TIME,
+export function createRun({ road, gates, stadium }, { startImmediately = false, duration = RUN_TIME,
   startGate = 0, free = false, pad = null } = {}) {
   const run = {
     status: startImmediately ? 'running' : 'ready', time: free ? null : duration, score: 0, chain: 0, multiplier: 1,
     next: startGate, lap: 0, clips: 0, angle: 0, warning: '', sliding: false, events: [], circle:0, bestCircle:0,
   };
   let lastPosition;
+  let lastMeters;
   let calmTime = 0;
   let chainTime = 0;
   let penaltyTime = 0;
@@ -144,7 +146,7 @@ export function createRun({ road, gates, stadium, arena }, { startImmediately = 
       run.sliding = false;
       run.angle = 0;
       run.warning = '';
-      lastPosition = undefined;
+      lastPosition = lastMeters = undefined;
       penaltyTime = 0;
     },
     tick(dt, { position, speed, slip, grounded, hit, up }) {
@@ -158,23 +160,20 @@ export function createRun({ road, gates, stadium, arena }, { startImmediately = 
         run.status = 'running';
       }
       if (!free) run.time = Math.max(0, run.time - dt);
-      const radius = stadium ? Math.hypot(x-arena.x,z-arena.z) : 0;
-      const centerRadius = stadium ? road[0].x-arena.x : 0;
-      const { onRoad, tangentX, tangentZ } = stadium ? {
-        onRoad:Math.abs(radius-centerRadius)<=ROAD_HALF,
-        tangentX:-(z-arena.z)/(radius || 1),tangentZ:(x-arena.x)/(radius || 1),
-      } : pad ? {
+      const sample = stadium ? ovalSample(x,z) : null;
+      const {onRoad,tangentX,tangentZ} = sample ?? (pad ? {
         onRoad: Math.abs(x-pad.x) < pad.w/2-.8 && Math.abs(z-pad.z) < pad.d/2-.8, tangentX:0,tangentZ:0,
-      } : closestSegment(road,x,z);
+      } : closestSegment(road,x,z));
       const dx = lastPosition ? x - lastPosition.x : 0;
       const dz = lastPosition ? z - lastPosition.z : 0;
-      const angularAdvance = stadium && lastPosition ? Math.atan2(
-        (lastPosition.x-arena.x)*(z-arena.z)-(lastPosition.z-arena.z)*(x-arena.x),
-        (lastPosition.x-arena.x)*(x-arena.x)+(lastPosition.z-arena.z)*(z-arena.z)) : 0;
+      const ovalAdvance = sample && lastMeters !== undefined
+        ? THREE.MathUtils.euclideanModulo(sample.meters-lastMeters+OVAL_LENGTH/2,OVAL_LENGTH)-OVAL_LENGTH/2 : 0;
+      lastMeters = sample?.meters;
       lastPosition = { x, z };
       const distance = Math.hypot(dx, dz);
       const progress = dx * tangentX + dz * tangentZ;
-      const error = hit ? 'Удар' : up < .5 ? 'Переворот' : !onRoad ? 'За разметкой'
+      const onAsphalt = onRoad || stadium && stadiumSurface(x,z) === 1;
+      const error = hit ? 'Удар' : up < .5 ? 'Переворот' : !onAsphalt ? 'За разметкой'
         : angle > EXIT_ANGLE && kmh > 14 ? 'Разворот' : '';
       if (error) {
         run.warning = error;
@@ -185,10 +184,10 @@ export function createRun({ road, gates, stadium, arena }, { startImmediately = 
         if (!penaltyTime) run.warning = '';
       }
 
-      run.sliding = !penaltyTime && grounded && kmh >= ENTRY_SPEED && angle >= ENTRY_ANGLE &&
+      run.sliding = onRoad && !penaltyTime && grounded && kmh >= ENTRY_SPEED && angle >= ENTRY_ANGLE &&
         angle < EXIT_ANGLE && (pad ? distance > .001 : progress > distance*.44);
       if (stadium) {
-        run.circle = run.sliding ? run.circle + Math.max(0,angularAdvance)/(2*Math.PI)*100 : 0;
+        run.circle = run.sliding ? run.circle + Math.max(0,ovalAdvance)/OVAL_LENGTH*100 : 0;
         run.bestCircle = Math.max(run.bestCircle,run.circle);
       }
       if (run.sliding) {
@@ -210,7 +209,7 @@ export function createRun({ road, gates, stadium, arena }, { startImmediately = 
         // Use the exact point where the trajectory crossed the timing line.
         const fraction = along / advance;
         const across = (rx - dx*fraction)*gate.direction.z - (rz - dz*fraction)*gate.direction.x;
-        if (Math.abs(across) < ROAD_HALF) {
+        if (Math.abs(across) < (stadium ? gates[run.next].half : ROAD_HALF)) {
           if (gate.clip && run.sliding && Math.abs(across - gate.clip.offset) <= gate.clip.width) {
             run.clips++;
             const points = 65*run.multiplier;

@@ -143,6 +143,28 @@ test('the original circuits remain driveable with the new race handling',async()
   }
 });
 
+test('stock cars turn in promptly at race speed with and without braking',async()=>{
+  const player=await createPhysics([],CLUB_ARENA);
+  const forward=new Vector3();
+  for(const id of ['sedan','f90','cls','supra']){
+    player.setModel(MODELS[id]);
+    for(const turn of [-1,1]){
+      for(const brake of [false,true]){
+        player.reset(0,221,0);
+        player.running=true;
+        for(let i=0;i<40;i++) player.tick({});
+        player.applyRoomImpact([0,0,0,-125/3.6]);
+        for(let i=0;i<42;i++) player.tick({occupied:true,racing:true,turn,reverse:brake,gas:!brake});
+        forward.set(0,0,-1).applyQuaternion(player.rotation);
+        const heading=turn*Math.atan2(forward.x,-forward.z);
+        assert.ok(heading>(brake ? .43 : .25),`${id}: heading ${heading}`);
+        assert.ok(turn*player.position.x>(brake ? 4.5 : 3.5),`${id}: cornering line`);
+        assert.ok(player.grounded && Math.abs(player.slip)<.15 && !player.hit,id);
+      }
+    }
+  }
+});
+
 test('nitro increases actual acceleration under normal race physics',async()=>{
   const player=await createPhysics([],undefined,undefined,undefined,undefined,{...STADIUM,gripAt:stadiumSurface});
   player.setModel(MODELS.sedan);

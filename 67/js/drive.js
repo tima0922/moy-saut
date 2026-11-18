@@ -6,7 +6,7 @@ import { BATTERY, fitE39 } from './bmw.js?v=034';
 import { CLUB_ARENA, createClubLayout, createShortLayout, createRun, safeCircuitStart } from './drift.js?v=035';
 import { createDriftWorld, createTireEffects } from './drift-world.js?v=034';
 import { createDistrict, SHOP, TRACK } from './district.js?v=032';
-import { createPhysics, MODELS, STEP } from './vehicle.js?v=032';
+import { createPhysics, MODELS, STEP } from './vehicle.js?v=036';
 import { buildPitCar, loadPitCar } from './pit-cars.js?v=034';
 import { FLEET, SETUPS, DRIFT_SETUP, loadPit, savePit, setupFor } from './pit-save.js?v=022';
 import { CLUB_FLOOR, STALLS, STALL_Z, SERVICE_STEPS, createClubGarage } from './club-garage.js?v=034';
@@ -2299,9 +2299,12 @@ async function boot() {
       }));
     }
     const gas = keyLabel(pit.keys[0].gas);
+    const handbrake = keyLabel(pit.keys[0].handbrake);
     driftStatus.textContent = run.status === 'ready' ? (training ? `Нажми ${gas}. T повторяет выбранный участок.` : `Нажми ${gas}. Таймер запустится, когда машина тронется.`)
       : run.status === 'finished' ? 'Заезд завершён. Можно повторить или вернуться в гараж.' : run.warning ? `${run.warning} · серия сброшена`
-        : run.sliding ? 'Занос · держи угол и тягу' : `На дуге коротко нажми ручник (${keyLabel(pit.keys[0].handbrake)}) и поймай машину контррулём. Целься в жёлтую зону.`;
+        : run.sliding ? 'Занос · держи угол и тягу' : pit.assist === 'sim'
+          ? `На дуге коротко нажми ${handbrake} и поймай машину контррулём.`
+          : `Добавь газ на дуге. Для быстрого входа коротко нажми ${handbrake}, затем поймай угол контррулём.`;
     driftSector.textContent = padActive() ? 'Восьмёрки' : `Створ ${run.next+1}/${layout.gates.length} · клипы ${run.clips}`;
     driftAngle.textContent = `Угол ${Math.round(run.angle)}°`;
     driftLaps.textContent = `Круги ${run.lap}`;

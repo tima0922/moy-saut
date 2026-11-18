@@ -30,7 +30,7 @@
     <a class="brand" href="./index.html"><span class="logo" aria-hidden="true">⌂</span> GARAGE<span>LIFE</span></a>
     <div class="location"><i></i> <b id="location-area">БОКС 01</b> <span> / </span> <b id="location-mode">ДРИФТ-КЛУБ</b></div>
     <nav>
-      <span class="version">0.35</span>
+      <span class="version">0.36</span>
       <select id="assist-level" aria-label="Помощь в дрифте">
         <option value="guided">Дрифт: с помощью</option>
         <option value="light">Дрифт: минимум помощи</option>
@@ -331,7 +331,7 @@
 
       retry.addEventListener('click', () => location.reload());
       const deadline = setTimeout(() => fail('Загрузка занимает слишком много времени. Попробуй ещё раз.'), 45000);
-      import('./js/drive.js?v=035').then(() => {
+      import('./js/drive.js?v=036').then(() => {
         clearTimeout(deadline);
         splash.classList.add('startup-ready');
         splash.setAttribute('aria-hidden', 'true');

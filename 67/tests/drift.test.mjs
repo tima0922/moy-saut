@@ -56,6 +56,31 @@ test('handbrake initiates a sustained left or right slide and countersteer recov
   }
 });
 
+test('stock cars initiate a slide on power or a handbrake tap before the turn', async () => {
+  const car=await createPhysics([],ARENA);
+  const pit=loadPit();
+  for (const id of ['sedan','f90','cls','supra']) {
+    car.setModel(MODELS[id]);
+    car.setSetup(setupFor(pit.cars[id]));
+    for (const turn of [-1,1]) {
+      for (const earlyTap of [false,true]) {
+        car.reset(0,213,0);
+        car.running=true;
+        const input={occupied:true,drift:true,gas:true};
+        for (let i=0;i<240 && car.totalSpeed*3.6<50;i++) car.tick(input);
+        assert.ok(car.grounded && car.totalSpeed*3.6>=50,id);
+        let entered=false;
+        for (let i=0;i<33;i++) {
+          car.tick({...input,turn:earlyTap && i<4 ? 0 : turn,handbrake:earlyTap && i===0});
+          entered ||= car.grounded && -turn*car.slip>=.23;
+        }
+        assert.ok(entered,`${id}, turn ${turn}, early tap ${earlyTap}`);
+        assert.ok(Math.abs(car.slip)<.88 && !car.hit,id);
+      }
+    }
+  }
+});
+
 test('each car banks a controlled slide on the first bend of Contour 67', async () => {
   const course = createClubLayout();
   const short = createShortLayout(course);

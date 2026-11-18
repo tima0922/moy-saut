@@ -124,6 +124,7 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
     let rearSlide = 0;
     let grounded = false;
     let handbrakeTime = 0;
+    let handbrakeEntry = 0;
     let brakeRelease = 0;
     let loadTransfer = 0;
     let lastLongitudinal = 0;
@@ -221,7 +222,7 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       steer = 0;
       rpm = 0;
       gear = 1;
-      shiftTime = slip = rearSlide = handbrakeTime = 0;
+      shiftTime = slip = rearSlide = handbrakeTime = handbrakeEntry = 0;
       brakeRelease = loadTransfer = lastLongitudinal = 0;
       linkTime = linkTurn = 0;
       grounded = hit = handbrakePressed = false;
@@ -286,11 +287,19 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       const velocity = body.linvel();
       const total = Math.hypot(velocity.x, velocity.z);
       const kmh = total * 3.6;
-      // A quick key tap needs a short lock to register with digital steering.
-      if (!handbrakePressed && handbrake && drift && kmh > 18 && grounded && Math.abs(turn) > .12) {
-        handbrakeTime = .21;
+      const moving = occupied && running && up > .15;
+      const driftOnGround = drift && moving && grounded && !parking && speed > 1;
+      // Keep a short window for a handbrake tap that arrives just before the steering key.
+      if (!drift || !moving || parking) {
+        handbrakeEntry = handbrakeTime = 0;
       } else {
-        handbrakeTime = Math.max(0, handbrakeTime - STEP);
+        handbrakeTime = Math.max(0,handbrakeTime-STEP);
+        if (handbrake && !handbrakePressed && kmh >= 18) handbrakeEntry = .135;
+        if (handbrakeEntry > 0 && grounded && Math.abs(turn) > .12) {
+          handbrakeTime = .21;
+          handbrakeEntry = 0;
+        }
+        handbrakeEntry = Math.max(0,handbrakeEntry-STEP);
       }
       handbrakePressed = handbrake;
       const tapLock = handbrakeTime > 0 && !handbrake;
@@ -303,7 +312,6 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       forwardBrake = reverse && (forwardBrake || speed > .55 || drift && total > 2 && speed > -.55);
       reverseBrake = gas && (reverseBrake || speed < -.55);
       braking = forwardBrake || reverseBrake || handbrake || parking;
-      const moving = occupied && running && up > .15;
       const serviceBrake = forwardBrake || reverseBrake;
       // The handbrake locks the driven axle. Keep throttle input so releasing it restores torque immediately.
       const throttle = moving && !serviceBrake && !parking ? Number(gas) - Number(reverse) : 0;
@@ -347,12 +355,18 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       const link = linkTime > 0 && assistMode !== 'sim' ? clamp((.24-turn*slip)*6,0,1)*.82 : 0;
       linkTime = Math.max(0,linkTime-STEP);
       const powerSlide = throttle > 0 ? clamp(Math.max(link,Math.abs(steer) * 1.12 + slipDemand) * diffEffect, 0, 1) : 0;
-      const slideTarget = drift && moving && grounded && speed > 1 ? slideSpeed * (handbrake ? 1 : powerSlide) : 0;
+      // Ease the rear loose on a powered turn. Let a manual handbrake entry settle first.
+      const throttleEntry = driftOnGround && !handbrake && brakeRelease < .0002 && !linkTime && throttle > 0 && assistMode !== 'sim' && turn*slip <= .02
+        ? THREE.MathUtils.smoothstep(kmh,24,42) * (1-.55*THREE.MathUtils.smoothstep(kmh,65,95)) *
+          THREE.MathUtils.smoothstep(Math.abs(turn),.68,1) * THREE.MathUtils.smoothstep(Math.abs(steer),.20,.34) *
+          (1-THREE.MathUtils.smoothstep(Math.abs(slip),.10,.21)) : 0;
+      const entryStrength = throttleEntry * (assistMode === 'light' ? .55 : 1);
+      const slideTarget = driftOnGround ? slideSpeed * (handbrake ? 1 : Math.max(powerSlide,.70*entryStrength)) : 0;
       rearSlide = damp(rearSlide, slideTarget, slideTarget > rearSlide ? (handbrake ? 21 : 10) : throttle ? 3.6 : 7, STEP);
       const modelLock = model.steer ?? .73;
       const maxLock = setup.steerAngle ? THREE.MathUtils.lerp(THREE.MathUtils.degToRad(setup.steerAngle),
         modelLock * (1+(setup.steerAngle-52)*.011), THREE.MathUtils.smoothstep(kmh,5,26)) : modelLock;
-      const raceLock = .57 / (1+(kmh/80)**1.65);
+      const raceLock = .60 / (1+(kmh/86)**1.65);
       const lock = drift ? maxLock / (1 + kmh * .009) : racing ? raceLock : .53 / (1 + kmh * .019);
       // Blend small countersteer corrections continuously. Full opposite input
       // remains available for transitions; the assist never steers for the driver.
@@ -361,7 +375,7 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       const assist = clamp(slip * (model.assist ?? .65), -.48, .48) * assistWeight * (assistMode === 'sim' ? 0 : assistMode === 'light' ? .26 : 1) * (1-Math.abs(turn)*.85);
       const transition = terrain && drift && turn*steer < 0 && Math.abs(slip) > .15;
       const steerResponse = model.response ?? 15;
-      const raceResponse = Math.abs(turn) < .05 || turn*steer<0 ? 20 : 16;
+      const raceResponse = Math.abs(turn) < .05 || turn*steer < 0 ? 22 : 19;
       steer = damp(steer, clamp(turn*lock+assist,-lock,lock), drift
         ? (transition ? steerResponse + (setup.steerAngle ? 2.5 : 0) : 12) : racing ? raceResponse : 8, STEP);
       const racingOnGround = racing && moving && grounded && !parking && speed>3;
@@ -371,17 +385,29 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
           ? stadium.gripAt(currentPose.position.x,currentPose.position.z) : 1;
       if (racingOnGround && !handbrake) {
         // Help tire response under digital steering while keeping authority with the driver.
-        const grip = (raceGrip ? 13.6 : 11.8)*surface;
+        const grip = (raceGrip ? 15.8 : 13.9)*surface;
         const yawBudget = grip/Math.max(8,speed);
         const yawRate = body.angvel().y;
         const desiredYaw = clamp(-speed*Math.tan(steer)/(2.83*model.length),-yawBudget,yawBudget);
         const correction = clamp(desiredYaw-yawRate,-.75,.75);
-        yawTorque.y = correction*model.mass*1.85*STEP*(serviceBrake ? 5.4 : 4.5);
+        yawTorque.y = correction*model.mass*1.85*STEP*(serviceBrake ? 7.0 : 6.2);
         body.applyTorqueImpulse(yawTorque,true);
         const lateral = velocity.x*right.x+velocity.z*right.z;
         const slipControl = -clamp(lateral*2.7,-1.7,1.7)*model.mass*surface*STEP;
         impulse.set(right.x*slipControl,0,right.z*slipControl);
         body.applyImpulse(impulse,true);
+        // Reinforce front-axle cornering under steering input, with less assistance at high speed.
+        const steeringDemand = steer/lock;
+        const turnIn = (serviceBrake ? 2.8 : 2.5) * steeringDemand * surface *
+          THREE.MathUtils.smoothstep(kmh,25,48) * (1-.75*THREE.MathUtils.smoothstep(kmh,130,200));
+        if (turnIn) {
+          const center = body.translation();
+          const front = -WHEEL_Z[0] * model.length;
+          point.set(center.x+forward.x*front,center.y+.22,center.z+forward.z*front);
+          impulse.copy(right).multiplyScalar(turnIn*model.mass*STEP);
+          impulse.y = 0;
+          body.applyImpulseAtPoint(impulse,point,true);
+        }
       }
       const customTires = drift && moving && !parking;
       for (let i = 0; i < 4; i++) {
@@ -390,7 +416,7 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
         suspension.setWheelSteering(i, front ? -steer + (lowTire && kmh > 6 ? .043 : 0) : 0);
         const raceLoad = (front ? 1 : -1)*clamp(loadTransfer,-.08,.1);
         const grip = racing ? ((raceGrip ? 2.32 : 1.96) + raceLoad)*surface : 1.32;
-        const stiffness = racing ? (front ? 1.42 : 1.52)*surface : 1.15;
+        const stiffness = racing ? (front ? 1.60 : 1.47)*surface : 1.15;
         suspension.setWheelFrictionSlip(i, customTires ? 0 : handbrake && !front ? .55 : lowTire ? .77 : grip);
         suspension.setWheelSideFrictionStiffness(i, customTires ? 0 : lowTire ? .72 : stiffness);
         suspension.setWheelEngineForce(i, front || customTires ? 0 : torque / 2);
@@ -401,10 +427,12 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
       if (customTires && (grounded || inArena(currentPose.position.x,currentPose.position.z))) {
         driftAxle(true, throttle, torque, serviceBrake, handbrake, velocity);
         driftAxle(false, throttle, torque, serviceBrake, handbrake, velocity);
-        if (assistMode !== 'sim' && grounded && tapLock && Math.abs(slip) < .26 && speed > 4) {
-          const rotationAssist = Math.min(.8, Math.abs(turn)) * Math.sign(steer);
-          yawTorque.y = -rotationAssist * model.mass * 8.4 * brakeRelease * STEP;
-          body.applyTorqueImpulse(yawTorque, true);
+        const tapRotation = assistMode !== 'sim' && driftOnGround && tapLock && Math.abs(slip) < .26 && speed > 4
+          ? Math.min(.8,Math.abs(turn)) * Math.sign(steer) * 8.4 * brakeRelease : 0;
+        const rotation = tapRotation + turn * 4.8 * entryStrength;
+        if (rotation) {
+          yawTorque.y = -rotation * model.mass * STEP;
+          body.applyTorqueImpulse(yawTorque,true);
         }
         // Damp excessive rotation once the driver countersteers or releases the gas.
         const stabilizing = !handbrake && (turn * slip > .07 || throttle <= 0 || Math.abs(turn) < .1);

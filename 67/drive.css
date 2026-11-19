@@ -191,6 +191,7 @@ kbd{display:inline-block;padding:2px 5px;line-height:1.1;color:#edf2eb;backgroun
 }
 
 .lite-graphics #pit-panel::backdrop{backdrop-filter:none}
+#pit-model-status{margin:9px 0;color:var(--accent);font-size:.85rem}
 
 .music{position:relative;flex:none}
 #music-toggle{

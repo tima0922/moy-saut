@@ -17,7 +17,7 @@ const states = {
   retrying:'Восстанавливаем связь…',
 };
 
-export function createOnlineView({scene, models, selection,start,leave,spawn,paint,impact,roundStart,roundInfo}) {
+export function createOnlineView({scene, models, selection,prepare,start,leave,spawn,paint,impact,roundStart,roundInfo}) {
   const dialog = $('#online-dialog');
   const status = $('#online-status');
   const hud = $('#online-hud');
@@ -239,7 +239,7 @@ export function createOnlineView({scene, models, selection,start,leave,spawn,pai
       dot.setAttribute('stroke-width','.5');
       $('#map-arena').append(dot);
       const orientation = new Quaternion().fromArray(pose,3).normalize();
-      remote = {root,car,dot,orientation,frames:[],cadence:50,distant:false};
+      remote = {root,car,dot,orientation,frames:[],cadence:50,distant:undefined};
       root.position.fromArray(pose);
       root.quaternion.copy(orientation);
       scene.add(root);
@@ -266,10 +266,15 @@ export function createOnlineView({scene, models, selection,start,leave,spawn,pai
   async function connect(code) {
     if (pending || room) return;
     pending = create.disabled = join.disabled = true;
-    status.textContent = 'Подключаемся…';
+    select.disabled=true;
+    const model=select.value;
+    const options={code,nick:nick.value,model,color:paint(model),route:route.value,contacts:contacts.value==='on',mode:chosenMode()};
+    status.textContent = 'Загружаем '+models[model].name+'…';
     try {
+      await prepare(model);
+      status.textContent = 'Подключаемся…';
       room = await enterRoom({
-        code,nick:nick.value,model:select.value,color:paint(select.value),route:route.value,contacts:contacts.value==='on',mode:chosenMode(),
+        ...options,
         onRoster:updateRoster,onPose:updatePose,onImpact:impact,onMatch:matchChanged,
         onClose(message) {
           clear();
@@ -282,7 +287,7 @@ export function createOnlineView({scene, models, selection,start,leave,spawn,pai
       $('#online-code').textContent = room.code;
       hud.hidden = false;
       updateRoster([{slot,id,nick:nick.value.trim() || 'Пилот ' + (slot + 1)}], 'waiting');
-      start(select.value,room.route,room.mode);
+      start(model,room.route,room.mode);
       if (room.mode!=='free') {
         $('#match-title').textContent = MATCH_MODES[room.mode].label;
         matchPanel.hidden = false;
@@ -294,6 +299,7 @@ export function createOnlineView({scene, models, selection,start,leave,spawn,pai
       status.textContent = error.code ? error.message : 'Не удалось подключиться. Попробуй ещё раз.';
     } finally {
       pending = create.disabled = join.disabled = false;
+      select.disabled=false;
     }
   }
 

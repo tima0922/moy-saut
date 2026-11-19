@@ -4,6 +4,8 @@ import { bakeParkedCar, batchSharedMeshes } from './garage-visuals.js?v=019';
 import { CRANE, positionChain } from './crane-route.js';
 import { buildWorkshopModel } from './workshop-models.js';
 import { STATIONS } from './workshop-spec.js';
+import { GRAPHICS, createMaterialQuality, renderRatio } from './graphics.js?v=033';
+import { graphicsPreference } from './game-settings.js?v=037';
 
 const v = (x=0,y=0,z=0) => new THREE.Vector3(x,y,z);
 const lerp = THREE.MathUtils.lerp;
@@ -28,6 +30,8 @@ function followPath(out,points,fraction) {
 }
 
 export function createServiceBay({host,canvas,map,marker,mode,onAction}) {
+  const profile=GRAPHICS[graphicsPreference()] ?? GRAPHICS.integrated;
+  const touch=matchMedia('(pointer: coarse)');
   let renderer;
   try {
     const context=canvas.getContext('webgl2',{antialias:false,powerPreference:'default'});
@@ -35,7 +39,7 @@ export function createServiceBay({host,canvas,map,marker,mode,onAction}) {
       renderer=new THREE.WebGLRenderer({canvas,context});
       renderer.toneMapping=THREE.ACESFilmicToneMapping;
       renderer.toneMappingExposure=1.03;
-      renderer.shadowMap.enabled=true;
+      renderer.shadowMap.enabled=Boolean(profile.shadows);
       renderer.shadowMap.type=THREE.PCFShadowMap;
       renderer.shadowMap.autoUpdate=false;
     }
@@ -111,6 +115,12 @@ export function createServiceBay({host,canvas,map,marker,mode,onAction}) {
   for (const root of [car,jack,engine.root,gearbox.root,world.lift,world.arms,world.crane]) batchSharedMeshes(root);
   if (renderer) {
     world.setTextureQuality('low');
+    if (profile.lite) {
+      world.fill.visible=false;
+      const materials=createMaterialQuality();
+      materials.collect(scene);
+      materials.apply(true,2,renderer.capabilities.getMaxAnisotropy());
+    }
     world.assetsReady.then(requestFrame);
   }
 
@@ -282,7 +292,7 @@ export function createServiceBay({host,canvas,map,marker,mode,onAction}) {
     camera.aspect=width/height;
     camera.updateProjectionMatrix();
     if (gpu) {
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.25,1250/width));
+      renderer.setPixelRatio(Math.min(renderRatio(profile,width,height,devicePixelRatio,touch.matches,false),1250/width,1.25));
       renderer.setSize(width,height,false);
     }
     requestFrame();

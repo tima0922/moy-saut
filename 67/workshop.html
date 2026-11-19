@@ -7,7 +7,7 @@
   <title>Мастерская — GARAGE LIFE</title>
   <meta name="description" content="Бокс KOVA S4. Сними двигатель или коробку, отремонтируй на стенде и проверь машину после установки.">
   <link rel="stylesheet" href="../2/fonts/fonts.css">
-  <link rel="stylesheet" href="./workshop.css?v=040">
+  <link rel="stylesheet" href="./workshop.css?v=041">
   <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/addons/"}}</script>
 </head>
 <body>
@@ -17,7 +17,6 @@
       <nav aria-label="Разделы мастерской">
         <button type="button" data-view="bay" aria-pressed="true">Бокс</button>
         <button type="button" data-view="benches" aria-pressed="false">Стенды</button>
-        <button type="button" data-view="orders" aria-pressed="false">Заказы</button>
       </nav>
       <a class="work-back" href="./">В игру</a>
     </div>
@@ -165,25 +164,7 @@
       </div>
     </section>
 
-    <section id="work-orders" aria-labelledby="orders-title" hidden>
-      <h2 id="orders-title">Заказы в боксе</h2>
-      <div class="order-grid">
-        <article class="order-card">
-          <p class="work-label">РАЙОН 01</p>
-          <h3>Быстрые заказы</h3>
-          <p>Проверь тормоза, давление шин или аккумулятор. После ремонта испытай машину на тестовой полосе.</p>
-          <p id="order-count" class="order-status"></p>
-          <a class="work-primary" href="./?workshop=orders">Взять заказ в боксе</a>
-        </article>
-        <article class="order-card">
-          <p class="work-label">KOVA S4</p>
-          <h3>Полный ремонт двигателя</h3>
-          <p>Диагностика, снятие двигателя краном, ремонт на стенде и контрольный запуск.</p>
-          <p class="order-status">Тут же можно продолжить сохранённый заказ.</p>
-          <a class="work-primary" href="./classic.html">Открыть полный заказ</a>
-        </article>
-      </div>
-    </section>
+    <footer class="work-footer"><a href="./classic.html">Классический ремонт двигателя</a></footer>
     <noscript><p>Включи JavaScript для работы со стендами.</p></noscript>
   </main>
 
@@ -196,6 +177,6 @@
       </div>
     </form>
   </dialog>
-  <script type="module" src="./js/workshop.js?v=040"></script>
+  <script type="module" src="./js/workshop.js?v=041"></script>
 </body>
 </html>

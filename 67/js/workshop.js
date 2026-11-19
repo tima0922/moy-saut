@@ -1,7 +1,6 @@
 import { STATIONS,WORKSHOP_TOOLS } from './workshop-spec.js';
 import { createWorkbench, loadBench, saveBench, torqueStages } from './workshop-state.js';
-import { loadCareer } from './career.js?v=08';
-import { createBayUI } from './workshop-bay-ui.js?v=040';
+import { createBayUI } from './workshop-bay-ui.js?v=041';
 import { repairHint } from './workshop-order.js?v=040';
 
 const $ = selector=>document.querySelector(selector);
@@ -252,7 +251,7 @@ function openStation(id) {
 function ensureScene() {
   if (scene || sceneLoading) return;
   loading.textContent='Готовим модель…';
-  sceneLoading=import('./workshop-view.js?v=038').then(({createWorkshopView})=>{
+  sceneLoading=import('./workshop-view.js?v=041').then(({createWorkshopView})=>{
     scene=createWorkshopView({
       host:stage,canvas:$('#workshop-3d'),diagram:$('#workshop-diagram'),marker:$('#bolt-marker'),status:$('#view-kind'),
       onPick:selectPart,
@@ -272,12 +271,10 @@ function setView(next) {
   selectGroup(pageButtons,'view',view==='repair' ? 'bay' : view);
   $('#work-bay').hidden=view!=='bay';
   $('#work-benches').hidden=!atBench();
-  $('#work-orders').hidden=view!=='orders';
   $('#bench-picker').hidden=view==='repair';
   $('#bench-transfer').hidden=view!=='repair';
   $('#work-intro-text').textContent={bay:'Прими заказ на KOVA S4 и доведи ремонт до контрольного запуска.',
-    benches:'Учебная разборка двигателя, подвески и коробки передач.',repair:'Диагностика, разборка и сборка снятого агрегата.',
-    orders:'Короткие заказы в районе и отдельный классический ремонт.'}[view];
+    benches:'Учебная разборка двигателя, подвески и коробки передач.',repair:'Диагностика, разборка и сборка снятого агрегата.'}[view];
   if (view==='bay') bay.enter();
   else bay.leave();
   if (atBench()) {
@@ -387,11 +384,9 @@ reset.addEventListener('close',()=>{
   status({ok:true,message:'Стенд готов к началу нового ремонта.'});
 });
 
-const completed=loadCareer(storage).completed;
-$('#order-count').textContent=completed ? 'Заказов закрыто: '+completed : 'Три типа заказов';
 const selectedStation=appUrl.searchParams.get('station');
 const requestedView=appUrl.searchParams.get('view');
 if (Object.hasOwn(STATIONS,selectedStation)) practiceStation=selectedStation;
-const initialView=['orders','benches','repair'].includes(requestedView) ? requestedView
+const initialView=['benches','repair'].includes(requestedView) ? requestedView
   : Object.hasOwn(STATIONS,selectedStation) ? 'benches' : 'bay';
 setView(initialView);

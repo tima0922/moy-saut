@@ -132,7 +132,8 @@ export function createDriftWorld(world, layout, asphalt, terrain, shortLayout) {
   let active, guestActive;
   const fx = createTireEffects(group);
   return {
-    group, obstacles, fx, loadKit:() => kit ??= addTrackKit(group,obstacles,heightAt), collectMaterials:floor.surfaces, setQuality: floor.setQuality, makeGuestEffects: () => createTireEffects(group),
+    group, obstacles, fx, loadKit:() => kit ??= addTrackKit(group,obstacles,heightAt), collectMaterials:floor.surfaces,
+    setQuality:floor.setQuality, updateSurfaceDetail:floor.updateDetail, makeGuestEffects:() => createTireEffects(group),
     markGate(index, guestIndex = -1, route = layout) {
       const playerGate = route.gates[index], guestGate = route.gates[guestIndex];
       if (active === playerGate && guestActive === guestGate) return;
@@ -210,8 +211,8 @@ function dressCircuit(world, group, road, directions, arena, heightAt,obstacles)
     }
   }
   const tree = new THREE.IcosahedronGeometry(1,1);
-  const trees = new THREE.InstancedMesh(tree,
-    new THREE.MeshStandardMaterial({ color: 0x496648, roughness: 1 }), 126);
+  const treePaint = new THREE.MeshStandardMaterial({ color: 0x496648, roughness: 1 });
+  const groves = new Map();
   for (let i=0;i<126;i++) {
     const angle = i * 2.39996;
     const radius = 1.16 + ((i*19)%17)*.024;
@@ -220,9 +221,40 @@ function dressCircuit(world, group, road, directions, arena, heightAt,obstacles)
     pose.rotation.y = angle;
     pose.scale.set(height*.24,height*.50,height*.24);
     pose.updateMatrix();
-    trees.setMatrixAt(i,pose.matrix);
+    const cell = Math.floor(pose.position.x/48)+','+Math.floor(pose.position.z/48);
+    if (!groves.has(cell)) groves.set(cell,[]);
+    groves.get(cell).push(pose.matrix.clone());
   }
-  group.add(trees);
+  for (const matrices of groves.values()) {
+    const trees=new THREE.InstancedMesh(tree,treePaint,matrices.length);
+    matrices.forEach((matrix,i)=>trees.setMatrixAt(i,matrix));
+    group.add(trees);
+  }
+}
+
+export function circuitTileIndices(columns,rows,reduced=false) {
+  const width=columns+1, indices=[];
+  const coarse=reduced && columns%2===0 && rows%2===0;
+  const step=coarse ? 2 : 1;
+  for (let z=0; z<rows; z+=step) for (let x=0; x<columns; x+=step) {
+    const a=z*width+x, b=a+step, c=a+step*width, d=c+step;
+    if (!coarse || (x>0 && z>0 && x+2<columns && z+2<rows)) {
+      indices.push(a,c,b,b,c,d);
+      continue;
+    }
+    // Preserve every outside vertex so adjacent tiles meet at either detail level.
+    const perimeter=[a];
+    if (x===0) perimeter.push(a+width);
+    perimeter.push(c);
+    if (z+2===rows) perimeter.push(c+1);
+    perimeter.push(d);
+    if (x+2===columns) perimeter.push(b+width);
+    perimeter.push(b);
+    if (z===0) perimeter.push(a+1);
+    const center=a+width+1;
+    for (const [i,p] of perimeter.entries()) indices.push(center,p,perimeter[(i+1)%perimeter.length]);
+  }
+  return new Uint16Array(indices);
 }
 
 function makeCircuitFloor(terrain, asphalt, curbColors, details) {
@@ -315,6 +347,8 @@ function makeCircuitFloor(terrain, asphalt, curbColors, details) {
   const root = new THREE.Group();
   const { stride, rows } = terrain;
   const tileSize = 32;
+  const tileIndices=new Map(), tiles=[];
+  let simplify=false;
   for (let z=0; z<rows; z+=tileSize) for (let x=0; x<stride-1; x+=tileSize) {
     const cols = Math.min(tileSize,stride-1-x);
     const height = Math.min(tileSize,rows-z);
@@ -329,23 +363,40 @@ function makeCircuitFloor(terrain, asphalt, curbColors, details) {
       }
       tile.setAttribute(name,new THREE.BufferAttribute(data,itemSize));
     }
-    const indices = new Uint16Array(cols*height*6);
-    for (let row=0; row<height; row++) for (let col=0; col<cols; col++) {
-      const i = row*width+col;
-      indices.set([i,i+width,i+1,i+1,i+width,i+width+1],(row*cols+col)*6);
+    const key=cols+'x'+height;
+    if (!tileIndices.has(key)) {
+      const fine=new THREE.BufferAttribute(circuitTileIndices(cols,height),1);
+      const coarse=cols%2===0 && height%2===0 ? new THREE.BufferAttribute(circuitTileIndices(cols,height,true),1) : fine;
+      tileIndices.set(key,{fine,coarse});
     }
-    tile.setIndex(new THREE.BufferAttribute(indices,1));
+    const {fine,coarse}=tileIndices.get(key);
+    tile.setIndex(fine);
     tile.computeBoundingSphere();
     const mesh=new THREE.Mesh(tile,material);
     mesh.receiveShadow=true;
     root.add(mesh);
+    const {center,radius}=tile.boundingSphere;
+    tiles.push({geometry:tile,fine,coarse,center,near:(radius+28)**2,far:(radius+36)**2});
   }
   geometry.dispose();
   return {
     root, surfaces:[lite,medium,material],
     setQuality(profile) {
+      simplify=Boolean(profile.lite);
       const surface=profile.lite ? lite : profile.shadows ? material : medium;
       for (const tile of root.children) tile.material=surface;
+      if (!simplify) for (const {geometry,fine} of tiles) geometry.setIndex(fine);
+    },
+    updateDetail(first,second) {
+      if (!simplify) return;
+      for (const tile of tiles) {
+        const {geometry,fine,coarse,center,near,far}=tile;
+        const limit=geometry.index===fine ? far : near;
+        const away=(first.x-center.x)**2+(first.z-center.z)**2>limit;
+        const secondAway=!second || (second.x-center.x)**2+(second.z-center.z)**2>limit;
+        const index=away && secondAway ? coarse : fine;
+        if (geometry.index!==index) geometry.setIndex(index);
+      }
     },
   };
 }

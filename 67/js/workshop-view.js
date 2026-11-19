@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { GRAPHICS, renderRatio } from './graphics.js?v=033';
+import { graphicsPreference } from './game-settings.js?v=037';
 import { buildWorkshopModel } from './workshop-models.js';
 
 const v = (...value)=>new THREE.Vector3(...value);
@@ -100,6 +102,8 @@ function diagramPainter(canvas) {
 }
 
 export function createWorkshopView({host,canvas,diagram,marker,status,onPick}) {
+  const profile=GRAPHICS[graphicsPreference()] ?? GRAPHICS.integrated;
+  const touch=matchMedia('(pointer: coarse)');
   const camera = new THREE.PerspectiveCamera(35,1,.12,60);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x17211d);
@@ -158,7 +162,8 @@ export function createWorkshopView({host,canvas,diagram,marker,status,onPick}) {
     height=Math.round(host.clientHeight) || 1;
     camera.aspect=width/height;
     camera.updateProjectionMatrix();
-    const scale=Math.min(devicePixelRatio,1.5,(gpu ? 1440 : 880)/Math.max(width,height));
+    const scale=gpu ? Math.min(renderRatio(profile,width,height,devicePixelRatio,touch.matches,false),1440/Math.max(width,height))
+      : Math.min(devicePixelRatio,1.5,880/Math.max(width,height));
     if (gpu) {
       renderer.setPixelRatio(scale);
       renderer.setSize(width,height,false);

@@ -24,6 +24,53 @@ export function batchSharedMeshes(parent) {
   }
 }
 
+// Parts with their own hinge or wheel axis are baked separately.
+export function mergeRigidSurfaces(root, excluded = []) {
+  const leave = new Set(excluded);
+  const inverse = root.matrixWorld.clone();
+  const transform = new THREE.Matrix4();
+  const batches = new Map();
+  root.updateWorldMatrix(true, true);
+  inverse.copy(root.matrixWorld).invert();
+
+  function visit(object) {
+    if (leave.has(object) || !object.visible) return;
+    const {material,geometry} = object;
+    if (object.isMesh && !object.isInstancedMesh && !object.isSkinnedMesh &&
+      material && !Array.isArray(material) && !material.transparent && !geometry.groups.length &&
+      !Object.keys(geometry.morphAttributes).length && geometry.drawRange.count===Infinity) {
+      transform.multiplyMatrices(inverse,object.matrixWorld);
+      if (transform.determinant()>0) {
+        const attributes = Object.entries(geometry.attributes).sort(([a],[b])=>a.localeCompare(b))
+          .map(([name,value])=>[name,value.itemSize,value.normalized,value.array.constructor.name].join(':')).join(',');
+        const key = [material.id,attributes,Boolean(geometry.index),object.castShadow,object.receiveShadow,
+          object.layers.mask,object.renderOrder,object.frustumCulled].join('/');
+        if (!batches.has(key)) batches.set(key,[]);
+        batches.get(key).push({object,matrix:transform.clone()});
+      }
+    }
+    for (const child of object.children) visit(child);
+  }
+
+  visit(root);
+  for (const sources of batches.values()) {
+    if (sources.length<2) continue;
+    const copies=sources.map(({object,matrix})=>object.geometry.clone().applyMatrix4(matrix));
+    const geometry=mergeGeometries(copies);
+    for (const copy of copies) copy.dispose();
+    if (!geometry) continue;
+    const {object:first}=sources[0];
+    const merged=new THREE.Mesh(geometry,first.material);
+    merged.castShadow=first.castShadow;
+    merged.receiveShadow=first.receiveShadow;
+    merged.layers.mask=first.layers.mask;
+    merged.renderOrder=first.renderOrder;
+    merged.frustumCulled=first.frustumCulled;
+    for (const {object} of sources) object.removeFromParent();
+    root.add(merged);
+  }
+}
+
 
 // Parked preview models have no moving parts. Bake their visible meshes into
 // groups by material so lightweight geometry also costs fewer draw calls.

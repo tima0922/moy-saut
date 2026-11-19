@@ -120,7 +120,7 @@ export function createBayUI(storage,{onBench,onOrderChange}) {
       scene.update(order);
       selectView(order?.current?.zone);
     } else if (!loading) {
-      loading=import('./workshop-bay.js?v=040').then(({createServiceBay})=>{
+      loading=import('./workshop-bay.js?v=041').then(({createServiceBay})=>{
         scene=createServiceBay({host:$('#bay-stage'),canvas:$('#bay-canvas'),map:$('#bay-map'),marker,
           mode:$('#bay-render-mode'),onAction:perform});
         scene.visible(visible);

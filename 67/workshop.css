@@ -202,12 +202,7 @@ button[aria-pressed="true"] { color:var(--lime); background:#dff76b15; border-co
 #reset-workbench::backdrop { background:#090e0be0; }
 #inventory-title { scroll-margin-top:75px; }
 #work-orders h2 { margin:16px 0 10px; font-size:1.17rem; }
-.order-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
-.order-card { padding:clamp(15px,3vw,28px); border:1px solid var(--line); border-radius:10px; background:linear-gradient(135deg,#222c24,var(--surface)); }
-.order-card h3 { margin:0; font:750 clamp(1.14rem,2.5vw,1.55rem)/1.21 var(--display); letter-spacing:-.035em; }
-.order-card p:not(.work-label) { color:var(--muted); max-width:47ch; }
-.order-card .order-status { font:.78rem/1.4 var(--mono); }
-.order-card a { min-height:43px; }
+.work-footer { margin-top:18px; color:var(--muted); font-size:.84rem; }
 
 .bay-layout { display:grid; grid-template-columns:minmax(0,2.2fr) minmax(285px,1fr); gap:14px; align-items:start; }
 .bay-visual { overflow:hidden; }
@@ -309,7 +304,6 @@ button[aria-pressed="true"] { color:var(--lime); background:#dff76b15; border-co
   .stage-actions button { min-height:33px; font-size:.73rem; padding:4px 6px; }
   .service { padding:11px; }
   .inventory-list { height:min(46vh,410px); }
-  .order-grid { grid-template-columns:minmax(0,1fr); }
 }
 @media(max-width:360px) {
   .work-header { padding-inline:8px; }

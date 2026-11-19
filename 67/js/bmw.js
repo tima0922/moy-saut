@@ -1,6 +1,7 @@
 import { VEHICLE_ASSET_TIMEOUT, withAssetDeadline } from './asset-deadline.js?v=039';
 import * as THREE from 'three';
-import { windowTint } from './window-tint.js';
+import { windowTint } from './window-tint.js?v=041';
+import { mergeRigidSurfaces } from './garage-visuals.js?v=041';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { WHEEL_X, WHEEL_Z } from './vehicle.js?v=013';
@@ -168,5 +169,7 @@ export async function fitE39(world) {
     if (o.isMesh && o.material.name === 'body') paints.add(o.material);
   });
   if (!paints.size) throw new Error('Missing body paint in e39.glb');
+  for (const group of [shell,hood,trunk,...Object.values(carDoors),steering,...wheels]) mergeRigidSurfaces(group);
+  for (const [index,hub] of hubs.entries()) mergeRigidSurfaces(hub,[wheels[index]]);
   return { windows, hood, trunk, batteryHatch, cargoLight, bayLight, carDoors, wheels, hubs, steering, paints, brakeLamps, lampMeshes };
 }

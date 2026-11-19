@@ -2,12 +2,12 @@ import * as THREE from 'three';
 import { createWorld } from './world.js?v=037';
 import { GRAPHICS, createGraphicsController, createMaterialQuality, renderRatio, createRenderDiagnostics } from './graphics.js?v=033';
 import { batchSharedMeshes } from './garage-visuals.js?v=019';
-import { BATTERY, fitE39 } from './bmw.js?v=039';
+import { BATTERY, fitE39 } from './bmw.js?v=041';
 import { CLUB_ARENA, createRun, safeCircuitStart } from './drift.js?v=037';
-import { createDriftWorld, createTireEffects } from './drift-world.js?v=037';
-import { createDistrict, SHOP, TRACK } from './district.js?v=032';
+import { createDriftWorld, createTireEffects } from './drift-world.js?v=041';
+import { createDistrict, SHOP, TRACK } from './district.js?v=041';
 import { createPhysics, MODELS, STEP } from './vehicle.js?v=037';
-import { loadPitCar } from './pit-cars.js?v=039';
+import { loadPitCar } from './pit-cars.js?v=041';
 import { FLEET, SETUPS, DRIFT_SETUP, savePit, setupFor } from './pit-save.js?v=037';
 import { CLUB_FLOOR, STALLS, STALL_Z, SERVICE_STEPS, createClubGarage } from './club-garage.js?v=037';
 import { portLayout,portWorld,portCourse,portMapView,outOfPort,PORT_GATES } from './port.js?v=032';
@@ -23,7 +23,7 @@ import { circuitTerrain } from './circuit-terrain.js?v=019';
 import { PRACTICE_PAD, TANDEM_HEAT, practiceStart, createPracticePad, createTandem } from './drift-modes.js?v=022';
 import { createDriftAudio } from './drift-audio.js?v=017';
 import { createReplayPlayer, createReplayRecorder } from './drift-replay.js';
-import { createOnlineView } from './online-view.js?v=037';
+import { createOnlineView } from './online-view.js?v=041';
 import { createGuest, raceTelemetry } from './local-duo.js?v=035';
 import { DEFAULT_KEYS, keyLabel } from './drive-bindings.js';
 import { createOrbitCamera } from './orbit-camera.js?v=013';
@@ -81,6 +81,9 @@ async function initialize(renderer) {
   let rig;
   const vehicleLoads = new Map();
   const distantCars = new Map();
+  const parkedPreviews = new Map();
+  const requestedParkedDetail = new Set();
+  const parkedInScene = new Map();
   const reflectionMap = createCarReflections();
   const reflectiveMaterials = new Map();
   function trackCarMaterials(visual) {
@@ -88,6 +91,16 @@ async function initialize(renderer) {
     for (const material of [...visual.paints,visual.windows].filter(Boolean)) {
       reflectiveMaterials.set(material,material.envMap);
     }
+  }
+
+  function loadCompactCar(id) {
+    if (!distantCars.has(id)) {
+      distantCars.set(id,loadTrackCar(id).catch(error=>{
+        distantCars.delete(id);
+        throw error;
+      }));
+    }
+    return distantCars.get(id);
   }
 
   function loadVisual(id) {
@@ -174,8 +187,49 @@ async function initialize(renderer) {
     if (profile) applyMaterialQuality();
     return true;
   }
-  const loadFleet = () => Promise.all(Object.keys(FLEET).map(loadVisual));
-  const prepareGarage = () => Promise.all([loadFleet(),loadFurniture()]);
+  function loadGarageScenery() {
+    void loadFurniture();
+    for (const id of Object.keys(FLEET)) {
+      if (id===modelId || parkedPreviews.has(id)) continue;
+      void loadCompactCar(id).then(visual=>{
+        parkedPreviews.set(id,visual);
+        materials.collect(visual.root);
+        applyMaterialQuality();
+        updateParkedCars();
+      }).catch(()=>{ /* A selection still loads the original model. */ });
+    }
+  }
+
+  function updateParkedCars() {
+    if (!garageMode() || onCircuit) return;
+    const view = position();
+    for (const [id,x] of Object.entries(STALLS)) {
+      const previous=parkedInScene.get(id);
+      const full=visuals[id], preview=parkedPreviews.get(id);
+      const distance=Math.hypot(view.x-x,view.z-STALL_Z);
+      const detailedRange=profile.lite ? 7 : 9;
+      const close=distance<(previous===full && full ? detailedRange+2 : detailedRange);
+      if (id!==modelId && close && !full && !requestedParkedDetail.has(id)) {
+        requestedParkedDetail.add(id);
+        void loadVisual(id).then(updateParkedCars).catch(()=>{ /* Retry on selection. */ });
+      }
+      const next=id===modelId ? null : close && full ? full : preview ?? full;
+      if (next===previous) continue;
+      if (previous?.root.parent===club.room) previous.root.removeFromParent();
+      parkedInScene.delete(id);
+      if (!next) continue;
+      // A late asset must not appear around a player standing in the empty stall.
+      if (!previous && !seated && hitsRectangle(player.x,player.z,.27,{x,z:STALL_Z,w:2,d:4.83*MODELS[id].length})) continue;
+      if (next===full) closeRig(full);
+      for (const paint of next.paints) paint.color.set(pit.cars[id].color);
+      next.root.visible=true;
+      next.root.position.set(x,-.025,STALL_Z);
+      next.root.rotation.set(0,Math.PI,0);
+      next.root.scale.set(1,1,MODELS[id].length);
+      club.room.add(next.root);
+      parkedInScene.set(id,next);
+    }
+  }
 
   function additionalWorld(region) {
     if (routeWorlds.has(region)) return routeWorlds.get(region);
@@ -231,7 +285,6 @@ async function initialize(renderer) {
   let guestModelId;
   let duoFree = false;
   let training, lessonId, lesson;
-  let enteringTrack = false, returning = false;
   let tandem;
   let recorder;
   let guestRecorder;
@@ -336,6 +389,7 @@ async function initialize(renderer) {
   const soloRoute = $('#solo-route');
   const online = createOnlineView({
     scene, models:FLEET, selection:() => pit.selected,
+    prepare:loadVisual,
     start(id, route, mode) {
       show('pit',true,id);
       layout = routeFor(route);
@@ -361,7 +415,7 @@ async function initialize(renderer) {
       const root=new THREE.Group();
       root.scale.z=MODELS[id].length;
       const owned=[];
-      let far,loading=false,disposed=false,preferFar=false;
+      let detailed,far,active,loadingDetail=false,loadingFar=false,disposed=false,preferFar=false;
       function copy(visual,full) {
         const shell=visual.root.clone(true);
         shell.position.set(0,0,0);
@@ -390,37 +444,46 @@ async function initialize(renderer) {
         applyMaterialQuality();
         return {shell,wheels:visual.wheels.map(wheel=>clones[source.indexOf(wheel)])};
       }
-      const detailed=copy(visuals[id],true);
-      let active=detailed;
-      root.add(active.shell);
       function selectModel() {
-        const next=preferFar && far ? far : detailed;
-        if (next===active) return;
-        active.shell.removeFromParent();
+        const next=(preferFar ? far ?? detailed : detailed ?? far);
+        if (!next || next===active) return;
+        active?.shell.removeFromParent();
         root.add(next.shell);
         active=next;
       }
+      function loadDetail() {
+        if (detailed || loadingDetail || disposed) return;
+        loadingDetail=true;
+        void loadVisual(id).then(visual=>{
+          if (disposed) return;
+          detailed=copy(visual,true);
+          selectModel();
+        }).catch(error=>console.warn('Detailed remote car could not load',id,error))
+          .finally(()=>{loadingDetail=false;});
+      }
+      function loadDistanceModel() {
+        if (far || loadingFar || disposed) return;
+        loadingFar=true;
+        void loadCompactCar(id).then(visual=>{
+          if (disposed) return;
+          far=copy(visual,false);
+          selectModel();
+        }).catch(loadDetail).finally(()=>{loadingFar=false;});
+      }
+      if (visuals[id]) {
+        detailed=copy(visuals[id],true);
+        selectModel();
+      } else loadDistanceModel();
       return {
         root,
         setDistant(value) {
           preferFar=value;
           selectModel();
-          if (!value || loading || far) return;
-          loading=true;
-          if (!distantCars.has(id)) {
-            distantCars.set(id,loadTrackCar(id).catch(error=>{
-              distantCars.delete(id);
-              console.warn('Distant car could not load',id,error);
-            }));
-          }
-          distantCars.get(id).then(visual=>{
-            if (disposed || !visual) return;
-            far=copy(visual,false);
-            selectModel();
-          });
+          if (value) loadDistanceModel();
+          else loadDetail();
         },
         rotateWheels(distance) {
-          for (const wheel of active.wheels) if (wheel) wheel.rotation.x -= distance/.333;
+          if (active) for (const wheel of active.wheels) if (wheel) wheel.rotation.x -= distance/.333;
         },
         dispose() {
           disposed=true;
@@ -592,17 +655,8 @@ async function initialize(renderer) {
     if (document.pointerLockElement === canvas) document.exitPointerLock();
   }
 
-  async function launchDrift() {
-    if (!garageMode() || onCircuit || manual || lifted || enteringTrack) return;
-    const route = routeFor(soloRoute.value);
-    enteringTrack = true;
-    try {
-      if (!circuitKit && (route===mainLayout || route===shortLayout)) tell('Готовим трассу…');
-      await loadCircuitKit(route);
-      if (!garageMode() || onCircuit || manual || lifted || route!==routeFor(soloRoute.value)) return;
-    } finally {
-      enteringTrack = false;
-    }
+  function launchDrift() {
+    if (!garageMode() || onCircuit || manual || lifted) return;
     const inCar=seated;
     seated=true;
     startRace();
@@ -624,6 +678,7 @@ async function initialize(renderer) {
     closeReplay();
     if (tandem && !nextHeat) tandem = createTandem();
     onCircuit = true;
+    void loadCircuitKit(layout);
     roundPlan = nextRound;
     roundOutcome = undefined;
     elimination = nextRound?.mode==='elimination' ? eliminationRun(nextRound.startsAt) : undefined;
@@ -684,18 +739,11 @@ async function initialize(renderer) {
     notice.hidden = true;
   }
 
-  async function returnToClub() {
-    if (!garageMode() || !onCircuit || returning) return;
+  function returnToClub() {
+    if (!garageMode() || !onCircuit) return;
     if (guest || training || neon) {
-      const current = driftRun;
-      returning = true;
-      tell('Готовим гараж…');
-      try {
-        await prepareGarage();
-        if (garageMode() && onCircuit && driftRun===current) show('pit');
-      } finally {
-        returning = false;
-      }
+      show('pit');
+      loadGarageScenery();
       return;
     }
     finishRun();
@@ -712,6 +760,7 @@ async function initialize(renderer) {
     camera.lookAt(STALLS[modelId], 1.05, STALL_Z);
     resetCamera();
     syncScene();
+    loadGarageScenery();
     updateControls();
     updateJob();
     tell('Машина в боксе. P — тюнинг и обслуживание.');
@@ -872,13 +921,14 @@ async function initialize(renderer) {
       renderer.shadowMap.enabled = !!profile.shadows && !performanceHud.disableShadows;
       shadowDirty = true;
       world.dust.visible = !!profile.shadows;
-      district.sky.visible = !profile.lite;
+      district.sky.material.uniforms.simple.value = Boolean(profile.lite);
       club.lighting.visible = !profile.lite;
       world.setEnvironment(graphics.level === 'ultra');
       updateCarReflections();
       arena.setQuality(profile);
       applyMaterialQuality();
     }
+    district.sky.visible=!(garageMode() && !onCircuit);
     document.documentElement.classList.toggle('lite-graphics', !!profile.lite);
     online.setDetailRange(profile.remoteDetail ?? Infinity);
     $('#graphics').value = graphicsMode;
@@ -980,19 +1030,6 @@ async function initialize(renderer) {
     car.scale.z = model.length;
     const inFleet = garageMode() || state === 'menu';
     if (inFleet) physics.reset(STALLS[id], STALL_Z);
-    for (const [key, x] of Object.entries(STALLS)) {
-      const parkedRig = visuals[key];
-      if (!parkedRig) continue;
-      parkedRig.root.removeFromParent();
-      parkedRig.root.visible = true;
-      for (const paint of parkedRig.paints) paint.color.set(pit.cars[key].color);
-      closeRig(parkedRig);
-      if (!inFleet || key === id) continue;
-      club.room.add(parkedRig.root);
-      parkedRig.root.position.set(x,-.025,STALL_Z);
-      parkedRig.root.rotation.set(0,Math.PI,0);
-      parkedRig.root.scale.set(1,1,MODELS[key].length);
-    }
     car.add(rig.root);
     rig.root.position.set(0,0,0);
     rig.root.rotation.set(0,0,0);
@@ -1014,6 +1051,7 @@ async function initialize(renderer) {
     parked = true;
     cameraCut = true;
     physics.render(car, rig.wheels, 1, rig.hubs);
+    updateParkedCars();
   }
 
   function closeRig(visual) {
@@ -1069,6 +1107,49 @@ async function initialize(renderer) {
     $('#pit-color').value = wear.color;
   }
 
+  let changingCar=false;
+  const modelStatus=$('#pit-model-status');
+  function carMessage(text='') {
+    modelStatus.textContent=text;
+    modelStatus.hidden=!text;
+  }
+
+  async function chooseGarageCar(id,fromPanel=false) {
+    if (changingCar || !garageMode() || onCircuit || manual || lifted) return;
+    const current=rig;
+    const buttons=$('#pit-fleet').querySelectorAll('button');
+    changingCar=true;
+    for (const button of buttons) button.disabled=true;
+    try {
+      if (!visuals[id]) {
+        const label='Загружаем '+FLEET[id].name+'…';
+        if (fromPanel) carMessage(label);
+        else tell(label);
+        await loadVisual(id);
+      }
+      if (!garageMode() || onCircuit || manual || lifted || current!==rig ||
+        (fromPanel ? !pitPanel.open || !canTune() : seated || !nearPoint(STALLS[id]+1.43,STALL_Z+.9,1.86))) return;
+      carMessage();
+      if (id!==modelId) {
+        pit.selected=id;
+        lastScore=undefined;
+        setCar(id);
+        if (seated) resetCamera();
+        else camera.lookAt(STALLS[id],1.05,STALL_Z);
+        applyGarageChanges();
+        loadGarageScenery();
+      }
+      if (!fromPanel) enterCar();
+    } catch {
+      const label='Модель '+FLEET[id].name+' не загрузилась. Повтори выбор.';
+      if (fromPanel) carMessage(label);
+      else if (garageMode() && !onCircuit) tell(label);
+    } finally {
+      changingCar=false;
+      for (const button of buttons) button.disabled=false;
+    }
+  }
+
   function applyGarageChanges() {
     physics.setSetup(setupFor(condition()));
     persistPit();
@@ -1079,12 +1160,7 @@ async function initialize(renderer) {
   $('#pit-fleet').addEventListener('click', event => {
     const id = event.target.closest('button')?.dataset.car;
     if (!canTune() || !Object.hasOwn(FLEET, id) || id === modelId) return;
-    pit.selected = id;
-    lastScore = undefined;
-    setCar(id);
-    if (seated) resetCamera();
-    else camera.lookAt(STALLS[id], 1.05, STALL_Z);
-    applyGarageChanges();
+    void chooseGarageCar(id,true);
   });
   $('#pit-parts').addEventListener('click', event => {
     const button = event.target.closest('button');
@@ -1265,15 +1341,7 @@ async function initialize(renderer) {
     if (garageMode() && !seated) {
       for (const [id, x] of Object.entries(STALLS)) {
         if (player.x <= x + .99 || !nearPoint(x + 1.43, STALL_Z + .9, 1.86)) continue;
-        return { label: 'Сесть в ' + MODELS[id].name, run() {
-          if (id !== modelId) {
-            pit.selected = id;
-            lastScore = undefined;
-            setCar(id);
-            persistPit();
-          }
-          enterCar();
-        } };
+        return { label: (changingCar ? 'Загружаем ' : 'Сесть в ') + MODELS[id].name, run:()=>void chooseGarageCar(id) };
       }
     }
     if (!seated && trunkOpen && !hatchOpen && physics.totalSpeed < .55 &&
@@ -1379,7 +1447,7 @@ async function initialize(renderer) {
     const region=activeRegion();
     const shapes=routeWorlds.get(region)?.obstacles ?? regions[region];
     if (shapes.some(box => !box.drivable && hitsRectangle(x,z,radius,box))) return true;
-    if (garageMode() && !onCircuit && Object.entries(STALLS).some(([id, px]) => id !== modelId &&
+    if (garageMode() && !onCircuit && Object.entries(STALLS).some(([id, px]) => id !== modelId && parkedInScene.has(id) &&
       hitsRectangle(x,z,radius,{ x: px, z: STALL_Z, w: 2.0, d: 4.83 * MODELS[id].length }))) return true;
     if (door.position.y < 1.79 && hitsRectangle(x,z,radius,shutter)) return true;
     const forward = V(0,0,-1).applyQuaternion(physics.rotation);
@@ -1702,6 +1770,7 @@ async function initialize(renderer) {
   raceReturn.onclick = () => { raceReturn.blur(); returnToClub(); };
   pitOpen.onclick = () => { pitOpen.blur(); openPitPanel(); };
   pitPanel.addEventListener('close', () => {
+    carMessage();
     if (document.activeElement instanceof HTMLElement && pitPanel.contains(document.activeElement)) {
       document.activeElement.blur();
     }
@@ -1712,7 +1781,7 @@ async function initialize(renderer) {
     if (document.hidden && dirty) persistPit();
   });
   $('#menu').onclick = () => {
-    if (state==='shift') location.assign('./workshop.html?view=orders');
+    if (state==='shift') location.assign('./workshop.html');
     else { $('#menu').blur(); show('menu'); }
   };
   document.addEventListener('garage-setting', ({detail}) => {
@@ -2215,6 +2284,7 @@ async function initialize(renderer) {
       else if (onCircuit && lesson) renderLesson();
       else if (onCircuit && driftRun && !online.active && !layout.port && !neon) renderDrift();
       else if (now >= nextPitHud) {
+        updateParkedCars();
         updateJob();
         nextPitHud = now + 250;
       }
@@ -2492,6 +2562,9 @@ async function initialize(renderer) {
       view(dt, now);
     }
     camera.updateMatrixWorld();
+    if (onCircuit && (layout===mainLayout || layout===shortLayout) && !padActive()) {
+      arena.updateSurfaceDetail(camera.position,guest?.physics.position);
+    }
     district.sky.position.copy(camera.position);
     if (now>=nextAudio) {
       sound(now);
@@ -2524,24 +2597,22 @@ async function initialize(renderer) {
     const {mode,car=pit.selected} = request;
     const route = routeFor(request.route);
     if (mode==='garage') {
-      status('Загружаем машины и оборудование гаража…');
-      await prepareGarage();
-      show('pit');
+      status('Загружаем '+FLEET[car].name+'…');
+      await loadVisual(car);
+      show('pit',false,car);
+      loadGarageScenery();
     } else if (mode==='workshop') {
       status('Готовим бокс и машину из заказа…');
       await Promise.all([loadVisual('sedan'),world.assetsReady]);
       materials.collect(legacyScenery);
       show('shift');
     } else if (mode==='online' || mode==='invite') {
-      status('Готовим машины для комнаты…');
-      await Promise.all([loadFleet(),loadCircuitKit(mainLayout)]);
       if (mode==='invite') online.openInvite();
       else if (request.route) online.openRace(request.route,car);
       else online.open();
     } else {
       status('Загружаем выбранную машину и трассу…');
-      await Promise.all([loadVisual(car),request.second && loadVisual(request.second),
-        (mode==='neon' || request.zone!=='pad') && loadCircuitKit(route)]);
+      await Promise.all([loadVisual(car),request.second && loadVisual(request.second)]);
       if (mode==='duo') {
         startDuo(car,request.second,request.competition,route,request.contacts);
         return;
@@ -2591,7 +2662,8 @@ async function initialize(renderer) {
       lesson:lesson ? {...lesson.state,id:lessonId} : null, ghost:ghostSession ? {best:ghostSession.state.best?.duration,visible:!!ghostView?.root.visible} : null,
       model: modelId, onCircuit, orbit: { ...orbitState }, camera: camera.position.toArray(),
       manual: manual ? { ...manual, wheelRemoved: !!removedWheel } : null, fleet: Object.keys(STALLS),
-      workshopAsset: equipment, trackAsset: trackKit, modelAsset: rig?.asset ?? null, importedCars: Object.keys(FLEET).filter(id=>visuals[id]?.asset).length, setup: garageMode() ? { ...condition() } : null,
+      workshopAsset: equipment, trackAsset: trackKit, modelAsset: rig?.asset ?? null, importedCars: Object.keys(FLEET).filter(id=>visuals[id]?.asset).length,
+      parkedCars:parkedInScene.size, setup: garageMode() ? { ...condition() } : null,
       assets: { ...world.assetStatus }, render: { ...renderer.info.render }, graphics: graphicsMode,
       activeColliders:physics.activeColliderCount(), activeRouteWorlds:[...routeWorlds.keys()], reducedCar:false,
       graphicsLevel: graphics.level, fps, diagnostics:performanceHud.stats, buffer: [canvas.width,canvas.height],

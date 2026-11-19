@@ -43,7 +43,7 @@ async function launch(request, dialog) {
   const status = message => { if (!slow) loading.textContent = message; };
   try {
     if (!game) {
-      const { boot } = await import('./drive.js?v=039');
+      const { boot } = await import('./drive.js?v=041');
       game = await boot();
     }
     await game.launch(request,status);
@@ -170,4 +170,4 @@ $('#duo-form').onsubmit = event => {
 };
 const entry = new URLSearchParams(location.search);
 if (/^\d{6}$/.test(entry.get('room') ?? '')) void launch({mode:'invite'});
-else if (entry.get('workshop')==='orders') void launch({mode:'workshop'});
+else if (entry.get('workshop')==='orders') location.replace('./workshop.html');

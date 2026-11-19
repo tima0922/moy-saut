@@ -41,21 +41,25 @@ export function createDistrict(world, renderer) {
   scene.add(surface);
   scene.fog = new THREE.FogExp2(0xa2b6c4, .0085);
   const sky = new THREE.Mesh(new THREE.SphereGeometry(145, 24, 12), new THREE.ShaderMaterial({
-    uniforms: { circuit: { value: 0 } },
+    uniforms: { circuit: { value: 0 }, simple: { value:false } },
     side: THREE.BackSide,
     depthWrite: false,
-    vertexShader: 'varying vec3 v; void main(){v=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader: `uniform float circuit; varying vec3 v; void main() {
-      float h=normalize(v).y;
+    vertexShader: 'varying vec3 v; void main(){v=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);gl_Position.z=gl_Position.w;}',
+    fragmentShader: `uniform float circuit; uniform bool simple; varying vec3 v; void main() {
       vec3 dir=normalize(v);
+      float h=dir.y;
       vec3 c=mix(vec3(.66,.78,.86),vec3(.28,.49,.68),smoothstep(-.06,.66,h));
-      vec2 p=dir.xz/max(.18,dir.y);
-      float wisps=sin(p.x*2.5+p.y*.8)*cos(p.y*2.9)+.45*sin(p.y*7.1+p.x*4.8);
-      float clouds=smoothstep(.6,1.25,wisps)*smoothstep(.08,.32,h)*(1.-smoothstep(.59,.84,h));
+      float clouds=0.;
+      if (!simple) {
+        vec2 p=dir.xz/max(.18,dir.y);
+        float wisps=sin(p.x*2.5+p.y*.8)*cos(p.y*2.9)+.45*sin(p.y*7.1+p.x*4.8);
+        clouds=smoothstep(.6,1.25,wisps)*smoothstep(.08,.32,h)*(1.-smoothstep(.59,.84,h));
+      }
       c=mix(c,vec3(.83,.89,.94),clouds*.28);
       vec3 sun=normalize(vec3(-.72,.19,.54));
       float toward=clamp(dot(dir,sun),0.,1.);
-      vec3 sunset=mix(vec3(.98,.63,.43),vec3(.15,.27,.47),smoothstep(.01,.64,h));
+      vec3 horizon=simple ? vec3(.72,.61,.57) : vec3(.98,.63,.43);
+      vec3 sunset=mix(horizon,vec3(.15,.27,.47),smoothstep(.01,.64,h));
       sunset+=vec3(.35,.18,.055)*pow(toward,10.);
       sunset=mix(sunset,vec3(1.,.92,.69),smoothstep(.9985,.9992,toward));
       sunset=mix(sunset,vec3(.93,.75,.65),clouds*.48);
@@ -65,7 +69,7 @@ export function createDistrict(world, renderer) {
     }`,
   }));
   sky.frustumCulled = false;
-  sky.renderOrder = -1;
+  sky.renderOrder = 100;
   scene.add(sky);
 
   const sunlight = new THREE.DirectionalLight(0xfff1db, 2.05);

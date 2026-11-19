@@ -6,7 +6,7 @@ import {PARTS} from './game-state.js';
 import {CRANE} from './crane-route.js';
 
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
-export function createWorld(renderer,{districtMode=false,deferredEnvironment=false}={}){
+export function createWorld(renderer,{districtMode=false,deferredEnvironment=false,deferredProps=false}={}){
   const scene=new THREE.Scene();scene.background=new THREE.Color('#5e8193');scene.fog=new THREE.Fog('#688899',28,72);
   let environment;
   function setEnvironment(enabled) {
@@ -377,9 +377,12 @@ export function createWorld(renderer,{districtMode=false,deferredEnvironment=fal
   target('exit',exitSign);
   // A real GLB prop pack, local and licensed CC0. Failures never block the repair.
   const loader=new GLTFLoader();const assetStatus={loaded:0,failed:0};
-  async function addProp(name,pos,height,rotation=0){try{const gltf=await withAssetDeadline(loader.loadAsync(`./assets/kenney/${name}.glb`));const model=gltf.scene;const bounds=new THREE.Box3().setFromObject(model),size=bounds.getSize(V());model.scale.setScalar(height/Math.max(size.y,.01));const b=new THREE.Box3().setFromObject(model),center=b.getCenter(V());model.position.set(-center.x,-b.min.y,-center.z);const root=group(scene,pos);root.rotation.y=rotation;root.add(model);model.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});assetStatus.loaded++;}catch(e){assetStatus.failed++;console.warn(`Optional prop ${name} unavailable`,e.message);}}
-  const assetsReady=Promise.all([addProp('barrel',[-5.9,0,5.3],.95),addProp('barrel',[-5,0,5.6],.95),addProp('box',[5.95,0,4.9],.65),addProp('box',[5.95,.65,4.9],.45,.3),addProp('bucket',[-3.8,0,-3.2],.4),addProp('tool-hammer',[-3.8,1.07,-1.72],.08,Math.PI/2)]);
+  const props=group(scene,[0,0,0]);
+  async function addProp(name,pos,height,rotation=0){try{const gltf=await withAssetDeadline(loader.loadAsync(`./assets/kenney/${name}.glb`));const model=gltf.scene;const bounds=new THREE.Box3().setFromObject(model),size=bounds.getSize(V());model.scale.setScalar(height/Math.max(size.y,.01));const b=new THREE.Box3().setFromObject(model),center=b.getCenter(V());model.position.set(-center.x,-b.min.y,-center.z);const root=group(props,pos);root.rotation.y=rotation;root.add(model);model.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});assetStatus.loaded++;}catch(e){assetStatus.failed++;console.warn(`Optional prop ${name} unavailable`,e.message);}}
+  let assetsReady;
+  const loadProps=()=>assetsReady ??= Promise.all([addProp('barrel',[-5.9,0,5.3],.95),addProp('barrel',[-5,0,5.6],.95),addProp('box',[5.95,0,4.9],.65),addProp('box',[5.95,.65,4.9],.45,.3),addProp('bucket',[-3.8,0,-3.2],.4),addProp('tool-hammer',[-3.8,1.07,-1.72],.08,Math.PI/2)]);
   // A soft grounding contact decal helps low graphics modes retain depth.
+  if (!deferredProps) loadProps();
   const shadowCanvas=document.createElement('canvas');shadowCanvas.width=shadowCanvas.height=128;const sc=shadowCanvas.getContext('2d'),grad=sc.createRadialGradient(64,64,6,64,64,64);grad.addColorStop(0,'rgba(0,0,0,.55)');grad.addColorStop(.65,'rgba(0,0,0,.27)');grad.addColorStop(1,'rgba(0,0,0,0)');sc.fillStyle=grad;sc.fillRect(0,0,128,128);const contact=new THREE.Mesh(new THREE.PlaneGeometry(3.8,6),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(shadowCanvas),transparent:true,depthWrite:false}));contact.rotation.x=-Math.PI/2;contact.position.y=.024;scene.add(contact);
   const particlesGeo=new THREE.BufferGeometry(),positions=new Float32Array(90*3);for(let i=0;i<90;i++){positions[i*3]=(Math.sin(i*31)*.5+.5)*12-6;positions[i*3+1]=.8+(Math.sin(i*47)*.5+.5)*3.7;positions[i*3+2]=Math.sin(i*11)*7;}particlesGeo.setAttribute('position',new THREE.BufferAttribute(positions,3));const dust=new THREE.Points(particlesGeo,new THREE.PointsMaterial({color:0xc3d1ca,size:.014,transparent:true,opacity:.24,depthWrite:false}));scene.add(dust);
   const highlight=new THREE.BoxHelper(new THREE.Object3D(),0xf69c51);highlight.material.transparent=true;highlight.material.opacity=.65;highlight.material.depthTest=false;highlight.visible=false;highlight.renderOrder=10;scene.add(highlight);
@@ -394,5 +397,5 @@ export function createWorld(renderer,{districtMode=false,deferredEnvironment=fal
     const anisotropy=q==='low'?1:q==='balanced'?4:8;
     for(const t of loadedTextures){t.anisotropy=Math.min(anisotropy,renderer.capabilities.getMaxAnisotropy());t.needsUpdate=true;}
   }
-  return {scene,setEnvironment,mats,car,engine,hood,door,carDoors,wheels,floor,steering,batteryCase:batt,lift,arms,crane,chain,stand,standEnginePosition,targets,partObjects,bolts,installSlots,partsTray,newPart,contact,highlight,key,fill,worklight,dust,assetsReady,assetStatus,rayTargets,boxGeometry:boxGeo,box,cylinder,textPlane,setTextureQuality};
+  return {scene,setEnvironment,mats,car,engine,hood,door,carDoors,wheels,floor,steering,batteryCase:batt,lift,arms,crane,chain,stand,standEnginePosition,targets,partObjects,bolts,installSlots,partsTray,newPart,contact,highlight,key,fill,worklight,dust,get assetsReady(){return loadProps();},assetStatus,rayTargets,boxGeometry:boxGeo,box,cylinder,textPlane,setTextureQuality};
 }

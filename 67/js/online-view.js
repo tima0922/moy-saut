@@ -1,6 +1,6 @@
 import { useDistantCar } from './graphics.js?v=033';
 import { Group, Quaternion, Vector3, MathUtils } from 'three';
-import { draftStrength } from './neon-race.js?v=032';
+import { draftStrength } from './neon-race.js?v=037';
 import { enterRoom } from './online.js?v=035';
 
 import { MATCH_MODES,RESET_PENALTY,formatTime,rankRound } from './competition.js?v=030';
@@ -297,7 +297,6 @@ export function createOnlineView({scene, models, selection,start,leave,spawn,pai
     }
   }
 
-  $('#online-open').onclick = () => show();
   $('#online-cancel').onclick = () => { if (!pending) dialog.close(); };
   dialog.addEventListener('cancel', event => { if (pending) event.preventDefault(); });
   input.addEventListener('input', () => { input.value = input.value.replace(/\D/g,''); });
@@ -387,6 +386,7 @@ export function createOnlineView({scene, models, selection,start,leave,spawn,pai
         remote.dot.setAttribute('cy',(-remote.root.position.z).toFixed(2));
       }
     },
+    open:show,
     openInvite() { if (/^\d{6}$/.test(codeFromLink ?? '')) show(); },
   };
 }

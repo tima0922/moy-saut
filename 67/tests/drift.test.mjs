@@ -678,3 +678,63 @@ test('all four stock setups hold a full stadium lap with discrete throttle and s
     assert.ok(race.run.lap>=1,id);
   }
 });
+
+test('the stadium S-link follows paved junctions and banks both central clipping zones', async () => {
+  const { createStadiumLinkLayout, stadiumSurface } = await import('../js/stadium-layout.js');
+  const route = createStadiumLinkLayout();
+  const race = createRun(route);
+  const { road, directions, gates } = route;
+  const clipIndices = gates.filter(gate=>gate.clip).map(gate=>road.indexOf(gate.position));
+  assert.equal(clipIndices.length,2);
+  for (const point of road) assert.equal(stadiumSurface(point.x,point.z),1,point.toArray().join(','));
+  const crossed = [];
+  function tick(i) {
+    const point=road[i], direction=directions[i];
+    const offset=gates.filter(gate=>gate.clip).reduce((sum,gate,index)=>
+      sum+gate.clip.offset*Math.max(0,1-Math.abs(i-clipIndices[index])/9),0);
+    const position={x:point.x+direction.z*offset,z:point.z-direction.x*offset};
+    assert.equal(stadiumSurface(position.x,position.z),1);
+    race.tick(STEP,{position,speed:12,slip:.42,grounded:true,hit:false,up:1});
+    if (race.run.passedGate!==null) crossed.push(race.run.passedGate);
+  }
+  for (let i=0;i<road.length;i++) tick(i);
+  tick(0);
+  tick(1);
+  assert.deepEqual(crossed,[0,1,2,3]);
+  assert.equal(race.run.clips,2);
+  assert.equal(race.run.lap,1);
+  assert.equal(race.run.status,'finished');
+  assert.ok(race.run.score>130);
+  assert.equal(race.run.bestCircle,0);
+});
+
+test('drift lessons use consecutive signed slides and diagnose a slow failed attempt', async () => {
+  const { createLessonAttempt } = await import('../js/drift-school.js');
+  const moving = {speed:10,slip:.32,sliding:true,grounded:true,asphalt:true,gas:true};
+  const entry = createLessonAttempt('entry');
+  for (let i=0;i<33;i++) entry.tick(STEP,moving);
+  assert.equal(entry.state.status,'success');
+  const hold = createLessonAttempt('hold');
+  hold.tick(.3,{...moving,speed:2,sliding:false,slip:0});
+  hold.tick(20,{...moving,speed:2,sliding:false,slip:0});
+  assert.equal(hold.state.status,'retry');
+  assert.match(hold.state.feedback,/скорости/);
+  const link = createLessonAttempt('link');
+  for (let i=0;i<24;i++) link.tick(STEP,{...moving,gate:i===23 ? 0 : null});
+  for (let i=0;i<25;i++) link.tick(STEP,{...moving,gate:i===24 ? 1 : null});
+  assert.equal(link.state.status,'running');
+  assert.equal(link.state.zones,1);
+  for (let i=0;i<25;i++) link.tick(STEP,{...moving,slip:-.33,gate:i===24 ? 1 : null});
+  assert.equal(link.state.status,'success');
+});
+
+test('deferred scene props receive colliders while an already active region remains intact', async () => {
+  const car=await createPhysics([{x:0,z:13,w:1,d:1,h:1,region:'district'}],undefined);
+  car.setRegion('district');
+  const count=car.activeColliderCount();
+  car.addRegionObstacles('district',[{x:4,z:17,w:1,d:1,h:1}]);
+  assert.equal(car.activeColliderCount(),count+1);
+  car.setRegion('circuit');
+  car.setRegion('district');
+  assert.equal(car.activeColliderCount(),count+1);
+});

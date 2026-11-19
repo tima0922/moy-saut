@@ -1,12 +1,13 @@
 import * as THREE from 'three';
-import { RING_LENGTH, ringSample, stadiumSurface } from './stadium-layout.js?v=035';
+import { RING_LENGTH, ringSample, stadiumSurface } from './stadium-layout.js?v=037';
+import { ENTRY_SPEED, ENTRY_ANGLE } from './drift-rules.js?v=037';
+
+export { ENTRY_SPEED, ENTRY_ANGLE } from './drift-rules.js?v=037';
 
 export const ARENA = { x: 0, z: 171, w: 112, d: 112 };
 export const CLUB_ARENA = { x: 0, z: 180, w: 178, d: 147 };
 export const ROAD_HALF = 7.8;
 export const RUN_TIME = 90;
-export const ENTRY_SPEED = 22;
-export const ENTRY_ANGLE = 11;
 const EXIT_ANGLE = 72;
 const { clamp, radToDeg } = THREE.MathUtils;
 
@@ -80,10 +81,11 @@ function makeLayout(controlPoints, size, checkpoints, arena) {
   return { road, directions, gates, arena, spawn: { x: road[0].x, z: road[0].z, yaw } };
 }
 
-function closestSegment(road, x, z) {
+function closestSegment(road, x, z, widths) {
   let best = Infinity;
   let tangentX = 0;
   let tangentZ = 0;
+  let half = ROAD_HALF;
   for (let i = 0; i < road.length; i++) {
     const a = road[i];
     const b = road[(i + 1) % road.length];
@@ -94,18 +96,19 @@ function closestSegment(road, x, z) {
     const distance2 = (x - a.x - dx * t) ** 2 + (z - a.z - dz * t) ** 2;
     if (distance2 >= best) continue;
     best = distance2;
+    half = widths?.[i] ?? ROAD_HALF;
     const length = Math.sqrt(length2);
     tangentX = dx / length;
     tangentZ = dz / length;
   }
-  return { onRoad: best <= ROAD_HALF ** 2, tangentX, tangentZ };
+  return { onRoad: best <= half ** 2, tangentX, tangentZ };
 }
 
-export function createRun({ road, gates, stadium }, { startImmediately = false, duration = RUN_TIME,
+export function createRun({ road, gates, stadium, stadiumLink, widths }, { startImmediately = false, duration = RUN_TIME,
   startGate = 0, free = false, pad = null } = {}) {
   const run = {
     status: startImmediately ? 'running' : 'ready', time: free ? null : duration, score: 0, chain: 0, multiplier: 1,
-    next: startGate, lap: 0, clips: 0, angle: 0, warning: '', sliding: false, events: [], circle:0, bestCircle:0,
+    next: startGate, lap: 0, clips: 0, angle: 0, warning: '', sliding: false, events: [], circle:0, bestCircle:0, passedGate:null,
   };
   let lastPosition;
   let lastMeters;
@@ -145,11 +148,13 @@ export function createRun({ road, gates, stadium }, { startImmediately = false, 
       endChain(false,'Возврат на трассу');
       run.sliding = false;
       run.angle = 0;
+      run.passedGate = null;
       run.warning = '';
       lastPosition = lastMeters = undefined;
       penaltyTime = 0;
     },
     tick(dt, { position, speed, slip, grounded, hit, up }) {
+      run.passedGate = null;
       const { x, z } = position;
       const angle = Math.abs(radToDeg(slip));
       const kmh = speed * 3.6;
@@ -160,10 +165,10 @@ export function createRun({ road, gates, stadium }, { startImmediately = false, 
         run.status = 'running';
       }
       if (!free) run.time = Math.max(0, run.time - dt);
-      const sample = stadium ? ringSample(x,z) : null;
+      const sample = stadium && !stadiumLink ? ringSample(x,z) : null;
       const {onRoad,tangentX,tangentZ} = sample ?? (pad ? {
         onRoad: Math.abs(x-pad.x) < pad.w/2-.8 && Math.abs(z-pad.z) < pad.d/2-.8, tangentX:0,tangentZ:0,
-      } : closestSegment(road,x,z));
+      } : closestSegment(road,x,z,widths));
       const dx = lastPosition ? x - lastPosition.x : 0;
       const dz = lastPosition ? z - lastPosition.z : 0;
       const ringAdvance = sample && lastMeters !== undefined
@@ -186,7 +191,7 @@ export function createRun({ road, gates, stadium }, { startImmediately = false, 
 
       run.sliding = onRoad && !penaltyTime && grounded && kmh >= ENTRY_SPEED && angle >= ENTRY_ANGLE &&
         angle < EXIT_ANGLE && (pad ? distance > .001 : progress > distance*.44);
-      if (stadium) {
+      if (sample) {
         run.circle = run.sliding ? run.circle + Math.max(0,ringAdvance)/RING_LENGTH*100 : 0;
         run.bestCircle = Math.max(run.bestCircle,run.circle);
       }
@@ -217,11 +222,12 @@ export function createRun({ road, gates, stadium }, { startImmediately = false, 
             report('clip', `Клип ${run.next+1} · в серию`, points);
           }
           else if (gate.clip) report('miss',`Клип ${run.next+1} пропущен`);
+          run.passedGate = run.next;
           run.next = (run.next+1)%gates.length;
           if (!run.next) run.lap++;
         }
       }
-      if (!free && !run.time) finish();
+      if (!free && (!run.time || stadiumLink && run.lap)) finish();
     },
   };
 }

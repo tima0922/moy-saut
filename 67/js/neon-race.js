@@ -123,10 +123,11 @@ export function createNeonRun(course,startsAt) {
   let last, lastGate=-1, next=0, laps=0, resets=0, charges=1, finished, offSince;
   let boostUntil=0,gripUntil=0;
   let reverseSince, wrongWay=false, lapStarted=startsAt, lapResets=0, bestLap, lastLap;
-  let progress=0, missed=false, sample;
+  let progress=0, missed=false, sample, crossing;
+  let crossedStart=false;
   const collected=course.pickups.map(()=>false);
   return {
-    startsAt, get progress(){return progress;}, get missed(){return missed;},
+    startsAt, get crossing(){return crossing;}, get progress(){return progress;}, get missed(){return missed;},
     get corner(){return sample ? course.nextCorner(sample.meters) : null;},
     get sector(){return sample ? course.sector(sample.meters) : '';},
     get lap(){return Math.min(laps+1,RACE_LAPS);},
@@ -144,7 +145,8 @@ export function createNeonRun(course,startsAt) {
     },
     recover(now) {
       if(now<startsAt || finished!==undefined) return null;
-      last=sample=undefined;
+      last=sample=crossing=undefined;
+      if (!laps && lastGate<0) crossedStart=false;
       missed=false;
       reverseSince=undefined; wrongWay=false;
       offSince=undefined;
@@ -153,6 +155,7 @@ export function createNeonRun(course,startsAt) {
       return course.recovery(lastGate);
     },
     tick(now,position,grounded) {
+      crossing=undefined;
       if(now<startsAt || finished!==undefined) return;
       const {x,y,z}=position;
       const pose={x,y,z,now};
@@ -179,14 +182,23 @@ export function createNeonRun(course,startsAt) {
       else offSince ??= now;
       if (sample.distance>(sample.half+10)**2 || y < -4 ||
           offSince!==undefined && now-offSince>2400) return 'recover';
-      const fraction=onRoad && last && Math.hypot(x-last.x,z-last.z)<20
-        ? crossingFraction(last,pose,gate) : null;
+      const canCross=onRoad && last && Math.hypot(x-last.x,z-last.z)<20;
+      const first=canCross && !crossedStart && next===0 && !laps ? crossingFraction(last,pose,course.gates.at(-1)) : null;
+      if (first!==null) {
+        crossedStart=true;
+        crossing={at:THREE.MathUtils.lerp(last.now,now,first), fraction:first, line:true, sector:0};
+      }
+      const fraction=canCross ? crossingFraction(last,pose,gate) : null;
       if (fraction!==null) {
         missed=false;
         lastGate=next++;
-        if (next===course.gates.length) {
+        const crossedAt=THREE.MathUtils.lerp(last.now,now,fraction);
+        const line=next===course.gates.length;
+        const sector=next*4/course.gates.length;
+        if (Number.isInteger(sector)) crossing={at:crossedAt, fraction, line, sector};
+        if (line) {
+          crossedStart=true;
           next=0;
-          const crossedAt=THREE.MathUtils.lerp(last.now,now,fraction);
           lastLap=Math.round(crossedAt-lapStarted)+(resets-lapResets)*RESET_PENALTY;
           bestLap=Math.min(bestLap ?? Infinity,lastLap);
           lapStarted=crossedAt;

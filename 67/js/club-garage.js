@@ -76,48 +76,50 @@ export function createClubGarage(world) {
     { match: 'tool-chest', x: 7, z: -64.6, w: 2.4, d: .95, h: 1.55 },
     { match: 'compressor', x: 11.6, z: -64.5, w: 1.6, d: .95, h: 1.2 },
   ];
-  const equipment = withAssetDeadline(new GLTFLoader().loadAsync('./assets/club/workshop.glb')).then(({scene: source}) => {
-    source.updateMatrixWorld(true);
-    const allMeshes = [];
-    source.traverse(mesh => { if (mesh.isMesh && !Array.isArray(mesh.material)) allMeshes.push(mesh); });
-    let installed = 0;
-    for (const slot of furniture) {
-      const meshes = allMeshes.filter(mesh => (mesh.name + ' ' + mesh.parent.name).includes(slot.match));
-      if (!meshes.length) continue;
-      const materials = new Map();
-      const bounds = new THREE.Box3();
-      for (const mesh of meshes) {
-        const geometry = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
-        geometry.computeBoundingBox();
-        bounds.union(geometry.boundingBox);
-        if (!materials.has(mesh.material)) materials.set(mesh.material, []);
-        materials.get(mesh.material).push(geometry);
+  function installEquipment() {
+    return withAssetDeadline(new GLTFLoader().loadAsync('./assets/club/workshop.glb')).then(({scene: source}) => {
+      source.updateMatrixWorld(true);
+      const allMeshes = [];
+      source.traverse(mesh => { if (mesh.isMesh && !Array.isArray(mesh.material)) allMeshes.push(mesh); });
+      let installed = 0;
+      for (const slot of furniture) {
+        const meshes = allMeshes.filter(mesh => (mesh.name + ' ' + mesh.parent.name).includes(slot.match));
+        if (!meshes.length) continue;
+        const materials = new Map();
+        const bounds = new THREE.Box3();
+        for (const mesh of meshes) {
+          const geometry = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
+          geometry.computeBoundingBox();
+          bounds.union(geometry.boundingBox);
+          if (!materials.has(mesh.material)) materials.set(mesh.material, []);
+          materials.get(mesh.material).push(geometry);
+        }
+        const size = bounds.getSize(new THREE.Vector3());
+        const center = bounds.getCenter(new THREE.Vector3());
+        const scale = Math.min(slot.w / size.x, slot.d / size.z, slot.h / size.y);
+        let visible = false;
+        for (const [material, geometries] of materials) {
+          const merged = mergeGeometries(geometries.map(g => g.index ? g.toNonIndexed() : g));
+          if (!merged) continue;
+          merged.translate(-center.x, -bounds.min.y, -center.z);
+          const prop = new THREE.Mesh(merged, material);
+          prop.scale.setScalar(scale);
+          prop.position.set(slot.x,.013,slot.z);
+          prop.receiveShadow = true;
+          room.add(prop);
+          visible = true;
+        }
+        if (visible) {
+          obstacles.push({x:slot.x,z:slot.z,w:size.x*scale,d:size.z*scale,h:size.y*scale,y:.013});
+          installed++;
+        }
       }
-      const size = bounds.getSize(new THREE.Vector3());
-      const center = bounds.getCenter(new THREE.Vector3());
-      const scale = Math.min(slot.w / size.x, slot.d / size.z, slot.h / size.y);
-      let visible = false;
-      for (const [material, geometries] of materials) {
-        const merged = mergeGeometries(geometries.map(g => g.index ? g.toNonIndexed() : g));
-        if (!merged) continue;
-        merged.translate(-center.x, -bounds.min.y, -center.z);
-        const prop = new THREE.Mesh(merged, material);
-        prop.scale.setScalar(scale);
-        prop.position.set(slot.x,.013,slot.z);
-        prop.receiveShadow = true;
-        room.add(prop);
-        visible = true;
-      }
-      if (visible) {
-        obstacles.push({x:slot.x,z:slot.z,w:size.x*scale,d:size.z*scale,h:size.y*scale,y:.013});
-        installed++;
-      }
-    }
-    return installed > 0;
-  }).catch(error => {
-    console.warn('Workshop furniture could not load', error);
-    return false;
-  });
+      return installed > 0;
+    }).catch(error => {
+      console.warn('Workshop furniture could not load', error);
+      return false;
+    });
+  }
   const lighting = new THREE.Group();
   for (const x of [-8,0,8]) {
     const lamp = new THREE.PointLight(0xe0ebff,45,12,1.7);
@@ -126,5 +128,6 @@ export function createClubGarage(world) {
   }
   room.add(lighting);
   batchSharedMeshes(room);
-  return { room, obstacles, liftArms, equipment, lighting };
+  let equipment;
+  return { room, obstacles, liftArms, lighting, loadEquipment:() => equipment ??= installEquipment() };
 }

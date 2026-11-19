@@ -124,7 +124,7 @@ export function createDriftWorld(world, layout, asphalt, terrain, shortLayout) {
   dressCircuit(world, group, road, directions, arena, heightAt,obstacles);
   addTurnBoards(world,group,road,directions,connector,heightAt,dark,obstacles);
   addGrandstands(world,group,obstacles);
-  const kit = addTrackKit(group,obstacles,heightAt);
+  let kit;
   batchSharedMeshes(group);
   const amber = new THREE.MeshStandardMaterial({
     color: 0xffb076, roughness: .7, emissive: 0xd15b26, emissiveIntensity: .22,
@@ -132,7 +132,7 @@ export function createDriftWorld(world, layout, asphalt, terrain, shortLayout) {
   let active, guestActive;
   const fx = createTireEffects(group);
   return {
-    group, obstacles, fx, kit, collectMaterials:floor.surfaces, setQuality: floor.setQuality, makeGuestEffects: () => createTireEffects(group),
+    group, obstacles, fx, loadKit:() => kit ??= addTrackKit(group,obstacles,heightAt), collectMaterials:floor.surfaces, setQuality: floor.setQuality, makeGuestEffects: () => createTireEffects(group),
     markGate(index, guestIndex = -1, route = layout) {
       const playerGate = route.gates[index], guestGate = route.gates[guestIndex];
       if (active === playerGate && guestActive === guestGate) return;

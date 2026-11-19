@@ -538,6 +538,12 @@ export async function createPhysics(obstacles, driftGround, garageGround, terrai
   return Object.assign(player, {
     addCar: createCar,
     registerRegion,
+    addRegionObstacles(region, items) {
+      const registered = regions.get(region);
+      if (!registered) return registerRegion(region, items);
+      registered.push(...items);
+      if (region===currentRegion) for (const item of items) addObstacle(item,true);
+    },
     forgetRegion(name) { if (name!==currentRegion) regions.delete(name); },
     activeColliderCount() { return physics.colliders.len(); },
     setRegion(region) {

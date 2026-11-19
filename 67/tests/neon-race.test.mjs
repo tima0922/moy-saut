@@ -282,3 +282,40 @@ test('each reduced car retains paint and the four independent front/rear wheel a
     assert.ok(triangles<23_000 && meshes<35,`${id}: ${triangles} triangles, ${meshes} meshes`);
   }
 });
+
+test('a clean start-to-finish lap records a ghost, interpolates its pose and compares sector pace', async () => {
+  const { createGhostSession, readRaceGhost, saveRaceGhost, sampleRaceGhost } = await import('../js/race-ghost.js');
+  const values = new Map();
+  const storage = { getItem:key=>values.get(key), setItem:(key,value)=>values.set(key,value) };
+  const course = createRaceCourse(stadium), race = createNeonRun(course,0);
+  const ghost = createGhostSession('supra',null,clip=>saveRaceGhost(storage,'ring',clip));
+  let now=0;
+  function cross(index,spacing=130) {
+    const {point,dir}=course.gates[index];
+    for (const sign of [-1,1]) {
+      const p=point.clone().addScaledVector(dir,sign);
+      now+=spacing;
+      race.tick(now,p,true);
+      ghost.tick(now,[p.x,p.y,p.z,0,0,0,1],race.crossing);
+    }
+  }
+  cross(course.gates.length-1);
+  assert.equal(race.crossing.sector,0);
+  assert.ok(ghost.state.started>0);
+  for (let i=0;i<course.gates.length;i++) cross(i);
+  const record=readRaceGhost(storage,'ring');
+  assert.equal(record.model,'supra');
+  assert.equal(record.sectors.length,4);
+  assert.equal(record.sectors.at(-1),record.duration);
+  assert.ok(Math.abs(sampleRaceGhost(record,0)[0]-course.gates.at(-1).point.x)<.01);
+  assert.equal(sampleRaceGhost(record,record.duration+1),null);
+  assert.equal(Math.hypot(...sampleRaceGhost(record,record.duration/2).slice(3)),1);
+  for (let i=0;i<course.gates.length/4;i++) cross(i,160);
+  assert.equal(ghost.state.split.sector,1);
+  assert.ok(ghost.state.split.delta>0);
+  race.recover(now);
+  ghost.reset();
+  for (let i=course.gates.length/4;i<course.gates.length;i++) cross(i,80);
+  assert.equal(ghost.state.best.duration,record.duration);
+  assert.equal(ghost.state.target.duration,record.duration);
+});

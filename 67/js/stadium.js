@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { createTireEffects } from './drift-world.js?v=034';
 import { batchSharedMeshes } from './garage-visuals.js';
-import { STADIUM,RADIUS,HALF_WIDTH,RING_LENGTH,INFIELD_HALF,ringPoint,infieldPoint } from './stadium-layout.js?v=035';
+import {
+  STADIUM,RADIUS,HALF_WIDTH,RING_LENGTH,INFIELD_HALF,ringPoint,infieldPoint,stadiumJunctions,STADIUM_JUNCTION_HALF,
+} from './stadium-layout.js?v=037';
 
-export { STADIUM,RADIUS,HALF_WIDTH,createStadiumLayout,stadiumSurface } from './stadium-layout.js?v=035';
+export { STADIUM,RADIUS,HALF_WIDTH,createStadiumLayout,stadiumSurface } from './stadium-layout.js?v=037';
 
-export function createStadiumWorld(world,asphaltSource) {
+export function createStadiumWorld(world,asphaltSource,linkLayout) {
   const {x,z,w,d} = STADIUM;
   const group = new THREE.Group();
   world.scene.add(group);
@@ -87,6 +89,9 @@ export function createStadiumWorld(world,asphaltSource) {
   strip('Ring apron',runoff,.011,[ring(-HALF_WIDTH-2.4,HALF_WIDTH+7)]);
   strip('Infield asphalt',asphalt,.018,[connector(-INFIELD_HALF,INFIELD_HALF)]);
   strip('Ring asphalt',asphalt,.019,[ring(-HALF_WIDTH,HALF_WIDTH)]);
+  const joins = (left,right) => stadiumJunctions.map(point => ({point,start:0,end:1,steps:32,left,right}));
+  strip('Infield junctions',asphalt,.020,joins(-STADIUM_JUNCTION_HALF,STADIUM_JUNCTION_HALF));
+  strip('Junction race line',amber,.029,joins(-.08,.08));
   const curbs=[[],[]];
   const curbCount=144;
   for (let i=0;i<curbCount;i++) {
@@ -94,7 +99,8 @@ export function createStadiumWorld(world,asphaltSource) {
     for (const edge of [HALF_WIDTH,-HALF_WIDTH]) {
       const center=ringPoint((start+end)/2,edge);
       const entry = infieldPoint(center.z);
-      if (edge<0 && Math.abs(center.x-entry.x)<INFIELD_HALF+4.5) continue;
+      if (edge<0 && (Math.abs(center.x-entry.x)<INFIELD_HALF+4.5 ||
+        center.x<0 && Math.abs(center.x)<30 && Math.abs(center.z-z)>73)) continue;
       curbs[i%2].push(ring(edge-.28,edge+.28,start,end,3));
     }
   }
@@ -167,5 +173,28 @@ export function createStadiumWorld(world,asphaltSource) {
   sign('КОНТУР 67   /   ДРИФТ-КОЛЬЦО',23,banner.x-.33*banner.tx,banner.z-.33*banner.tz,5.83,Math.atan2(-banner.tx,-banner.tz));
 
   batchSharedMeshes(group);
-  return {group,obstacles,fx:createTireEffects(group),makeGuestEffects:() => createTireEffects(group),markGate() {}};
+  const markers = new THREE.Group();
+  group.add(markers);
+  const lime = new THREE.MeshStandardMaterial({color:0xdffd69,emissive:0x82a51b,emissiveIntensity:.32});
+  const gateBars = linkLayout.gates.map(({position,direction,half,clip}) => {
+    const {x,z} = position;
+    const yaw = Math.atan2(direction.x,direction.z);
+    const gate = world.box(markers,[half*2,.013,.17],[x,.034,z],white,[0,yaw,0]);
+    gate.castShadow = false;
+    const mark = clip ? world.box(markers,[clip.width*2,.013,1.25],
+      [x+direction.z*clip.offset,.036,z-direction.x*clip.offset],amber,[0,yaw,0]) : gate;
+    mark.castShadow = false;
+    return {mark,idle:clip ? amber : white};
+  });
+  markers.visible = false;
+  return {
+    group,obstacles,fx:createTireEffects(group),makeGuestEffects:() => createTireEffects(group),
+    markGate(index,guestIndex=-1,route) {
+      markers.visible = route===linkLayout && (index>=0 || guestIndex>=0);
+      if (!markers.visible) return;
+      for (const [i,{mark,idle}] of gateBars.entries()) {
+        mark.material = i===index ? lime : i===guestIndex ? amber : idle;
+      }
+    },
+  };
 }

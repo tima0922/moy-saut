@@ -1,34 +1,37 @@
 import * as THREE from 'three';
-import { createWorld } from './world.js?v=034';
+import { createWorld } from './world.js?v=037';
 import { GRAPHICS, createGraphicsController, createMaterialQuality, renderRatio, createRenderDiagnostics } from './graphics.js?v=033';
 import { batchSharedMeshes } from './garage-visuals.js?v=019';
 import { BATTERY, fitE39 } from './bmw.js?v=034';
-import { CLUB_ARENA, createClubLayout, createShortLayout, createRun, safeCircuitStart } from './drift.js?v=035';
-import { createDriftWorld, createTireEffects } from './drift-world.js?v=034';
+import { CLUB_ARENA, createRun, safeCircuitStart } from './drift.js?v=037';
+import { createDriftWorld, createTireEffects } from './drift-world.js?v=037';
 import { createDistrict, SHOP, TRACK } from './district.js?v=032';
-import { createPhysics, MODELS, STEP } from './vehicle.js?v=036';
+import { createPhysics, MODELS, STEP } from './vehicle.js?v=037';
 import { buildPitCar, loadPitCar } from './pit-cars.js?v=034';
-import { FLEET, SETUPS, DRIFT_SETUP, loadPit, savePit, setupFor } from './pit-save.js?v=022';
-import { CLUB_FLOOR, STALLS, STALL_Z, SERVICE_STEPS, createClubGarage } from './club-garage.js?v=034';
+import { FLEET, SETUPS, DRIFT_SETUP, savePit, setupFor } from './pit-save.js?v=037';
+import { CLUB_FLOOR, STALLS, STALL_Z, SERVICE_STEPS, createClubGarage } from './club-garage.js?v=037';
 import { portLayout,portWorld,portCourse,portMapView,outOfPort,PORT_GATES } from './port.js?v=032';
 import { eliminationRun,formatTime,RESET_PENALTY } from './competition.js?v=030';
-import { createRaceCourse,createNeonRun,RACE_LAPS,readRaceBest,saveRaceBest } from './neon-race.js?v=032';
+import { createRaceCourse,createNeonRun,RACE_LAPS,readRaceBest,saveRaceBest } from './neon-race.js?v=037';
 import { createRaceLights } from './neon-race-world.js?v=032';
-import { createCityLayout } from './city-layout.js?v=032';
 import { createCityWorld } from './city.js?v=032';
 import { createCarReflections } from './car-reflections.js?v=033';
 import { loadTrackCar } from './track-car.js?v=032';
 import { chaseFraction,indexCameraBarriers } from './chase-collision.js?v=032';
-import { STADIUM, stadiumSurface, createStadiumLayout, createStadiumWorld } from './stadium.js?v=035';
+import { STADIUM, stadiumSurface, createStadiumWorld } from './stadium.js?v=037';
 import { circuitTerrain } from './circuit-terrain.js?v=019';
 import { PRACTICE_PAD, TANDEM_HEAT, practiceStart, createPracticePad, createTandem } from './drift-modes.js?v=022';
 import { createDriftAudio } from './drift-audio.js?v=017';
 import { createReplayPlayer, createReplayRecorder } from './drift-replay.js';
-import { createOnlineView } from './online-view.js?v=035';
+import { createOnlineView } from './online-view.js?v=037';
 import { createGuest, raceTelemetry } from './local-duo.js?v=035';
-import { DEFAULT_KEYS, DRIVING_ACTIONS, allowedKey, keyLabel, loadBindings } from './drive-bindings.js';
+import { DEFAULT_KEYS, keyLabel } from './drive-bindings.js';
 import { createOrbitCamera } from './orbit-camera.js?v=013';
-import { JOBS, advance, loadCareer, saveCareer, makeRoadTest } from './career.js?v=08';
+import { JOBS, advance, saveCareer, makeRoadTest } from './career.js?v=08';
+import { storage, career, pit, graphicsPreference } from './game-settings.js?v=037';
+import { trackLayouts, trackMapPath, NEON_TRACKS } from './track-layouts.js?v=037';
+import { LESSONS, lessonInstruction, createLessonAttempt } from './drift-school.js?v=037';
+import { createGhostSession, readRaceGhost, saveRaceGhost, sampleRaceGhost } from './race-ghost.js?v=037';
 
 const $ = selector => document.querySelector(selector);
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -36,21 +39,6 @@ const damp = THREE.MathUtils.damp;
 const touchScreen = matchMedia('(pointer: coarse)');
 const touchDrive = new Set();
 const canvas = $('#scene');
-let contextLost=false;
-canvas.addEventListener('webglcontextlost',event=>{
-  event.preventDefault();
-  contextLost=true;
-  clearControls();
-  document.querySelector('#graphics-recovery').hidden=false;
-});
-canvas.addEventListener('webglcontextrestored',()=>{
-  contextLost=false;
-  document.querySelector('#graphics-recovery').hidden=true;
-});
-let storage;
-try { storage = window.localStorage; } catch { /* The game can run without persistent storage. */ }
-const career = loadCareer(storage);
-const pit = loadPit(storage, career.driftBest);
 const controls = new Set();
 const key = (...codes) => codes.some(code => controls.has(code));
 const saved = () => saveCareer(storage, career);
@@ -59,15 +47,24 @@ function clearControls() {
   controls.clear();
   touchDrive.clear();
 }
-let renderer;
-try {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'default' });
-} catch (cause) {
-  throw Object.assign(new Error('WebGL 2 недоступен', {cause}), {code:'webgl'});
-}
-await boot();
 
-async function boot() {
+export async function boot() {
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias:false, alpha:false, powerPreference:'default' });
+  } catch (cause) {
+    throw Object.assign(new Error('WebGL 2 недоступен', {cause}), {code:'webgl'});
+  }
+  try {
+    return await initialize(renderer);
+  } catch (error) {
+    renderer.dispose();
+    throw error;
+  }
+}
+
+async function initialize(renderer) {
+  let contextLost=false;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.04;
   renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -75,31 +72,49 @@ async function boot() {
   renderer.info.autoReset = false;
   const camera = new THREE.PerspectiveCamera(62, 1, .035, 185);
   camera.rotation.order = 'YXZ';
-  const world = createWorld(renderer, { districtMode: true, deferredEnvironment: true });
+  const world = createWorld(renderer, { districtMode: true, deferredEnvironment: true, deferredProps:true });
   const materials = createMaterialQuality();
-  $('#loading').textContent = 'Загружаем модели машин…';
   const performanceHud = createRenderDiagnostics(renderer,$('#render-diagnostics'));
   const district = createDistrict(world, renderer);
-  const [importedBMW,f90,cls,supra] = await Promise.all([fitE39(world).catch(error=>{
-    console.warn('Detailed E39 model could not load',error);
-  }),
-    ...['f90','cls','supra'].map(id=>loadPitCar(world,id))]);
-  const bmw=importedBMW ?? buildPitCar(world,'sedan');
-  if (importedBMW) {
-    bmw.engine=world.engine;
-    bmw.root=new THREE.Group();
-    for (const object of [...world.car.children]) bmw.root.add(object);
-  } else world.car.clear();
-  world.car.add(bmw.root);
-  const visuals = { sedan: bmw, touring: bmw, f90, cls, supra };
-  let rig = bmw;
-  const distantCars=new Map();
-  const reflectionMap=createCarReflections();
-  const reflectiveMaterials=new Map();
-  for (const visual of new Set(Object.values(visuals))) {
+  const fallback = buildPitCar(world,'sedan');
+  world.car.clear();
+  const visuals = { sedan:fallback, touring:fallback };
+  let rig = fallback;
+  const vehicleLoads = new Map();
+  const distantCars = new Map();
+  const reflectionMap = createCarReflections();
+  const reflectiveMaterials = new Map();
+  function trackCarMaterials(visual) {
     materials.collect(visual.root,true);
     for (const material of [...visual.paints,visual.windows].filter(Boolean)) {
       reflectiveMaterials.set(material,material.envMap);
+    }
+  }
+  trackCarMaterials(fallback);
+
+  function loadVisual(id) {
+    if (id==='touring') id='sedan';
+    if (!vehicleLoads.has(id)) {
+      const load = id==='sedan' ? loadBMW() : loadPitCar(world,id);
+      vehicleLoads.set(id,load.then(visual=>{
+        visuals[id] = visual;
+        if (id==='sedan') visuals.touring = visual;
+        trackCarMaterials(visual);
+        return visual;
+      }));
+    }
+    return vehicleLoads.get(id);
+  }
+
+  async function loadBMW() {
+    const root = new THREE.Group(), engine = new THREE.Group();
+    root.add(engine);
+    try {
+      const visual = await fitE39({...world,car:root,engine});
+      return {...visual,root,engine};
+    } catch (error) {
+      console.warn('Detailed E39 model could not load',error);
+      return fallback;
     }
   }
   function applyMaterialQuality() {
@@ -116,28 +131,23 @@ async function boot() {
   for (const object of [world.scene, world.car, world.engine, world.lift, world.arms]) {
     batchSharedMeshes(object);
   }
-  $('#loading').textContent = 'Готовим трассы и физику…';
-  const mainLayout = createClubLayout();
-  const shortLayout = createShortLayout(mainLayout);
-  const stadiumLayout = createStadiumLayout();
-  const cityLayout = createCityLayout();
+  const {main:mainLayout,short:shortLayout,stadium:stadiumLayout,'stadium-s':linkLayout,city2:cityLayout} = trackLayouts();
   const parkourLayout = portLayout();
-  const routes = new Map([['main',mainLayout],['short',shortLayout],['stadium',stadiumLayout],
+  const routes = new Map([['main',mainLayout],['short',shortLayout],['stadium',stadiumLayout],['stadium-s',linkLayout],
     ['city2',cityLayout],['port',parkourLayout],['port6',parkourLayout],['port7',parkourLayout],
     ['race-main',mainLayout],['ring',stadiumLayout],['race-ring',stadiumLayout]]);
   const routeFor = value => routes.get(value) ?? mainLayout;
   let layout = mainLayout;
   const terrain = circuitTerrain(mainLayout,shortLayout.connector);
   const arena = createDriftWorld(world,mainLayout,district.asphalt,terrain,shortLayout);
-  const stadium = createStadiumWorld(world,district.asphalt);
-  const neonTracks = new Map([[mainLayout,'main'],[stadiumLayout,'ring'],[cityLayout,'city2']].map(([track,id])=>{
+  const stadium = createStadiumWorld(world,district.asphalt,linkLayout);
+  const neonTracks = new Map([[mainLayout,NEON_TRACKS.main],[stadiumLayout,NEON_TRACKS.stadium],[cityLayout,NEON_TRACKS.city2]].map(([track,id])=>{
     const course=createRaceCourse(track,id==='main' ? terrain.heightAt : undefined);
     return [track,{id,course}];
   }));
   const club = createClubGarage(world);
   const practice = createPracticePad(world,district.asphalt);
   const padEffects = createTireEffects(practice.root);
-  await Promise.all([arena.kit,club.equipment]);
   const regions = {district:district.obstacles,circuit:arena.obstacles,garage:club.obstacles,pad:practice.obstacles,stadium:stadium.obstacles};
   const barriers = Object.entries(regions).flatMap(([region,items]) => items.map(item => ({...item,region})));
   const physics = await createPhysics(barriers,CLUB_ARENA,CLUB_FLOOR,terrain,PRACTICE_PAD,{...STADIUM,gripAt:stadiumSurface});
@@ -145,6 +155,29 @@ async function boot() {
   const shutter={x:0,z:7.95,w:5.12,d:.25,h:4.35};
   const cameraBuckets=new Map(Object.entries(regions).map(([id,shapes])=>[id,indexCameraBarriers(shapes)]));
   const districtClosedCamera=indexCameraBarriers([...district.obstacles,shutter]);
+  let furniture, circuitKit, equipment = false, trackKit = false;
+  function loadCircuitKit(route) {
+    if (route!==mainLayout && route!==shortLayout) return;
+    return circuitKit ??= loadDecoration('circuit',arena.group,arena.obstacles,arena.loadKit)
+      .then(ready=>{ trackKit=ready; });
+  }
+  function loadFurniture() {
+    return furniture ??= loadDecoration('garage',club.room,club.obstacles,club.loadEquipment)
+      .then(ready=>{ equipment=ready; });
+  }
+  async function loadDecoration(region,group,obstacles,load) {
+    const count = obstacles.length;
+    const ready = await load();
+    if (!ready) return false;
+    physics.addRegionObstacles(region,obstacles.slice(count));
+    cameraBuckets.set(region,indexCameraBarriers(obstacles));
+    materials.collect(group);
+    if (profile) applyMaterialQuality();
+    return true;
+  }
+  const loadFleet = () => Promise.all(Object.keys(FLEET).map(loadVisual));
+  const prepareGarage = () => Promise.all([loadFleet(),loadFurniture()]);
+
   function additionalWorld(region) {
     if (routeWorlds.has(region)) return routeWorlds.get(region);
     const result=region==='city' ? createCityWorld(world,cityLayout,district.asphalt) : portWorld(world);
@@ -177,7 +210,7 @@ async function boot() {
     new THREE.MeshBasicMaterial({ color: 0xffb066, transparent: true, opacity: .68 }));
   wheelMark.position.x = -.15;
   wheelMark.rotation.y = Math.PI / 2;
-  bmw.hubs[0].add(wheelMark);
+  wheelMark.visible = false;
 
   const startPose = V(-4.2, 1.68, -3.6);
   const player = startPose.clone();
@@ -198,7 +231,8 @@ async function boot() {
   let guest;
   let guestModelId;
   let duoFree = false;
-  let training;
+  let training, lessonId, lesson;
+  let enteringTrack = false, returning = false;
   let tandem;
   let recorder;
   let guestRecorder;
@@ -212,12 +246,10 @@ async function boot() {
   const guestShadowPose = { position:V(0,0,0), rotation:new THREE.Quaternion() };
   let nextHud = 0;
   let nextAudio = 0;
-  const modes = new Set(['auto', 'ultra', 'balanced', 'integrated', 'performance', 'minimum']);
-  let graphicsMode = modes.has(career.graphics) ? career.graphics : career.high === false ? 'performance' : 'auto';
+  let graphicsMode = graphicsPreference();
   const graphics = createGraphicsController(graphicsMode, touchScreen.matches);
   let profile;
   let fps = 0;
-  let menuFrameDue = 0;
   let guestEffects;
   let guestTap = false;
   let seated = false;
@@ -256,7 +288,13 @@ async function boot() {
   let brakeResult;
   let driftRun,roundPlan,roundOutcome,elimination,parkour,practiceStarted;
   let wakeStrength=0;
-  let neon, neonSelected=false, neonBest, neonResetAt=-Infinity;
+  let neon, neonSelected=false, neonBest, neonResetAt=-Infinity, ghostEnabled=true;
+  let ghostSession, ghostView;
+  const ghostRecords = new Map();
+  const ghostPose = [];
+  const ghostMaterial = new THREE.MeshBasicMaterial({
+    color:0xa7f4db, transparent:true, opacity:.31, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-1,
+  });
   let lastRespawn = -Infinity;
   let lastScore;
   const heading = new THREE.Quaternion();
@@ -273,6 +311,7 @@ async function boot() {
   const gear = $('#gear');
   const rev = $('#rev');
   const driftHud = $('#drift-hud');
+  const lessonHud = $('#lesson-hud');
   const driftTime = $('#drift-time');
   const driftScore = $('#drift-score');
   const driftCombo = $('#drift-combo');
@@ -291,21 +330,16 @@ async function boot() {
   const raceRetry = $('#race-retry');
   const raceStartBanner = $('#race-start-banner');
   const number = new Intl.NumberFormat('ru-RU');
-  const duoSetup = $('#duo-setup');
-  const practiceSetup = $('#practice-setup');
-  const neonDialog = $('#neon-dialog'), neonCar = $('#neon-car'), neonRoute = $('#neon-route');
   const neonHud = $('#neon-hud'), neonBoost = $('#neon-boost');
   const specialKeys=['ShiftLeft','KeyQ','KeyX','KeyF','Digit9','Digit0','KeyZ'];
   const boostCode=()=>specialKeys.find(code=>!Object.values(pit.keys[0]).includes(code));
   const neonNow = (now=performance.now()) => roundPlan ? online.now+now-performance.now() : now;
   const soloRoute = $('#solo-route');
-  const bindingsPanel = $('#bindings-panel');
   const online = createOnlineView({
     scene, models:FLEET, selection:() => pit.selected,
     start(id, route, mode) {
-      show('pit',true);
+      show('pit',true,id);
       layout = routeFor(route);
-      setCar(id);
       neonSelected = mode==='race';
       training = '0';
       seated = true;
@@ -402,9 +436,6 @@ async function boot() {
     paint:id => pit.cars[id].color,
     impact:correction => physics.applyRoomImpact(correction),
   });
-  const bindingsGrid = $('#bindings-grid');
-  const bindingsStatus = $('#bindings-status');
-  let bindingTarget;
   function driverCodes(index,action) {
     const code = pit.keys[index][action];
     const soloAlias = DEFAULT_KEYS[1][action];
@@ -422,46 +453,21 @@ async function boot() {
     const keys = pit.keys[index];
     return ['gas','brake','left','right'].map(action => keyLabel(keys[action])).join(' ') + ' + ' + keyLabel(keys.handbrake);
   }
-  function renderBindings() {
-    bindingsGrid.innerHTML = pit.keys.map((keys,index) => `<section><h3>Игрок ${index+1}</h3>${Object.entries(DRIVING_ACTIONS).map(([action,label]) =>
-      `<div class="pit-row"><span>${label}</span><button type="button" data-player="${index}" data-action="${action}" aria-label="Игрок ${index+1}, ${label}">${keyLabel(keys[action])}</button></div>`).join('')}</section>`).join('');
-    for (const index of [0,1]) $(`#duo-bindings-${index+1}`).textContent = keyboardSummary(index);
-    $('#race-start-banner kbd').textContent = keyLabel(pit.keys[0].gas);
-  }
-  renderBindings();
   const raceEvents = $('#drift-events');
   const replayButton = $('#drift-replay');
   const duoReplayButton = $('#duo-replay');
   const finishButton = $('#drift-finish');
   const replayBanner = $('#replay-banner');
-  const assistLevel = $('#assist-level');
-  assistLevel.value = pit.assist;
   physics.setAssist(pit.assist);
   const padActive = () => training === 'pad' && onCircuit;
-  const practiceRoute = $('#practice-route');
-  const practiceZone = $('#practice-zone');
-  function updatePracticeZones() {
-    practiceZone.closest('label').hidden = practiceRoute.value==='port';
-    practiceZone.innerHTML = '<option value="pad">Площадка для восьмёрок</option>' +
-      routeFor(practiceRoute.value).gates.map((_,i) => `<option value="${i}">Перед створом ${i+1}</option>`).join('');
-    practiceZone.options[0].hidden = practiceRoute.value === 'stadium';
-    if (practiceRoute.value !== 'main') practiceZone.value = '0';
-  }
-  practiceRoute.onchange = updatePracticeZones;
-  updatePracticeZones();
   const duoHud = $('#duo-race');
   const duoDrivers = [1,2].map(index => ({
     label: $(`#duo-label-${index}`), score: $(`#duo-score-${index}`), info: $(`#duo-info-${index}`),
   }));
   const duoTime = $('#duo-time');
   const duoResult = $('#duo-result');
-  const duoOptions = Object.keys(FLEET).map(id => `<option value="${id}">${MODELS[id].name}</option>`).join('');
-  $('#duo-car-1').innerHTML = $('#duo-car-2').innerHTML = duoOptions;
-  $('#practice-car').innerHTML = duoOptions;
-  $('#duo-car-1').value = pit.selected;
-  $('#duo-car-2').value = 'cls';
-  const mapPaths = new Map([mainLayout,shortLayout,stadiumLayout,cityLayout,parkourLayout].map(route =>
-    [route,'M ' + route.road.map(p => `${p.x.toFixed(2)} ${(-p.z).toFixed(2)}`).join(' L ') + (route.port ? '' : ' Z')]));
+  const mapPaths = new Map([mainLayout,shortLayout,stadiumLayout,linkLayout,cityLayout,parkourLayout]
+    .map(route=>[route,trackMapPath(route)]));
 
   const condition = () => pit.cars[modelId];
   const garageMode = () => state === 'pit';
@@ -472,18 +478,24 @@ async function boot() {
     saveElapsed = 0;
   }
 
+  function driftBestKey(route) {
+    return route.stadiumLink ? 'stadiumSBest' : route.short ? 'shortBest' : 'best';
+  }
+
   function finishRun(bank = true) {
-    if (!driftRun || neon) return;
+    if (!driftRun || neon || lesson) return;
     driftRun.finish(bank);
     recorder?.tick(0,physics,driftRun.run);
-    if (bank && !guest && !training && !layout.stadium && !layout.port && !layout.city) {
+    if (bank && !guest && !training && (!layout.stadium || layout.stadiumLink) && !layout.port && !layout.city) {
       lastScore = driftRun.run.score;
-      const key = layout.short ? 'shortBest' : 'best';
+      const key = driftBestKey(layout);
       condition()[key] = Math.max(condition()[key], lastScore);
     }
-    if (layout.stadium) condition().stadiumBest = Math.max(condition().stadiumBest,driftRun.run.bestCircle);
+    if (layout.stadium && !layout.stadiumLink && !training) {
+      condition().stadiumBest = Math.max(condition().stadiumBest,driftRun.run.bestCircle);
+    }
     persistPit();
-    arena.markGate(-1);
+    raceWorld().markGate(-1);
   }
 
   function activeRegion() {
@@ -540,7 +552,7 @@ async function boot() {
     $('#map-district').style.display = state === 'shift' ? '' : 'none';
     $('#map-pit').toggleAttribute('hidden', !workshop);
     $('#map-arena').toggleAttribute('hidden', !onCircuit);
-    mapGate.style.display = online.active || layout.stadium || layout.port ? 'none' : '';
+    mapGate.style.display = online.active || layout.stadium && !layout.stadiumLink || layout.port ? 'none' : '';
     $('#map-arena rect').toggleAttribute('hidden',layout.stadium || layout.port || layout.city);
     $('#map-legend').hidden = state !== 'shift';
     $('#map-svg').setAttribute('viewBox', onCircuit ? layout.city ? cityLayout.mapViewBox : layout.port ? portMapView(physics.position.z) : layout.stadium ? stadiumLayout.mapViewBox : '-91 -256 182 152'
@@ -548,23 +560,25 @@ async function boot() {
     $('#map-title').textContent = onCircuit ? layout.city ? 'РЕЧНОЙ ПРОСПЕКТ' : layout.port ? 'ПОРТ' : layout.stadium ? 'СТАДИОН' : 'КОНТУР 67' : workshop ? 'ГАРАЖ' : 'РАЙОН 01';
     $('#location-area').textContent = padActive() ? 'ВОСЬМЁРКИ' : onCircuit ? (layout.city ? 'РЕЧНОЙ ПРОСПЕКТ' : layout.port ? 'ПОРТ' : layout.stadium ? 'СТАДИОН' : layout.short ? 'КОРОТКАЯ ПЕТЛЯ' : 'КОНТУР 67') : workshop ? 'ГАРАЖ' : 'БОКС 01';
     $('#map-course').setAttribute('d', mapPaths.get(layout));
-    $('#map-alternates').toggleAttribute('hidden',!layout.port && !layout.stadium);
-    if (layout.port || layout.stadium) {
+    $('#map-alternates').toggleAttribute('hidden',!layout.port && !layout.stadium || layout.stadiumLink);
+    if (layout.port || layout.stadium && !layout.stadiumLink) {
       const branches = layout.stadium ? [layout.connector] : layout.branches;
       $('#map-alternates').setAttribute('d',branches.map(points=>
         'M '+points.map(p=>`${p.x.toFixed(2)} ${(-p.z).toFixed(2)}`).join(' L ')).join(' '));
     }
+    $('#drift-track-name').textContent = layout.stadiumLink ? 'S-СВЯЗКА' : $('#location-area').textContent;
     $('#race-start-banner .label').textContent = `${$('#location-area').textContent} / СТАРТ`;
     $('#location-mode').textContent = onCircuit ? (neon ? 'НЕОНОВЫЕ ГОНКИ' : online.active ? 'ВМЕСТЕ' : training ? 'ТРЕНИРОВКА' : duoFree ? 'СВОБОДНЫЙ ЗАЕЗД' : tandem ? 'ТАНДЕМ' : 'ДРИФТ') : workshop ? 'ДРИФТ-КЛУБ' : 'МАСТЕРСКАЯ';
     $('.job').hidden = onCircuit;
-    driftHud.hidden = !onCircuit || !!guest || online.active || layout.port || Boolean(neon);
+    driftHud.hidden = !onCircuit || !!guest || online.active || layout.port || Boolean(neon || lesson);
+    lessonHud.hidden = !onCircuit || !lesson;
     const parkourHud = $('#parkour-hud');
     parkourHud.hidden = !onCircuit || !layout.port || online.active;
     const signalParent = online.active ? $('#match-panel') : parkourHud;
     if (portSignalHud.parentElement!==signalParent) signalParent.append(portSignalHud);
     portSignalHud.hidden = true;
     portRespawn.hidden = !onCircuit || !layout.port;
-    raceStartBanner.hidden = !onCircuit || !!guest || online.active || layout.port || Boolean(neon);
+    raceStartBanner.hidden = !onCircuit || !!guest || online.active || layout.port || Boolean(neon || lesson);
     duoHud.hidden = !guest;
     $('#duo-retry').textContent = duoFree ? 'На старт · T' : 'Повтор · T';
     hud.classList.toggle('is-duo',!!guest);
@@ -579,8 +593,17 @@ async function boot() {
     if (document.pointerLockElement === canvas) document.exitPointerLock();
   }
 
-  function launchDrift() {
-    if (!garageMode() || onCircuit || manual || lifted) return;
+  async function launchDrift() {
+    if (!garageMode() || onCircuit || manual || lifted || enteringTrack) return;
+    const route = routeFor(soloRoute.value);
+    enteringTrack = true;
+    try {
+      if (!circuitKit && (route===mainLayout || route===shortLayout)) tell('Готовим трассу…');
+      await loadCircuitKit(route);
+      if (!garageMode() || onCircuit || manual || lifted || route!==routeFor(soloRoute.value)) return;
+    } finally {
+      enteringTrack = false;
+    }
     const inCar=seated;
     seated=true;
     startRace();
@@ -611,16 +634,26 @@ async function boot() {
     const racingTrack=neonSelected ? neonTracks.get(layout) : undefined;
     neon = racingTrack ? createNeonRun(racingTrack.course,nextRound?.startsAt ?? (online.active ? Infinity : practiceStarted+3000)) : undefined;
     neonBest = racingTrack && !online.active ? readRaceBest(storage,racingTrack.id) : null;
+    clearGhost();
+    if (racingTrack && !online.active) {
+      const {id} = racingTrack;
+      const record = ghostRecords.get(id) ?? readRaceGhost(storage,id);
+      ghostSession = createGhostSession(modelId,record,best=>{
+        ghostRecords.set(id,best);
+        saveRaceGhost(storage,id,best);
+      });
+    }
+    lesson = lessonId ? createLessonAttempt(lessonId) : undefined;
     parkour = layout.port ? portCourse(nextRound?.startsAt ?? practiceStarted) : undefined;
     const {x,z,yaw,gate,y} = racingTrack ? racingTrack.course.grid(online.active ? online.slot : undefined)
       : training && !online.active && !layout.port ? practiceStart(layout,training) : layout.spawn;
     const options = {
-      duration: tandem ? TANDEM_HEAT : undefined, free: !!training || duoFree || layout.stadium && !tandem || Boolean(nextRound),
+      duration: tandem ? TANDEM_HEAT : undefined, free: !!training || duoFree || layout.stadium && !layout.stadiumLink && !tandem || Boolean(nextRound),
       pad: padActive() ? PRACTICE_PAD : null, startGate: gate ?? 0,
     };
     driftRun = createRun(layout,options);
     if (!nextHeat) previousBest = undefined;
-    recorder = duoFree || online.active || neon ? undefined : createReplayRecorder();
+    recorder = duoFree || online.active || neon || lesson ? undefined : createReplayRecorder();
     guestRecorder = guest && !duoFree ? createReplayRecorder() : undefined;
     eventCursor = 0;
     raceEvents.replaceChildren();
@@ -645,16 +678,25 @@ async function boot() {
     padEffects.reset();
     raceWorld().markGate(duoFree || online.active || neon ? -1 : (gate ?? 0),-1,layout);
     syncScene();
+    if (lesson) renderLesson();
     updateControls();
     resetCamera();
     resumeAudio();
     notice.hidden = true;
   }
 
-  function returnToClub() {
-    if (!garageMode() || !onCircuit) return;
+  async function returnToClub() {
+    if (!garageMode() || !onCircuit || returning) return;
     if (guest || training || neon) {
-      show('pit');
+      const current = driftRun;
+      returning = true;
+      tell('Готовим гараж…');
+      try {
+        await prepareGarage();
+        if (garageMode() && onCircuit && driftRun===current) show('pit');
+      } finally {
+        returning = false;
+      }
       return;
     }
     finishRun();
@@ -692,9 +734,8 @@ async function boot() {
 
   function startDuo(first,second,mode,route,contacts) {
     if (!Object.hasOwn(FLEET,first) || !Object.hasOwn(FLEET,second)) return;
-    show('pit');
+    show('pit',false,first);
     layout = route;
-    setCar(first);
     guestEffects = raceWorld().makeGuestEffects();
     guest = createGuest({
       scene, rig: visuals[second], world: physics, spec: MODELS[second],
@@ -844,7 +885,6 @@ async function boot() {
     updateRenderCamera(camera);
     if (guest) updateRenderCamera(guest.camera);
     resizeRenderBuffer();
-    menuFrameDue = 0;
   }
 
   function textureAnisotropy() {
@@ -877,7 +917,7 @@ async function boot() {
       reading.textContent = `Кузов ${Math.floor(wear.body)}% · Шины ${Math.floor(wear.tires)}% · Тормоза ${Math.floor(wear.brakes)}% · АКБ ${Math.floor(wear.battery)}%`;
       if (!manual && lastScore !== undefined) title.textContent = `Заезд · ${number.format(lastScore)} очков`;
       if (soloRoute.value === 'stadium') $('#money').textContent = `Рекорд ${Math.round(wear.stadiumBest)}%`;
-      else $('#money').textContent = `Рекорд ${number.format(wear[routeFor(soloRoute.value).short ? 'shortBest' : 'best'])}`;
+      else $('#money').textContent = `Рекорд ${number.format(wear[driftBestKey(routeFor(soloRoute.value))])}`;
       raceStart.hidden = onCircuit || Boolean(manual) || lifted;
       $('#solo-route-row').hidden = raceStart.hidden;
       return;
@@ -913,6 +953,7 @@ async function boot() {
     $('#crosshair').hidden = seated;
     let hints;
     const label = (action,index=0) => keyLabel(pit.keys[index][action]);
+    $('#race-start-banner kbd').textContent = label('gas');
     if (neon) hints = [[label('gas'),'газ'],[label('brake'),'тормоз'],[label('left')+' / '+label('right'),'руль'],
       [keyLabel(boostCode()),'нитро'],['ПКМ + мышь','обзор'],['T','возврат на трассу']];
     else if (guest) hints = [['Игрок 1', keyboardSummary(0)],['Игрок 2',keyboardSummary(1)],
@@ -931,6 +972,7 @@ async function boot() {
     cancelManual();
     rig.root.removeFromParent();
     rig = visuals[id];
+    if (id==='sedan' || id==='touring') rig.hubs[0].add(wheelMark);
     rig.root.visible = true;
     model = MODELS[id];
     modelId = id;
@@ -940,6 +982,7 @@ async function boot() {
     if (inFleet) physics.reset(STALLS[id], STALL_Z);
     for (const [key, x] of Object.entries(STALLS)) {
       const parkedRig = visuals[key];
+      if (!parkedRig) continue;
       parkedRig.root.removeFromParent();
       parkedRig.root.visible = true;
       for (const paint of parkedRig.paints) paint.color.set(pit.cars[key].color);
@@ -1084,17 +1127,18 @@ async function boot() {
     persistPit();
   });
 
-  function show(next, keepRoom = false) {
+  function show(next, keepRoom = false, id = visuals[pit.selected] ? pit.selected : modelId) {
     if (garageMode()) {
       if (onCircuit) finishRun();
       persistPit();
     }
     if (!keepRoom) online.clear();
     roundPlan = roundOutcome = elimination = parkour = neon = undefined;
+    clearGhost();
     neonSelected=false;
     stopDuo();
     layout = mainLayout;
-    training = tandem = undefined;
+    training = tandem = lessonId = lesson = undefined;
     recorder = guestRecorder = previousBest = undefined;
     closeReplay();
     clearControls();
@@ -1109,15 +1153,17 @@ async function boot() {
     driftRun = null;
     lastScore = undefined;
     arena.markGate(-1);
+    stadium.markGate(-1);
     raceWorld().fx.reset();
     padEffects.reset();
-    setCar(next === 'shift' ? job().car : pit.selected);
+    setCar(next === 'shift' ? job().car : id);
     camera.position.copy(player);
     camera.lookAt(0, 1.2, next === 'pit' ? STALL_Z : .4);
     resetCamera();
     syncScene();
+    document.body.classList.toggle('is-playing',state!=='menu');
     $('#welcome').hidden = state !== 'menu';
-    hud.hidden = state === 'menu';
+    $('.location').hidden = hud.hidden = state === 'menu';
     $('#menu').hidden = state === 'menu';
     notice.hidden = true;
     updateJob();
@@ -1514,29 +1560,8 @@ async function boot() {
   document.addEventListener('visibilitychange', clearControls);
 
   document.addEventListener('keydown', event => {
-    if (bindingsPanel.open) {
-      if (!bindingTarget || event.ctrlKey || event.metaKey || event.altKey || event.code === 'Tab') return;
-      event.preventDefault();
-      if (event.repeat) return;
-      const { index,action } = bindingTarget;
-      if (event.code === 'Escape') {
-        bindingTarget = undefined;
-        bindingsStatus.textContent = 'Выбери действие и нажми новую клавишу.';
-      } else if (!allowedKey(event.code)) {
-        bindingsStatus.textContent = 'Эта клавиша зарезервирована. Нажми другую.';
-      } else if (pit.keys.some((keys,i) => Object.entries(keys).some(([name,code]) => code === event.code && (i !== index || name !== action)))) {
-        bindingsStatus.textContent = 'Клавиша уже занята. Выбери другую.';
-      } else {
-        pit.keys[index][action] = event.code;
-        bindingTarget = undefined;
-        bindingsStatus.textContent = 'Управление сохранено.';
-        persistPit();
-        renderBindings();
-        updateControls();
-      }
-      return;
-    }
-    if (state === 'menu' || pitPanel.open || duoSetup.open || practiceSetup.open || neonDialog.open || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (state === 'menu' || document.querySelector('dialog[open]') || event.defaultPrevented ||
+        event.ctrlKey || event.metaKey || event.altKey) return;
     if (replay) {
       if (event.code === 'Escape') closeReplay();
       return;
@@ -1579,7 +1604,7 @@ async function boot() {
       case 'KeyL': toggleLift(); break;
       case 'KeyC':
         if (seated) {
-          if (rig === bmw) cockpit = !cockpit;
+          if (modelId==='sedan' || modelId==='touring') cockpit = !cockpit;
           else raceCamera = 1 - raceCamera;
           cameraCut = true;
         }
@@ -1606,8 +1631,7 @@ async function boot() {
   const touchHandbrake = touchControls.querySelector('[data-drive="handbrake"]');
   const touchPedals = [...touchControls.querySelectorAll('[data-drive]')];
   const touchCommands = [...touchActions.querySelectorAll('[data-command]')];
-  const touchMenuOpen = () => state === 'menu' || pitPanel.open || practiceSetup.open || duoSetup.open ||
-    bindingsPanel.open || replay;
+  const touchMenuOpen = () => state === 'menu' || document.querySelector('dialog[open]');
 
   for (const button of touchPedals) {
     const drive = button.dataset.drive;
@@ -1659,115 +1683,9 @@ async function boot() {
   });
 
   action.onclick = () => { action.blur(); interaction()?.run(); };
-  $('#bindings-open').onclick = () => { clearControls(); bindingsPanel.showModal(); };
-  bindingsPanel.onclose = () => { bindingTarget = undefined; clearControls(); $('#bindings-open').blur(); };
-  bindingsGrid.onclick = event => {
-    const button = event.target.closest('button');
-    if (!button) return;
-    bindingTarget = { index:Number(button.dataset.player),action:button.dataset.action };
-    bindingsStatus.textContent = `${DRIVING_ACTIONS[bindingTarget.action]} · нажми новую клавишу или Esc.`;
-  };
-  $('#bindings-reset').onclick = () => {
-    pit.keys = loadBindings();
-    bindingTarget = undefined;
-    persistPit();
-    renderBindings();
-    updateControls();
-    bindingsStatus.textContent = 'Восстановлены исходные клавиши.';
-  };
-  for (const [id,model] of Object.entries(FLEET)) neonCar.add(new Option(model.code,id));
-  function updateNeonRecord() {
-    const track=routeFor(neonRoute.value), {road}=track;
-    const best=readRaceBest(storage,neonTracks.get(track).id);
-    const xs=road.map(p=>p.x), zs=road.map(p=>p.z);
-    const x=Math.min(...xs), z=Math.max(...zs);
-    const w=Math.max(...xs)-x,h=z-Math.min(...zs);
-    const diagram=$('#neon-diagram'), pad=Math.max(w,h)*.12;
-    diagram.setAttribute('viewBox',[x-pad,-z-pad,w+2*pad,h+2*pad].join(' '));
-    $('#neon-outline').setAttribute('d',mapPaths.get(track));
-    $('#neon-origin').setAttribute('cx',road[0].x);
-    $('#neon-origin').setAttribute('cy',-road[0].z);
-    $('#neon-origin').setAttribute('r',w*.027);
-    $('#neon-distance').textContent=Math.round(neonTracks.get(track).course.length)+' м / круг';
-    $('#neon-districts').textContent=track.city ? 'Бульвар · Речной мост · Рынок · Тоннель' : track.stadium ? 'Круг постоянного радиуса' : 'Связки и перепады высоты';
-    const record=$('#neon-best');
-    record.hidden=best===null;
-    record.textContent=best===null ? '' : 'Твой рекорд · '+formatTime(best,2);
-  }
-  $('#neon-open').onclick = () => {
-    $('#neon-open').blur();
-    neonCar.value=pit.selected;
-    updateNeonRecord();
-    neonDialog.showModal();
-  };
-  $('#neon-close').onclick = () => neonDialog.close();
-  neonRoute.onchange = updateNeonRecord;
-  $('#neon-friends').onclick = () => {
-    neonDialog.close();
-    online.openRace(neonRoute.value,neonCar.value);
-  };
-  $('#neon-form').onsubmit = event => {
-    event.preventDefault();
-    const id=neonCar.value, track=routeFor(neonRoute.value);
-    if (!Object.hasOwn(FLEET,id) || !neonTracks.has(track)) return;
-    neonDialog.close();
-    document.activeElement?.blur();
-    show('pit');
-    neonSelected=true;
-    layout=track;
-    setCar(id);
-    seated=true;
-    startRace();
-  };
   neonBoost.onclick = () => { neonBoost.blur(); activateNitro(); };
   $('#neon-retry').onclick = () => { $('#neon-retry').blur(); startRace(); };
   $('#neon-back').onclick = () => show('menu');
-  $('#start').onclick = () => { $('#start').blur(); show('pit'); };
-  $('#duo-open').onclick = () => { $('#duo-open').blur(); duoSetup.showModal(); };
-  $('#duo-cancel').onclick = () => duoSetup.close();
-  $('#duo-form').onsubmit = event => {
-    event.preventDefault();
-    const first = $('#duo-car-1').value, second = $('#duo-car-2').value;
-    duoSetup.close();
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    startDuo(first,second,$('#duo-mode').value,routeFor($('#duo-route').value),$('#duo-contact').value === 'on');
-  };
-  $('#duo-mode').onchange = event => {
-    $('#duo-contact-row').hidden = event.target.value !== 'free';
-    $('#duo-rules').textContent = {
-      free: 'Катайтесь по трассе сколько хотите. T возвращает обе машины на старт.',
-      points: '90 секунд. Побеждает тот, кто наберёт больше очков.',
-      tandem: 'Два заезда по 45 секунд. Ведомый получает бонус за близость и синхронный занос. После первого заезда поменяйтесь ролями.',
-    }[event.target.value];
-  };
-  $('#practice-open').onclick = () => {
-    $('#practice-open').blur();
-    $('#practice-car').value = pit.selected;
-    practiceSetup.showModal();
-  };
-  $('#practice-cancel').onclick = () => practiceSetup.close();
-  $('#practice-form').onsubmit = event => {
-    event.preventDefault();
-    const id = $('#practice-car').value;
-    const zone = practiceZone.value;
-    const route = routeFor(practiceRoute.value);
-    if (!Object.hasOwn(FLEET,id) || route.stadium && zone === 'pad' || zone !== 'pad' && !route.gates[Number(zone)]) return;
-    practiceSetup.close();
-    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-    show('pit');
-    layout = route;
-    setCar(id);
-    training = zone;
-    seated = true;
-    startRace();
-  };
-  assistLevel.onchange = () => {
-    pit.assist = assistLevel.value;
-    physics.setAssist(pit.assist);
-    guest?.physics.setAssist(pit.assist);
-    assistLevel.blur();
-    persistPit();
-  };
   finishButton.onclick = () => { finishButton.blur(); finishRun(); };
   replayButton.onclick = () => { replayButton.blur(); openReplay(); };
   $('#replay-close').onclick = closeReplay;
@@ -1776,7 +1694,6 @@ async function boot() {
   portRespawn.onclick = () => { portRespawn.blur(); respawnAction(); };
   $('#parkour-back').onclick = () => show('menu');
   $('#duo-back').onclick = () => { $('#duo-back').blur(); returnToClub(); };
-  $('#shift').onclick = () => { $('#shift').blur(); show('shift'); };
   raceStart.onclick = () => { raceStart.blur(); launchDrift(); };
   soloRoute.onchange = () => { soloRoute.blur(); updateJob(); };
   raceRetry.onclick = () => { raceRetry.blur(); startRace(); };
@@ -1793,23 +1710,23 @@ async function boot() {
     if (document.hidden && dirty) persistPit();
   });
   $('#menu').onclick = () => { $('#menu').blur(); show('menu'); };
-  $('#graphics').onchange = event => {
-    if (!modes.has(event.target.value)) return;
-    graphicsMode = career.graphics = event.target.value;
-    career.high = graphicsMode === 'auto' || graphicsMode === 'ultra';
-    graphics.setMode(graphicsMode);
-    fpsTime = fpsFrames = 0;
-    event.target.blur();
-    quality();
-    saved();
-  };
-  $('#audio').onclick = () => {
-    $('#audio').blur();
-    career.muted = !career.muted;
-    $('#audio').textContent = career.muted ? 'Звук: выкл' : 'Звук: вкл';
-    if (!career.muted) resumeAudio();
-    saved();
-  };
+  document.addEventListener('garage-setting', ({detail}) => {
+    if (detail==='open') {
+      clearControls();
+      mouseDown = orbitHeld = false;
+      if (document.pointerLockElement===canvas) document.exitPointerLock();
+    } else if (detail==='graphics') {
+      graphicsMode = graphicsPreference();
+      graphics.setMode(graphicsMode);
+      fpsTime = fpsFrames = 0;
+      quality();
+    } else if (detail==='assist') {
+      physics.setAssist(pit.assist);
+      guest?.physics.setAssist(pit.assist);
+    } else if (detail==='audio' && !career.muted && state!=='menu') {
+      resumeAudio();
+    } else if (detail==='keys') updateControls();
+  });
   window.addEventListener('resize', quality);
 
   function resumeAudio() {
@@ -1915,15 +1832,17 @@ async function boot() {
     tappedHandbrake = false;
     const drifting = garageMode() && onCircuit && !layout.port && !neon;
     const driveTime=neon ? neonNow(now) : now;
-    const frozen = (online.competitive && (!online.roundLive || roundOutcome)) || parkour?.elapsed!==undefined ||
+    const lessonDone = lesson && ['success','retry'].includes(lesson.state.status);
+    const frozen = lessonDone || (online.competitive && (!online.roundLive || roundOutcome)) || parkour?.elapsed!==undefined ||
       neon && (driveTime<neon.startsAt || neon.elapsed!==undefined);
     const canDrive = !frozen && seated && (!garageMode() || onCircuit);
     const guestBrake = guest && (guestTap || drivingKey(1,'handbrake'));
     guestTap = false;
     const wakeTarget=neon && online.roundLive && canDrive ? online.draftAt(physics.position,physics.velocity,performance.now()) : 0;
     wakeStrength=damp(wakeStrength,wakeTarget,wakeTarget>0 ? 2.4 : 6,STEP);
+    const gas = canDrive && !unsecured && (onCircuit ? drivingKey(0,'gas') : walkKey('gas','KeyW','ArrowUp'));
     physics.tick({
-      gas: canDrive && !unsecured && (onCircuit ? drivingKey(0,'gas') : walkKey('gas', 'KeyW', 'ArrowUp')),
+      gas,
       reverse: canDrive && !unsecured && (onCircuit ? drivingKey(0,'brake') : walkKey('brake', 'KeyS', 'ArrowDown')),
       turn: canDrive ? Number(onCircuit ? drivingKey(0,'right') : walkKey('right', 'KeyD', 'ArrowRight'))
         - Number(onCircuit ? drivingKey(0,'left') : walkKey('left', 'KeyA', 'ArrowLeft')) : 0,
@@ -1970,8 +1889,16 @@ async function boot() {
     } else if (layout.port && onCircuit) {
       updatePort(performance.now());
     } else if (onCircuit && (!online.active || layout.stadium) && driftRun && driftRun.run.status !== 'finished') {
-      driftRun.tick(STEP,raceTelemetry(physics));
+      const telemetry = raceTelemetry(physics);
+      driftRun.tick(STEP,telemetry);
       recorder?.tick(STEP,physics,driftRun.run);
+      if (lesson) {
+        const {x,z} = telemetry.position;
+        lesson.tick(STEP,{
+          ...telemetry, gas, asphalt:stadiumSurface(x,z)===1,
+          sliding:driftRun.run.sliding, gate:driftRun.run.passedGate,
+        });
+      }
       if (driftRun.run.status === 'finished') finishRun();
       else raceWorld().markGate(driftRun.run.next,-1,layout);
     }
@@ -2027,6 +1954,7 @@ async function boot() {
     const spawn=neon.recover(now);
     if (!spawn) return;
     neonResetAt=now;
+    ghostSession?.reset();
     physics.reset(spawn.x,spawn.z,spawn.yaw,spawn.y);
     physics.running=true;
     resetCamera();
@@ -2035,10 +1963,64 @@ async function boot() {
   function updateNeon(now) {
     if (neon.elapsed!==undefined) return;
     const event=neon.tick(now,physics.position,physics.grounded);
+    if (now>=neon.startsAt && ghostSession) {
+      const {x,y,z}=physics.position, rotation=physics.rotation;
+      ghostSession.tick(now,[x,y,z,rotation.x,rotation.y,rotation.z,rotation.w],neon.crossing);
+    }
     if (event==='recover' || physics.up<.22 && physics.totalSpeed<1) neonReset(now);
     if (event==='finished' && !online.active) {
       neonBest=saveRaceBest(storage,neonTracks.get(layout).id,neon.elapsed+neon.resets*RESET_PENALTY);
     }
+  }
+
+  function clearGhost() {
+    ghostView?.root.removeFromParent();
+    ghostSession = ghostView = undefined;
+  }
+
+  function drawGhost(now) {
+    const ghost = ghostSession?.state;
+    const target = ghostEnabled && neon?.elapsed===undefined ? ghost?.target : null;
+    const pose = target && sampleRaceGhost(target,now-ghost.started,ghostPose);
+    if (!pose) {
+      if (ghostView) ghostView.root.visible=false;
+      return;
+    }
+    if (ghostView?.model!==target.model) {
+      ghostView?.root.removeFromParent();
+      const visual = visuals[target.model];
+      const root = (visual ?? rig).root.clone(true);
+      root.traverse(object=>{
+        if (object.isLight) object.visible=false;
+        if (!object.isMesh) return;
+        object.castShadow=object.receiveShadow=false;
+        object.material=ghostMaterial;
+      });
+      root.scale.set(1,1,visual ? MODELS[target.model].length : model.length);
+      scene.add(root);
+      ghostView = { model:target.model, root };
+    }
+    const {root} = ghostView;
+    root.visible = true;
+    root.position.fromArray(pose);
+    root.quaternion.fromArray(pose,3);
+    ghostMaterial.opacity = root.position.distanceToSquared(physics.position)<14 ? .17 : .31;
+  }
+
+  function renderGhostSplit() {
+    const state = ghostSession?.state;
+    const panel = $('#neon-split'), label = $('#neon-split-label'), value = $('#neon-split-time');
+    panel.hidden = !state || !ghostEnabled;
+    if (panel.hidden) return;
+    const split = state.split;
+    const delta = split?.delta;
+    value.dataset.pace = delta<0 ? 'ahead' : delta>0 ? 'behind' : '';
+    value.textContent = split?.record ? formatTime(state.best.duration,2) : Number.isFinite(delta)
+      ? (delta<0 ? '−' : '+')+(Math.abs(delta)/1000).toFixed(2).replace('.',',')+' с' : '';
+    if (state.invalid) label.textContent = 'Сравнение со следующего круга';
+    else if (split?.record) label.textContent = 'Новый лучший круг';
+    else if (Number.isFinite(delta)) label.textContent = split.sector===4 ? 'Полный круг' : 'Сектор '+split.sector;
+    else label.textContent = state.best ? 'Призрак лучшего круга' : 'Призрак появится после чистого круга';
   }
 
   function neonText() {
@@ -2095,6 +2077,7 @@ async function boot() {
     neonBoost.disabled=!active || !neon.charges || neon.boosted(now) || Boolean(roundOutcome);
     neonBoost.classList.toggle('is-boosting',neon.boosted(now));
     $('#neon-replay').hidden=!done || online.active;
+    renderGhostSplit();
     mapGate.style.display = done ? 'none' : '';
     if (!done) markerPosition(mapGate,neon.gate.point.x,neon.gate.point.z);
   }
@@ -2224,6 +2207,7 @@ async function boot() {
     if (garageMode()) {
       pitOpen.hidden = !insideBay();
       if (guest) renderDuo();
+      else if (onCircuit && lesson) renderLesson();
       else if (onCircuit && driftRun && !online.active && !layout.port && !neon) renderDrift();
       else if (now >= nextPitHud) {
         updateJob();
@@ -2252,7 +2236,7 @@ async function boot() {
     }
     if (neon && !neonHud.hidden) renderNeon();
     $('#online-stadium-score').hidden = !(online.active && layout.stadium && !online.competitive);
-    if (layout.stadium && driftRun && !neon) {
+    if (layout.stadium && !layout.stadiumLink && driftRun && !neon) {
       const {circle,bestCircle} = driftRun.run;
       const text = `Занос ${Math.round(circle)}% · лучший ${Math.round(Math.max(bestCircle,condition().stadiumBest))}%`;
       if (online.active) {
@@ -2278,10 +2262,51 @@ async function boot() {
     }
   }
 
+  function renderLesson() {
+    const current = LESSONS[lessonId];
+    const {status,left,progress,streak,zones,feedback} = lesson.state;
+    $('#lesson-title').textContent = current.title;
+    $('#lesson-hint').textContent = lessonInstruction(lessonId,touchScreen.matches ? '«Ручник»' : keyLabel(pit.keys[0].handbrake));
+    $('#lesson-progress').value = progress;
+    $('#lesson-time').textContent = Math.ceil(left)+' с';
+    $('#lesson-metric').textContent = lessonId==='link' ? zones+'/2 зоны'
+      : Math.min(streak,current.target).toFixed(2).replace('.',',')+' / '+current.target.toFixed(2).replace('.',',')+' с';
+    const result = $('#lesson-feedback');
+    result.hidden = !feedback;
+    result.dataset.result = status;
+    if (result.textContent!==feedback) result.textContent=feedback;
+    const next = $('#lesson-next');
+    next.hidden = status!=='success';
+    next.textContent = lessonId==='link' ? 'К тренировкам' : 'Следующий урок';
+    const gate = layout.gates[driftRun.run.next].position;
+    if (layout.stadiumLink) markerPosition(mapGate,gate.x,gate.z);
+  }
+
+  function startLesson(id,car) {
+    const config = LESSONS[id];
+    lessonId = id;
+    layout = routeFor(config.route);
+    if (modelId!==car) setCar(car);
+    training = String(config.gate);
+    seated = true;
+    startRace();
+  }
+
+  $('#lesson-retry').onclick = event => { event.currentTarget.blur(); startRace(); };
+  $('#lesson-next').onclick = event => {
+    event.currentTarget.blur();
+    if (lessonId==='link') {
+      show('menu');
+      $('#practice-open').click();
+      return;
+    }
+    startLesson(lessonId==='entry' ? 'hold' : 'link',modelId);
+  };
+
   function renderDrift() {
     const { run } = driftRun;
     const seconds = Math.ceil(run.time);
-    driftTime.textContent = training || layout.stadium ? 'БЕЗ ТАЙМЕРА' : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    driftTime.textContent = training || layout.stadium && !layout.stadiumLink ? 'БЕЗ ТАЙМЕРА' : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
     driftScore.textContent = number.format(run.score);
     driftCombo.textContent = run.chain >= 1 ? `+${Math.floor(run.chain)} · ×${run.multiplier}` : '';
     raceStartBanner.hidden = online.active || run.status !== 'ready';
@@ -2305,11 +2330,13 @@ async function boot() {
         : run.sliding ? 'Занос · держи угол и тягу' : pit.assist === 'sim'
           ? `На дуге коротко нажми ${handbrake} и поймай машину контррулём.`
           : `Добавь газ на дуге. Для быстрого входа коротко нажми ${handbrake}, затем поймай угол контррулём.`;
-    driftSector.textContent = padActive() ? 'Восьмёрки' : `Створ ${run.next+1}/${layout.gates.length} · клипы ${run.clips}`;
+    const gateLabel = run.status==='finished' ? 'Финиш' : layout.gates[run.next].label;
+    driftSector.textContent = padActive() ? 'Восьмёрки' : layout.stadiumLink
+      ? `${gateLabel} · клипы ${run.clips}/2` : `Створ ${run.next+1}/${layout.gates.length} · клипы ${run.clips}`;
     driftAngle.textContent = `Угол ${Math.round(run.angle)}°`;
     driftLaps.textContent = `Круги ${run.lap}`;
-    driftBest.textContent = training ? 'Свободная практика' : `Рекорд ${number.format(condition()[layout.short ? 'shortBest' : 'best'])}`;
-    mapGate.style.display = layout.stadium || run.status === 'finished' ? 'none' : '';
+    driftBest.textContent = training ? 'Свободная практика' : `Рекорд ${number.format(condition()[driftBestKey(layout)])}`;
+    mapGate.style.display = layout.stadium && !layout.stadiumLink || run.status==='finished' ? 'none' : '';
     const gate = layout.gates[run.next].position;
     markerPosition(mapGate, gate.x, gate.z);
   }
@@ -2403,18 +2430,12 @@ async function boot() {
     if (schedule) requestAnimationFrame(frame);
     clock.update(now);
     const elapsed = clock.getDelta();
-    if (document.hidden || contextLost) { accumulated=0; return; }
+    if (document.hidden || contextLost || state==='menu') { accumulated=0; return; }
     const dt = Math.min(elapsed, .1);
-    if (state === 'menu') {
-      if (now < menuFrameDue) return;
-      menuFrameDue = now + 1000/20;
-      accumulated = 0;
-    } else {
-      accumulated += dt;
-      while (accumulated >= STEP) {
-        step(now-(accumulated-STEP)*1000);
-        accumulated -= STEP;
-      }
+    accumulated += dt;
+    while (accumulated >= STEP) {
+      step(now-(accumulated-STEP)*1000);
+      accumulated -= STEP;
     }
     if (replay && replay.tick(dt,replayTarget,camera,safeChase)) closeReplay();
     if (state !== 'menu' && !pitPanel.open && !replay) physics.render(car,rig.wheels,accumulated/STEP,rig.hubs);
@@ -2433,7 +2454,7 @@ async function boot() {
       }
     }
     for (const lamp of rig.lampMeshes) lamp.visible = physics.braking;
-    rig.brakeLamps.emissiveIntensity = physics.braking ? 1.2 : rig === bmw ? 0 : .22;
+    rig.brakeLamps.emissiveIntensity = physics.braking ? 1.2 : modelId==='sedan' || modelId==='touring' ? 0 : .22;
     if (rig.windows) rig.windows.opacity = cockpit ? .16 : .84;
     if (rig.steering) rig.steering.rotation.z = -rig.hubs[0].rotation.y * 4;
     if (neon) neonTracks.get(layout).visual.update(neon,now,neonNow(now),physics.position,profile.far);
@@ -2473,6 +2494,7 @@ async function boot() {
     }
     performanceHud.begin();
     updateShadowMap(now);
+    if (neon && ghostSession) drawGhost(neonNow(now));
     renderer.info.reset();
     renderRaceViews(dt);
     performanceHud.end(elapsed);
@@ -2493,40 +2515,83 @@ async function boot() {
     }
   }
 
-  $('#audio').textContent = career.muted ? 'Звук: выкл' : 'Звук: вкл';
-  show('menu');
-  const [, equipment, trackKit] = await Promise.all([world.assetsReady, club.equipment, arena.kit]);
-  for (const root of [scene, club.room, arena.group, stadium.group, practice.root, legacyScenery, bmw.root, f90.root, cls.root, supra.root]) {
-    materials.collect(root);
+  async function launch(request,status) {
+    const {mode,car=pit.selected} = request;
+    const route = routeFor(request.route);
+    if (mode==='garage') {
+      status('Загружаем машины и оборудование гаража…');
+      await prepareGarage();
+      show('pit');
+    } else if (mode==='workshop') {
+      status('Готовим бокс и машину из заказа…');
+      await Promise.all([loadVisual('sedan'),world.assetsReady]);
+      materials.collect(legacyScenery);
+      show('shift');
+    } else if (mode==='online' || mode==='invite') {
+      status('Готовим машины для комнаты…');
+      await Promise.all([loadFleet(),loadCircuitKit(mainLayout)]);
+      if (mode==='invite') online.openInvite();
+      else if (request.route) online.openRace(request.route,car);
+      else online.open();
+    } else {
+      status('Загружаем выбранную машину и трассу…');
+      await Promise.all([loadVisual(car),request.second && loadVisual(request.second),
+        (mode==='neon' || request.zone!=='pad') && loadCircuitKit(route)]);
+      if (mode==='duo') {
+        startDuo(car,request.second,request.competition,route,request.contacts);
+        return;
+      }
+      show('pit',false,car);
+      if (mode==='practice' && request.lesson) {
+        startLesson(request.lesson,car);
+        return;
+      }
+      neonSelected = mode==='neon';
+      ghostEnabled = request.ghost!==false;
+      training = mode==='practice' ? request.zone : undefined;
+      layout = route;
+      seated = true;
+      startRace();
+    }
   }
+
+  for (const root of [scene,club.room,arena.group,stadium.group,practice.root,legacyScenery]) materials.collect(root);
   for (const surface of arena.collectMaterials) materials.register(surface);
-  profile = undefined;
-  const keep = new Set([car, world.contact, guestContact, district.sky, district.sunlight, district.sunlight.target,
-    district.marker, arena.group, stadium.group, club.room, practice.root, legacyScenery]);
+  const keep = new Set([car,world.contact,guestContact,district.sky,district.sunlight,district.sunlight.target,
+    district.marker,arena.group,stadium.group,club.room,practice.root,legacyScenery]);
   for (const object of [...scene.children]) {
     if (!keep.has(object) && !object.isLight) legacyScenery.add(object);
   }
-  syncScene();
-  $('#loading').textContent = 'Запускаем гараж…';
-  frame(performance.now(),false);
-  $('#neon-open').disabled = $('#online-open').disabled = $('#start').disabled = $('#shift').disabled = $('#duo-open').disabled = $('#practice-open').disabled = false;
-  online.openInvite();
+  show('menu');
+  canvas.addEventListener('webglcontextlost', event=>{
+    event.preventDefault();
+    contextLost=true;
+    clearControls();
+    $('#graphics-recovery').hidden=false;
+  });
+  canvas.addEventListener('webglcontextrestored', ()=>{
+    contextLost=false;
+    $('#graphics-recovery').hidden=true;
+    shadowDirty=true;
+  });
   Object.defineProperty(window, 'garageLife', { value: Object.freeze({
     getState: () => ({
       mode: state, seated, cockpit, running: physics.running, speed: physics.speed * 3.6,
       car: physics.position.toArray(), player: player.toArray(), yaw: camera.rotation.y, gate: door.position.y, lifted,
       hood: hoodOpen, trunk: trunkOpen, batteryHatch: hatchOpen, drift: driftRun ? { ...driftRun.run } : null, leaving, phase: phase(), job: job().id, money: career.money, completed: career.completed,
-      practice: training ?? null, route: layout.city ? 'city2' : layout.port ? 'port' : layout.stadium ? 'stadium' : layout.short ? 'short' : 'main', replay: !!replay, bestReplay: bestReplay()?.clip.points ?? null,
+      practice: training ?? null, route: layout.id ?? (layout.city ? 'city2' : layout.port ? 'port' : layout.short ? 'short' : 'main'), replay: !!replay, bestReplay: bestReplay()?.clip.points ?? null,
       tandem: tandem ? { heat:tandem.heat, leader:tandem.leader+1, done:tandem.done } : null,
       duo: guest ? { car: guest.physics.position.toArray(), speed: guest.physics.totalSpeed*3.6,
         drift: { ...guest.race.run } } : null,
+      lesson:lesson ? {...lesson.state,id:lessonId} : null, ghost:ghostSession ? {best:ghostSession.state.best?.duration,visible:!!ghostView?.root.visible} : null,
       model: modelId, onCircuit, orbit: { ...orbitState }, camera: camera.position.toArray(),
       manual: manual ? { ...manual, wheelRemoved: !!removedWheel } : null, fleet: Object.keys(STALLS),
-      workshopAsset: equipment, trackAsset: trackKit, importedCars: [f90,cls,supra].filter(rig => rig.external).length, setup: garageMode() ? { ...condition() } : null,
+      workshopAsset: equipment, trackAsset: trackKit, importedCars: Object.values(visuals).filter(visual=>visual.external).length, setup: garageMode() ? { ...condition() } : null,
       assets: { ...world.assetStatus }, render: { ...renderer.info.render }, graphics: graphicsMode,
       activeColliders:physics.activeColliderCount(), activeRouteWorlds:[...routeWorlds.keys()], reducedCar:false,
       graphicsLevel: graphics.level, fps, diagnostics:performanceHud.stats, buffer: [canvas.width,canvas.height],
     }),
   }) });
   requestAnimationFrame(frame);
+  return { launch };
 }

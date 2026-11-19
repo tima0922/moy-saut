@@ -1,6 +1,8 @@
 import { STATIONS,WORKSHOP_TOOLS } from './workshop-spec.js';
 import { createWorkbench, loadBench, saveBench, torqueStages } from './workshop-state.js';
 import { loadCareer } from './career.js?v=08';
+import { createBayUI } from './workshop-bay-ui.js?v=040';
+import { repairHint } from './workshop-order.js?v=040';
 
 const $ = selector=>document.querySelector(selector);
 const stationButtons=[...document.querySelectorAll('[data-station]')];
@@ -18,22 +20,32 @@ let storage;
 try { storage=localStorage; } catch { /* The current workbench still works in memory. */ }
 const sessions=new Map();
 let current, selected, tool, filter='all', view, explode=false, isolate=false;
-let scene, sceneLoading;
+let practiceStation='engine';
+let scene, sceneStation, sceneLoading;
+const bay=createBayUI(storage,{
+  onBench:()=>setView('repair'),
+  onOrderChange:()=>{
+    if (view==='repair') setView(bay.order?.current?.bench ? 'repair' : 'bay');
+  },
+});
+const atBench=()=>view==='benches' || view==='repair';
 
 function selectGroup(buttons, key, value) {
   for (const button of buttons) button.setAttribute('aria-pressed',String(button.dataset[key]===value));
 }
 function session(id) {
+  if (view==='repair') return bay.order.bench(id);
   if (!sessions.has(id)) sessions.set(id,createWorkbench(id,loadBench(storage,id)));
   return sessions.get(id);
 }
 function persist() {
-  saveBench(storage,current.spec.id,current.state);
+  if (view==='repair') bay.save();
+  else saveBench(storage,current.spec.id,current.state);
 }
 function setAddress() {
-  if (view==='orders') appUrl.searchParams.set('view',view);
+  if (view!=='bay') appUrl.searchParams.set('view',view);
   else appUrl.searchParams.delete('view');
-  if (current && current.spec.id!=='engine') appUrl.searchParams.set('station',current.spec.id);
+  if (view==='benches' && current?.spec.id!=='engine') appUrl.searchParams.set('station',current.spec.id);
   else appUrl.searchParams.delete('station');
   history.replaceState(null,'',appUrl);
 }
@@ -160,6 +172,7 @@ function drawService() {
       ? ' · проход '+operation.stage+'/'+operation.stages : '');
     $('#torque-reading').textContent=dial.value+' Н·м';
   }
+  $('#torque-set').hidden=view!=='repair' || !tightening;
   const action=$('#operate-part'), blocker=$('#operate-blocker');
   action.textContent=operation.label ?? (current.state.phase==='strip' ? 'Снять деталь' : 'Установить деталь');
   action.disabled=!operation.ok || operation.tool!==tool;
@@ -172,8 +185,18 @@ function drawService() {
   inspection.textContent=inspected ?? '';
   inspection.dataset.fault=String(selected===current.spec.fault && !node.replaced);
   $('#replace-part').hidden=!(inspected && selected===current.spec.fault && !node.mounted && !node.replaced);
-  $('#next-part').disabled=!current.spec.parts.some(candidate=>candidate.id!==selected && current.plan(candidate.id).ok);
+  const hint=view==='repair' ? repairHint(current) : null;
+  const guide=$('#next-part');
+  guide.textContent=view==='repair' ? ({part:'К нужной детали',fixture:'К фиксатору',measure:'К измерению',replace:'К замене',
+    assemble:'К сборке',strip:'К разборке',verify:'К проверке',return:'К установке'})[hint?.action] ?? 'Подсказка' : 'Следующая';
+  guide.disabled=view==='repair' ? !hint || (hint.action==='part' && hint.part===selected && tool===next.tool)
+    : !current.spec.parts.some(candidate=>candidate.id!==selected && current.plan(candidate.id).ok);
   $('#job-stamp').hidden=!current.state.verified;
+  if (view==='repair') {
+    $('#transfer-status').textContent=current.state.verified ? 'Сборка проверена. Теперь агрегат можно вернуть к машине.'
+      : 'Агрегат закреплён на стенде. После сборки выполни проверку.';
+    $('#transfer-release').hidden=!current.state.verified;
+  }
 }
 function render() {
   selectGroup(phaseButtons,'phase',current.state.phase);
@@ -184,11 +207,11 @@ function render() {
   drawService();
   const all=current.spec.parts, count=all.filter(current.secure).length;
   $('#assembly-count').textContent=count+' / '+all.length+' закреплено';
-  for (const button of stationButtons) {
+  for (const button of view==='benches' ? stationButtons : []) {
     const active=session(button.dataset.station);
     button.querySelector('[data-summary]').textContent=active.state.verified ? 'ПРОВЕРЕНО' : active.spec.parts.length+' ДЕТ.';
   }
-  scene?.update(current.state,selected,current.plan(selected),{explode,isolate});
+  syncScene();
 }
 function selectPart(id) {
   if (!current.parts.has(id)) return;
@@ -199,14 +222,19 @@ function selectPart(id) {
   render();
 }
 function syncScene() {
-  if (!scene || !current || view!=='benches') return;
-  scene.use(current.spec);
-  render();
+  if (!scene || !current || !atBench()) return;
+  if (sceneStation!==current.spec.id) {
+    scene.use(current.spec);
+    sceneStation=current.spec.id;
+  }
+  scene.update(current.state,selected,current.plan(selected),{explode,isolate});
 }
 function openStation(id) {
+  if (view==='benches') practiceStation=id;
   current=session(id);
   selectGroup(stationButtons,'station',id);
-  selected=current.spec.parts.find(part=>current.plan(part.id).ok)?.id ?? current.spec.parts[0].id;
+  const hint=view==='repair' ? repairHint(current) : null;
+  selected=hint?.part ?? current.spec.parts.find(part=>current.plan(part.id).ok)?.id ?? current.spec.parts[0].id;
   tool=recommended();
   filter='all';
   explode=isolate=false;
@@ -220,14 +248,9 @@ function openStation(id) {
   makeInventory();
   setAddress();
   render();
-  syncScene();
 }
 function ensureScene() {
-  if (scene) {
-    syncScene();
-    return;
-  }
-  if (sceneLoading) return;
+  if (scene || sceneLoading) return;
   loading.textContent='Готовим модель…';
   sceneLoading=import('./workshop-view.js?v=038').then(({createWorkshopView})=>{
     scene=createWorkshopView({
@@ -244,17 +267,29 @@ function ensureScene() {
 }
 
 function setView(next) {
+  if (next==='repair' && !bay.order?.current?.bench) next='bay';
   view=next;
-  selectGroup(pageButtons,'view',view);
-  $('#work-benches').hidden=view!=='benches';
+  selectGroup(pageButtons,'view',view==='repair' ? 'bay' : view);
+  $('#work-bay').hidden=view!=='bay';
+  $('#work-benches').hidden=!atBench();
   $('#work-orders').hidden=view!=='orders';
-  $('#work-intro-text').textContent=view==='benches' ? 'Разбирай узлы KOVA S4, измеряй износ и проверяй результат сборки.'
-    : 'Выбери короткий заказ в районе или полный ремонт с подъёмником и моторным краном.';
+  $('#bench-picker').hidden=view==='repair';
+  $('#bench-transfer').hidden=view!=='repair';
+  $('#work-intro-text').textContent={bay:'Прими заказ на KOVA S4 и доведи ремонт до контрольного запуска.',
+    benches:'Учебная разборка двигателя, подвески и коробки передач.',repair:'Диагностика, разборка и сборка снятого агрегата.',
+    orders:'Короткие заказы в районе и отдельный классический ремонт.'}[view];
+  if (view==='bay') bay.enter();
+  else bay.leave();
+  if (atBench()) {
+    if (view==='repair') $('#transfer-order').textContent=bay.order.spec.title+' · KOVA S4';
+    openStation(view==='repair' ? bay.order.current.bench : practiceStation);
+    ensureScene();
+  }
   setAddress();
-  if (view==='benches') ensureScene();
+  window.scrollTo(0,0);
 }
 for (const button of pageButtons) button.onclick=()=>setView(button.dataset.view);
-for (const button of stationButtons) button.onclick=()=>openStation(button.dataset.station);
+for (const button of stationButtons) button.onclick=()=>{ if (view==='benches') openStation(button.dataset.station); };
 for (const button of phaseButtons) button.onclick=()=>{
   current.setPhase(button.dataset.phase);
   tool=recommended();
@@ -269,6 +304,10 @@ for (const button of filterButtons) button.onclick=()=>{
 };
 search.oninput=drawInventory;
 dial.oninput=()=>{ $('#torque-reading').textContent=dial.value+' Н·м'; };
+$('#torque-set').onclick=()=>{
+  const step=actionPlan();
+  if (step.ok && step.action==='tighten') { dial.value=step.moment; dial.oninput(); }
+};
 $('#view-explode').onclick=()=>{
   explode=!explode;
   if (explode) isolate=false;
@@ -283,6 +322,25 @@ $('#operate-blocker').onclick=()=>{
   if (blocker) selectPart(blocker);
 };
 $('#next-part').onclick=()=>{
+  if (view==='repair') {
+    const hint=repairHint(current);
+    if (!hint) return;
+    if (hint.part) selectPart(hint.part);
+    if (hint.action==='fixture') tool='fixture';
+    if (hint.action==='measure') tool='gauge';
+    if (hint.action==='replace') $('#replace-part').focus();
+    if (hint.action==='verify') $('#verify-job').focus();
+    if (hint.action==='return') $('#transfer-release').focus();
+    if (hint.action==='assemble' || hint.action==='strip') {
+      current.setPhase(hint.action);
+      const next=repairHint(current);
+      if (next?.part) selectPart(next.part);
+      if (next?.action==='fixture') tool='fixture';
+      persist();
+    }
+    render();
+    return;
+  }
   const next=current.spec.parts.find(candidate=>candidate.id!==selected && current.plan(candidate.id).ok);
   if (next) selectPart(next.id);
 };
@@ -293,7 +351,8 @@ $('#operate-part').onclick=()=>{
     : current.operate(selected,tool,Number(dial.value));
   if (result.ok) {
     persist();
-    if (tool!=='gauge' && tool!=='fixture') {
+    if (tool==='fixture') tool=recommended();
+    else if (tool!=='gauge') {
       tool=recommended();
       if (step.action==='remove' && !explode) isolate=true;
       else if (step.action==='install') isolate=false;
@@ -315,11 +374,14 @@ $('#verify-job').onclick=()=>{
   status(result);
   render();
 };
+$('#transfer-back').onclick=()=>setView('bay');
+$('#transfer-release').onclick=()=>{ if (bay.releaseBench()) setView('bay'); };
 $('#reset-bench').onclick=()=>{ reset.returnValue='';reset.showModal(); };
 reset.addEventListener('close',()=>{
-  if (reset.returnValue!=='reset') return;
+  if (reset.returnValue!=='reset' || !atBench()) return;
   const {id}=current.spec;
-  sessions.set(id,createWorkbench(id));
+  if (view==='repair') bay.order.resetBench(id);
+  else sessions.set(id,createWorkbench(id));
   openStation(id);
   persist();
   status({ok:true,message:'Стенд готов к началу нового ремонта.'});
@@ -328,6 +390,8 @@ reset.addEventListener('close',()=>{
 const completed=loadCareer(storage).completed;
 $('#order-count').textContent=completed ? 'Заказов закрыто: '+completed : 'Три типа заказов';
 const selectedStation=appUrl.searchParams.get('station');
-const initialView=appUrl.searchParams.get('view')==='orders' ? 'orders' : 'benches';
-openStation(Object.hasOwn(STATIONS,selectedStation) ? selectedStation : 'engine');
+const requestedView=appUrl.searchParams.get('view');
+if (Object.hasOwn(STATIONS,selectedStation)) practiceStation=selectedStation;
+const initialView=['orders','benches','repair'].includes(requestedView) ? requestedView
+  : Object.hasOwn(STATIONS,selectedStation) ? 'benches' : 'bay';
 setView(initialView);

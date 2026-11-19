@@ -43,7 +43,7 @@ export function createWorld(renderer,{districtMode=false,deferredEnvironment=fal
   // Self-contained offline procedural-PBR pack. TextureLoader is disabled in GPU-less geometry tests.
   const textureFiles=['garage_tile','painted_concrete','cast_aluminium','powder_steel','technical_rubber','machined_steel'];
   const loadedTextures=[];
-  const imageLoader=(typeof document.createElementNS==='function')?new THREE.TextureLoader():null;
+  const imageLoader=renderer && typeof document.createElementNS==='function' ? new THREE.TextureLoader() : null;
   function tex(family,channel,repeat=[1,1]){
     if(!imageLoader)return null;
     const asset=imageLoader.load(`./assets/pbr/${family}_${channel}.png`,undefined,undefined,error=>console.warn('PBR missing',family,channel,error));

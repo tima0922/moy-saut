@@ -5,17 +5,18 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#101211">
   <title>Мастерская — GARAGE LIFE</title>
-  <meta name="description" content="Стенды разборки и сборки KOVA. Двигатель, подвеска, механическая коробка и заказы мастерской.">
+  <meta name="description" content="Бокс KOVA S4. Сними двигатель или коробку, отремонтируй на стенде и проверь машину после установки.">
   <link rel="stylesheet" href="../2/fonts/fonts.css">
-  <link rel="stylesheet" href="./workshop.css?v=038">
-  <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js"}}</script>
+  <link rel="stylesheet" href="./workshop.css?v=040">
+  <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/addons/"}}</script>
 </head>
 <body>
   <header class="work-header">
     <div class="work-header-inner">
       <a class="work-brand" href="./" aria-label="GARAGE LIFE, главное меню"><i aria-hidden="true"></i> GARAGE <b>LIFE</b></a>
       <nav aria-label="Разделы мастерской">
-        <button type="button" data-view="benches" aria-pressed="true">Стенды</button>
+        <button type="button" data-view="bay" aria-pressed="true">Бокс</button>
+        <button type="button" data-view="benches" aria-pressed="false">Стенды</button>
         <button type="button" data-view="orders" aria-pressed="false">Заказы</button>
       </nav>
       <a class="work-back" href="./">В игру</a>
@@ -24,11 +25,65 @@
   <main class="work-main">
     <div class="work-intro">
       <h1>Мастерская</h1>
-      <p id="work-intro-text">Разбирай узлы KOVA S4, измеряй износ и проверяй результат сборки.</p>
+      <p id="work-intro-text">Прими заказ на KOVA S4 и доведи ремонт до контрольного запуска.</p>
     </div>
 
-    <section id="work-benches" aria-label="Ремонтные стенды">
-      <div class="bench-picker" role="group" aria-label="Выбор стенда">
+    <section id="work-bay" class="bay-layout" aria-label="Бокс KOVA S4">
+      <section class="work-panel bay-visual" aria-labelledby="bay-title">
+        <header class="bay-header">
+          <div><h2 id="bay-title">Бокс 01</h2><p>KOVA S4 · 2.0 · МКПП</p></div>
+          <div class="bay-views" role="group" aria-label="Ракурс бокса">
+            <button type="button" data-bay-view="overview" aria-pressed="true">Обзор</button>
+            <button type="button" data-bay-view="engine" aria-pressed="false">Капот</button>
+            <button type="button" data-bay-view="under" aria-pressed="false">Днище</button>
+            <button type="button" data-bay-view="stand" aria-pressed="false">Стенды</button>
+          </div>
+        </header>
+        <div class="bay-stage" id="bay-stage">
+          <canvas id="bay-canvas" aria-label="3D-бокс KOVA S4. Перетащи для обзора. E выполняет выделенное действие." tabindex="0" hidden></canvas>
+          <div id="bay-map" class="bay-map" aria-label="План бокса" hidden>
+            <span class="bay-map-lift" aria-hidden="true"></span>
+            <span class="bay-map-car" aria-hidden="true"><i></i></span>
+            <span class="bay-map-equipment bay-map-engine-stand" aria-hidden="true">Стенд двигателя</span>
+            <span class="bay-map-equipment bay-map-gear-stand" aria-hidden="true">Верстак МКПП</span>
+            <span class="bay-map-equipment bay-map-desk" aria-hidden="true">Диагностика</span>
+            <span class="bay-map-unit" data-map-engine aria-hidden="true">М</span>
+            <span class="bay-map-unit" data-map-gearbox aria-hidden="true">К</span>
+          </div>
+          <span id="bay-render-mode" class="bay-render-mode" role="status">Готовим бокс…</span>
+          <button type="button" id="bay-marker" class="bay-marker" hidden></button>
+        </div>
+        <p class="bay-camera-help" id="bay-camera-help">Перетащи сцену для обзора. Нажми на метку или используй карточку заказа.</p>
+      </section>
+
+      <aside class="work-panel bay-order" aria-label="Заказ-наряд">
+        <div id="bay-briefing">
+          <h2>Заказ-наряд</h2>
+          <p class="bay-muted">Выбери, с какой неисправностью принять KOVA S4.</p>
+          <div id="bay-orders" class="bay-order-list"></div>
+        </div>
+        <div id="bay-current" hidden>
+          <p class="work-label" id="bay-order-state">ЗАКАЗ В РАБОТЕ</p>
+          <h2 id="bay-order-title"></h2>
+          <p class="bay-muted" id="bay-order-detail"></p>
+          <ol class="bay-phases" id="bay-phases" aria-label="Этапы ремонта"></ol>
+          <div class="bay-next">
+            <div class="bay-next-top"><h3 id="bay-step-title"></h3><span id="bay-count"></span></div>
+            <p id="bay-step-hint"></p>
+            <button type="button" class="work-primary" id="bay-action"></button>
+          </div>
+          <dl class="bay-units" id="bay-units"></dl>
+          <p class="bay-result" id="bay-result" role="status" hidden></p>
+        </div>
+      </aside>
+    </section>
+
+    <section id="work-benches" aria-label="Ремонтные стенды" hidden>
+      <div class="bench-transfer work-panel" id="bench-transfer" hidden>
+        <div><strong id="transfer-order"></strong><p id="transfer-status"></p></div>
+        <div><button type="button" id="transfer-back">В бокс</button><button type="button" class="work-primary" id="transfer-release" hidden>Вернуться к установке</button></div>
+      </div>
+      <div class="bench-picker" id="bench-picker" role="group" aria-label="Выбор стенда">
         <button type="button" data-station="engine" aria-pressed="true"><strong>Двигатель</strong><small>ГБЦ, ГРМ и кривошипный механизм</small><span data-summary></span></button>
         <button type="button" data-station="suspension" aria-pressed="false"><strong>Подвеска</strong><small>Стойка, ступица и тормоз</small><span data-summary></span></button>
         <button type="button" data-station="gearbox" aria-pressed="false"><strong>Коробка передач</strong><small>Шестерни, валы и синхронизаторы</small><span data-summary></span></button>
@@ -88,7 +143,7 @@
           <div id="torque-box" class="torque-box" hidden>
             <div><label for="torque-value">Настройка ключа</label><output id="torque-reading" for="torque-value">10 Н·м</output></div>
             <input type="range" id="torque-value" min="5" max="130" value="10" step="1">
-            <small id="torque-target"></small>
+            <div><small id="torque-target"></small><button type="button" id="torque-set" hidden>Выставить по карте</button></div>
           </div>
           <p id="tool-status" class="tool-status"></p>
           <div class="operation-actions">
@@ -141,6 +196,6 @@
       </div>
     </form>
   </dialog>
-  <script type="module" src="./js/workshop.js?v=038"></script>
+  <script type="module" src="./js/workshop.js?v=040"></script>
 </body>
 </html>

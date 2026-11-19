@@ -1,4 +1,4 @@
-import { withAssetDeadline } from './asset-deadline.js?v=034';
+import { VEHICLE_ASSET_TIMEOUT, withAssetDeadline } from './asset-deadline.js?v=039';
 import * as THREE from 'three';
 import { windowTint } from './window-tint.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -76,7 +76,8 @@ function openCompartments(shell, hood, trunk) {
 export async function fitE39(world) {
   const { car, engine, box, mats } = world;
   const draco = new DRACOLoader().setDecoderPath('./vendor/draco/').setWorkerLimit(2);
-  const gltf = await withAssetDeadline(new GLTFLoader().setDRACOLoader(draco).loadAsync('./assets/bmw/e39.glb'))
+  const gltf = await withAssetDeadline(
+    new GLTFLoader().setDRACOLoader(draco).loadAsync('./assets/bmw/e39.glb'), VEHICLE_ASSET_TIMEOUT)
     .finally(() => draco.dispose());
   for (const child of [...car.children]) if (child !== engine) child.removeFromParent();
   buildS62(world);
@@ -101,6 +102,10 @@ export async function fitE39(world) {
       mesh.castShadow = false;
     }
   });
+
+  for (const part of ['hood','trunk','left','right','wheel0','wheel1','wheel2','wheel3']) {
+    if (!moving.has(part)) throw new Error('Missing '+part+' in e39.glb');
+  }
 
   function pivot(part, x, y, z, parent = car) {
     const group = new THREE.Group();
@@ -162,5 +167,6 @@ export async function fitE39(world) {
   for (const panel of [hood,trunk,...Object.values(carDoors)]) panel.traverse(o => {
     if (o.isMesh && o.material.name === 'body') paints.add(o.material);
   });
+  if (!paints.size) throw new Error('Missing body paint in e39.glb');
   return { windows, hood, trunk, batteryHatch, cargoLight, bayLight, carDoors, wheels, hubs, steering, paints, brakeLamps, lampMeshes };
 }

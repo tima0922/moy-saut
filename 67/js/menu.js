@@ -43,7 +43,7 @@ async function launch(request, dialog) {
   const status = message => { if (!slow) loading.textContent = message; };
   try {
     if (!game) {
-      const { boot } = await import('./drive.js?v=038');
+      const { boot } = await import('./drive.js?v=039');
       game = await boot();
     }
     await game.launch(request,status);
@@ -52,6 +52,8 @@ async function launch(request, dialog) {
     console.error('Garage launch failed',error);
     if (error?.code === 'webgl') {
       showBoot('error','3D недоступно в этом браузере','Нужен WebGL 2. В Chrome открой «Настройки → Система», включи аппаратное ускорение и перезапусти браузер. Меню и настройки игры доступны.');
+    } else if (error?.code==='car-model') {
+      showBoot('error','Не загрузилась модель '+error.model,'Нажми «Повторить запуск», чтобы загрузить кузов ещё раз.');
     } else {
       showBoot('error','Не удалось открыть заезд','Проверь соединение и попробуй снова. Если ошибка повторится, обнови страницу.');
     }

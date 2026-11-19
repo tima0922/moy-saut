@@ -1,4 +1,4 @@
-import { withAssetDeadline } from './asset-deadline.js?v=034';
+import { VEHICLE_ASSET_TIMEOUT, withAssetDeadline } from './asset-deadline.js?v=039';
 import * as THREE from 'three';
 import { windowTint } from './window-tint.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -55,7 +55,7 @@ function loft(parent, rows, material) {
   parent.add(mesh);
 }
 
-export function buildPitCar(world, id) {
+function buildPitCar(world, id) {
   const { box, cylinder, textPlane, mats } = world;
   const { belt, glass, engine: engineLabel } = profiles[id];
   const cls = id === 'cls';
@@ -244,13 +244,13 @@ const externalRigs = {
 };
 
 export async function loadPitCar(world, id) {
-  const visual = buildPitCar(world,id);
   const spec = externalRigs[id];
-  if (!spec) return visual;
+  if (!spec) throw new Error('Unknown detailed model: '+id);
   const draco = new DRACOLoader().setDecoderPath('./vendor/draco/');
   const loader = new GLTFLoader().setDRACOLoader(draco);
   try {
-    const { scene: shell } = await withAssetDeadline(loader.loadAsync('./assets/club/' + spec.file));
+    const { scene: shell } = await withAssetDeadline(loader.loadAsync('./assets/club/' + spec.file), VEHICLE_ASSET_TIMEOUT);
+    const visual = buildPitCar(world,id);
     const { root, hood, trunk, engine, battery, batteryHatch, bayLight, cargoLight, wheels, hubs } = visual;
     const parts = [];
     const paints = new Set();
@@ -269,8 +269,9 @@ export async function loadPitCar(world, id) {
       object.receiveShadow = true;
     });
     const named = new Set(parts.map(object => object.userData.garagePart));
-    if (!paints.size || !named.has('hood') || !named.has('trunk')) {
-      throw new Error('Missing paint or moving panels in ' + spec.file);
+    const required = ['hood','trunk','left','right','wheel0','wheel1','wheel2','wheel3'];
+    if (!paints.size || required.some(part=>!named.has(part))) {
+      throw new Error('Missing paint, panels or wheels in '+spec.file);
     }
     const keep = new Set([hood,trunk,engine,battery,batteryHatch,bayLight,cargoLight,...hubs]);
     for (const child of [...root.children]) if (!keep.has(child)) child.removeFromParent();
@@ -286,7 +287,7 @@ export async function loadPitCar(world, id) {
     }
     for (const key of ['hood','trunk','left','right']) pivots[key].position.set(...spec[key]);
     for (const [i, wheel] of wheels.entries()) {
-      if (named.has('wheel'+i)) wheel.clear();
+      wheel.clear();
       hubs[i].position.y = .30;
       pivots['wheel'+i] = wheel;
       pivots['hub'+i] = hubs[i];
@@ -295,10 +296,7 @@ export async function loadPitCar(world, id) {
     for (const object of parts) pivots[object.userData.garagePart]?.attach(object);
     visual.paints = [...paints];
     visual.windows = windows;
-    visual.external = true;
-    return visual;
-  } catch (error) {
-    console.warn('Car model could not load', id, error);
+    visual.asset = spec.file;
     return visual;
   } finally {
     draco.dispose();

@@ -2,12 +2,12 @@ import * as THREE from 'three';
 import { createWorld } from './world.js?v=037';
 import { GRAPHICS, createGraphicsController, createMaterialQuality, renderRatio, createRenderDiagnostics } from './graphics.js?v=033';
 import { batchSharedMeshes } from './garage-visuals.js?v=019';
-import { BATTERY, fitE39 } from './bmw.js?v=034';
+import { BATTERY, fitE39 } from './bmw.js?v=039';
 import { CLUB_ARENA, createRun, safeCircuitStart } from './drift.js?v=037';
 import { createDriftWorld, createTireEffects } from './drift-world.js?v=037';
 import { createDistrict, SHOP, TRACK } from './district.js?v=032';
 import { createPhysics, MODELS, STEP } from './vehicle.js?v=037';
-import { buildPitCar, loadPitCar } from './pit-cars.js?v=034';
+import { loadPitCar } from './pit-cars.js?v=039';
 import { FLEET, SETUPS, DRIFT_SETUP, savePit, setupFor } from './pit-save.js?v=037';
 import { CLUB_FLOOR, STALLS, STALL_Z, SERVICE_STEPS, createClubGarage } from './club-garage.js?v=037';
 import { portLayout,portWorld,portCourse,portMapView,outOfPort,PORT_GATES } from './port.js?v=032';
@@ -76,10 +76,9 @@ async function initialize(renderer) {
   const materials = createMaterialQuality();
   const performanceHud = createRenderDiagnostics(renderer,$('#render-diagnostics'));
   const district = createDistrict(world, renderer);
-  const fallback = buildPitCar(world,'sedan');
   world.car.clear();
-  const visuals = { sedan:fallback, touring:fallback };
-  let rig = fallback;
+  const visuals = Object.create(null);
+  let rig;
   const vehicleLoads = new Map();
   const distantCars = new Map();
   const reflectionMap = createCarReflections();
@@ -90,17 +89,22 @@ async function initialize(renderer) {
       reflectiveMaterials.set(material,material.envMap);
     }
   }
-  trackCarMaterials(fallback);
 
   function loadVisual(id) {
     if (id==='touring') id='sedan';
     if (!vehicleLoads.has(id)) {
       const load = id==='sedan' ? loadBMW() : loadPitCar(world,id);
       vehicleLoads.set(id,load.then(visual=>{
+        trackCarMaterials(visual);
+        updateCarReflections();
+        applyMaterialQuality();
         visuals[id] = visual;
         if (id==='sedan') visuals.touring = visual;
-        trackCarMaterials(visual);
         return visual;
+      }).catch(cause=>{
+        vehicleLoads.delete(id);
+        throw Object.assign(new Error('Не удалось загрузить модель '+FLEET[id].name,{cause}),
+          {code:'car-model',model:FLEET[id].name});
       }));
     }
     return vehicleLoads.get(id);
@@ -109,13 +113,8 @@ async function initialize(renderer) {
   async function loadBMW() {
     const root = new THREE.Group(), engine = new THREE.Group();
     root.add(engine);
-    try {
-      const visual = await fitE39({...world,car:root,engine});
-      return {...visual,root,engine};
-    } catch (error) {
-      console.warn('Detailed E39 model could not load',error);
-      return fallback;
-    }
+    const visual = await fitE39({...world,car:root,engine});
+    return {...visual,root,engine,asset:'e39.glb'};
   }
   function applyMaterialQuality() {
     materials.apply(profile.lite || performanceHud.simpleMaterials,textureAnisotropy(),renderer.capabilities.getMaxAnisotropy());
@@ -777,6 +776,7 @@ async function initialize(renderer) {
   }
 
   function bestReplay() {
+    if (!rig) return;
     const main = { car,wheels:rig.wheels,hubs:rig.hubs };
     const options = [
       previousBest,
@@ -970,7 +970,7 @@ async function initialize(renderer) {
 
   function setCar(id) {
     cancelManual();
-    rig.root.removeFromParent();
+    rig?.root.removeFromParent();
     rig = visuals[id];
     if (id==='sedan' || id==='touring') rig.hubs[0].add(wheelMark);
     rig.root.visible = true;
@@ -1156,7 +1156,8 @@ async function initialize(renderer) {
     stadium.markGate(-1);
     raceWorld().fx.reset();
     padEffects.reset();
-    setCar(next === 'shift' ? job().car : id);
+    if (next==='menu') cancelManual();
+    else setCar(next==='shift' ? job().car : id);
     camera.position.copy(player);
     camera.lookAt(0, 1.2, next === 'pit' ? STALL_Z : .4);
     resetCamera();
@@ -2590,7 +2591,7 @@ async function initialize(renderer) {
       lesson:lesson ? {...lesson.state,id:lessonId} : null, ghost:ghostSession ? {best:ghostSession.state.best?.duration,visible:!!ghostView?.root.visible} : null,
       model: modelId, onCircuit, orbit: { ...orbitState }, camera: camera.position.toArray(),
       manual: manual ? { ...manual, wheelRemoved: !!removedWheel } : null, fleet: Object.keys(STALLS),
-      workshopAsset: equipment, trackAsset: trackKit, importedCars: Object.values(visuals).filter(visual=>visual.external).length, setup: garageMode() ? { ...condition() } : null,
+      workshopAsset: equipment, trackAsset: trackKit, modelAsset: rig?.asset ?? null, importedCars: Object.keys(FLEET).filter(id=>visuals[id]?.asset).length, setup: garageMode() ? { ...condition() } : null,
       assets: { ...world.assetStatus }, render: { ...renderer.info.render }, graphics: graphicsMode,
       activeColliders:physics.activeColliderCount(), activeRouteWorlds:[...routeWorlds.keys()], reducedCar:false,
       graphicsLevel: graphics.level, fps, diagnostics:performanceHud.stats, buffer: [canvas.width,canvas.height],

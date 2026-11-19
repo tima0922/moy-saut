@@ -1,3 +1,5 @@
+export const VEHICLE_ASSET_TIMEOUT = 40_000;
+
 export async function withAssetDeadline(load, timeout = 14000) {
   let timer;
   try {

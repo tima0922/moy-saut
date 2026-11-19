@@ -1,0 +1,22 @@
+.classic-workshop-link,#loader-workshop {
+  display:inline-flex;
+  justify-content:center;
+  align-items:center;
+  min-height:34px;
+  padding:6px 10px;
+  border:1px solid #aacf7868;
+  border-radius:6px;
+  color:#dcf4a1;
+  background:#233017;
+  text-decoration:none;
+  white-space:nowrap;
+  font-size:13px;
+  font-weight:700;
+}
+.classic-workshop-link:hover,#loader-workshop:hover { background:#334723; }
+#loader-workshop[hidden] { display:none; }
+.welcome h1 { max-width:10ch; }
+.welcome h1 em { color:#dff76b; }
+@media(max-width:760px) {
+  .classic-workshop-link { padding:5px 6px; font-size:11px; }
+}

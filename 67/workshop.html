@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101211">
+  <title>Мастерская — GARAGE LIFE</title>
+  <meta name="description" content="Стенды разборки и сборки KOVA. Двигатель, подвеска, механическая коробка и заказы мастерской.">
+  <link rel="stylesheet" href="../2/fonts/fonts.css">
+  <link rel="stylesheet" href="./workshop.css?v=038">
+  <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js"}}</script>
+</head>
+<body>
+  <header class="work-header">
+    <div class="work-header-inner">
+      <a class="work-brand" href="./" aria-label="GARAGE LIFE, главное меню"><i aria-hidden="true"></i> GARAGE <b>LIFE</b></a>
+      <nav aria-label="Разделы мастерской">
+        <button type="button" data-view="benches" aria-pressed="true">Стенды</button>
+        <button type="button" data-view="orders" aria-pressed="false">Заказы</button>
+      </nav>
+      <a class="work-back" href="./">В игру</a>
+    </div>
+  </header>
+  <main class="work-main">
+    <div class="work-intro">
+      <h1>Мастерская</h1>
+      <p id="work-intro-text">Разбирай узлы KOVA S4, измеряй износ и проверяй результат сборки.</p>
+    </div>
+
+    <section id="work-benches" aria-label="Ремонтные стенды">
+      <div class="bench-picker" role="group" aria-label="Выбор стенда">
+        <button type="button" data-station="engine" aria-pressed="true"><strong>Двигатель</strong><small>ГБЦ, ГРМ и кривошипный механизм</small><span data-summary></span></button>
+        <button type="button" data-station="suspension" aria-pressed="false"><strong>Подвеска</strong><small>Стойка, ступица и тормоз</small><span data-summary></span></button>
+        <button type="button" data-station="gearbox" aria-pressed="false"><strong>Коробка передач</strong><small>Шестерни, валы и синхронизаторы</small><span data-summary></span></button>
+      </div>
+      <div class="workbench">
+        <aside class="work-panel inventory" aria-labelledby="inventory-title">
+          <div class="inventory-head">
+            <h2 id="inventory-title">Детали</h2>
+            <label class="sr-only" for="part-search">Поиск детали</label>
+            <input type="search" id="part-search" placeholder="Найти деталь" autocomplete="off">
+            <div class="filter-tabs" role="group" aria-label="Показывать детали">
+              <button type="button" data-filter="all" aria-pressed="true">Все</button>
+              <button type="button" data-filter="available" aria-pressed="false">Доступные</button>
+              <button type="button" data-filter="removed" aria-pressed="false">Лоток <span id="tray-count">0</span></button>
+            </div>
+          </div>
+          <div id="inventory-list" class="inventory-list"></div>
+          <p id="inventory-empty" hidden>В этой выборке пока нет деталей.</p>
+        </aside>
+
+        <section class="work-panel model-panel" aria-labelledby="model-title">
+          <div class="model-bar">
+            <div><h2 id="model-title">Двигатель</h2><p id="model-spec"></p></div>
+            <div class="phase-tabs" role="group" aria-label="Этап работы">
+              <button type="button" data-phase="strip" aria-pressed="true">Разборка</button>
+              <button type="button" data-phase="assemble" aria-pressed="false">Сборка</button>
+            </div>
+          </div>
+          <div class="model-stage" id="model-stage">
+            <canvas id="workshop-3d" aria-label="Интерактивная модель узла" hidden></canvas>
+            <canvas id="workshop-diagram" aria-label="Интерактивная схема узла" hidden></canvas>
+            <span id="model-loading" role="status">Готовим модель…</span>
+            <span id="bolt-marker" class="bolt-marker" aria-hidden="true" hidden></span>
+            <div class="stage-label"><span id="view-kind"></span><span id="assembly-count"></span></div>
+            <div class="stage-actions" role="group" aria-label="Управление моделью">
+              <button type="button" id="view-explode" aria-pressed="false">Взрыв-схема</button>
+              <button type="button" id="view-isolate" aria-pressed="false">Изолировать</button>
+              <button type="button" id="zoom-out" aria-label="Отдалить">−</button>
+              <button type="button" id="zoom-in" aria-label="Приблизить">+</button>
+              <button type="button" id="view-reset" aria-label="Вернуть камеру" title="Вернуть камеру">⟲</button>
+            </div>
+          </div>
+          <div class="model-footer"><a class="jump-inventory" href="#inventory-title">Список деталей</a><span>Тяни модель для вращения · нажми на деталь, чтобы выбрать</span><a href="./credits.html">Авторы и материалы</a></div>
+        </section>
+
+        <aside class="work-panel service" aria-labelledby="service-title">
+          <div class="service-top">
+            <div><p id="part-group" class="work-label"></p><h2 id="service-title"></h2></div>
+            <span id="part-state" class="part-state"></span>
+          </div>
+          <p id="part-description" class="part-description"></p>
+          <div class="part-fasteners" id="fastener-status" hidden>
+            <div><strong>Крепёж</strong><span id="fastener-count"></span></div>
+            <div id="fastener-grid" aria-label="Состояние крепежа"></div>
+          </div>
+          <div id="tools-list" class="work-tools" role="group" aria-label="Инструменты"></div>
+          <div id="torque-box" class="torque-box" hidden>
+            <div><label for="torque-value">Настройка ключа</label><output id="torque-reading" for="torque-value">10 Н·м</output></div>
+            <input type="range" id="torque-value" min="5" max="130" value="10" step="1">
+            <small id="torque-target"></small>
+          </div>
+          <p id="tool-status" class="tool-status"></p>
+          <div class="operation-actions">
+            <button type="button" id="operate-part" class="work-primary">Снять деталь</button>
+            <button type="button" id="operate-blocker" hidden>К детали</button>
+            <button type="button" id="next-part">Следующая</button>
+          </div>
+          <p id="part-inspection" class="inspection" hidden></p>
+          <button type="button" id="replace-part" hidden>Взять новую деталь</button>
+          <p id="service-result" class="service-result" role="status" hidden></p>
+
+          <div class="bench-job">
+            <div class="job-title"><h3>Заказ стенда</h3><span id="job-stamp" hidden>Проверено</span></div>
+            <p id="job-symptoms"></p>
+            <details><summary>Подсказка по диагностике</summary><p id="job-hint"></p></details>
+            <div class="job-actions"><button type="button" id="verify-job">Проверить сборку</button><button type="button" id="reset-bench">Сбросить стенд</button></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="work-orders" aria-labelledby="orders-title" hidden>
+      <h2 id="orders-title">Заказы в боксе</h2>
+      <div class="order-grid">
+        <article class="order-card">
+          <p class="work-label">РАЙОН 01</p>
+          <h3>Быстрые заказы</h3>
+          <p>Проверь тормоза, давление шин или аккумулятор. После ремонта испытай машину на тестовой полосе.</p>
+          <p id="order-count" class="order-status"></p>
+          <a class="work-primary" href="./?workshop=orders">Взять заказ в боксе</a>
+        </article>
+        <article class="order-card">
+          <p class="work-label">KOVA S4</p>
+          <h3>Полный ремонт двигателя</h3>
+          <p>Диагностика, снятие двигателя краном, ремонт на стенде и контрольный запуск.</p>
+          <p class="order-status">Тут же можно продолжить сохранённый заказ.</p>
+          <a class="work-primary" href="./classic.html">Открыть полный заказ</a>
+        </article>
+      </div>
+    </section>
+    <noscript><p>Включи JavaScript для работы со стендами.</p></noscript>
+  </main>
+
+  <dialog id="reset-workbench" aria-labelledby="reset-title">
+    <form method="dialog">
+      <h2 id="reset-title">Сбросить этот стенд?</h2>
+      <p>Детали вернутся на места, а заказ стенда начнётся заново.</p>
+      <div class="operation-actions">
+        <button value="cancel" autofocus>Отмена</button><button class="work-primary" value="reset">Сбросить стенд</button>
+      </div>
+    </form>
+  </dialog>
+  <script type="module" src="./js/workshop.js?v=038"></script>
+</body>
+</html>

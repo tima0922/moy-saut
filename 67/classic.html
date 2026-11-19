@@ -5,27 +5,28 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#161e22">
   <meta name="description" content="GARAGE LIFE — браузерный 3D-симулятор автомеханика. Диагностируй, разбери, отремонтируй и собери двигатель своими руками.">
-  <title>GARAGE LIFE — твоя мастерская</title>
+  <title>Полный ремонт двигателя — GARAGE LIFE</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%23192226'/%3E%3Cpath d='M13 44V22l19-10 19 10v22H40V30H24v14Z' fill='%23f48145'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./workshop-order.css?v=038">
   <script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.js","three/addons/":"./vendor/three/addons/","@tweenjs/tween.js":"./vendor/tween/tween.esm.js"}}</script>
 </head>
 <body>
   <canvas id="scene" aria-label="Трёхмерная мастерская. Управление: WASD, мышь, E — действие."></canvas>
   <div class="vignette" aria-hidden="true"></div>
-  <div id="loader" class="loader"><div class="loader-logo">GARAGE<span> LIFE</span><i>®</i></div><div class="loading-track"><span></span></div><p id="loading-text">Открываем мастерскую…</p></div>
+  <div id="loader" class="loader"><div class="loader-logo">GARAGE<span> LIFE</span><i>®</i></div><div class="loading-track"><span></span></div><p id="loading-text">Открываем бокс…</p><a id="loader-workshop" href="./workshop.html" hidden>К стендам мастерской</a></div>
   <header class="topbar">
-    <a class="brand" href="#" aria-label="GARAGE LIFE"><span class="brand-symbol" data-icon="garage"></span><span>GARAGE<span class="brand-light"> LIFE</span><sup>®</sup></span></a>
+    <a class="brand" href="./workshop.html?view=orders" aria-label="GARAGE LIFE, вернуться в мастерскую"><span class="brand-symbol" data-icon="garage"></span><span>GARAGE<span class="brand-light"> LIFE</span><sup>®</sup></span></a>
     <div class="location"><span class="status-dot"></span> МАСТЕРСКАЯ <span class="slash">/</span> <strong>БОКС 01</strong></div>
-    <div class="top-actions"><span class="alpha">BETA <b>0.5</b></span><button id="telemetry-shortcut" class="icon-button" title="Диагностика / I" aria-label="Диагностика / I" data-icon="scan"></button><button id="saves-open" class="icon-button" title="Слоты сохранений" aria-label="Слоты сохранений" data-icon="clipboard"></button><button id="save-now" class="icon-button" title="Сохранить" aria-label="Сохранить" data-icon="clipboard"></button><button id="pause-button" class="icon-button" title="Пауза" aria-label="Пауза" data-icon="power"></button><button id="sound-toggle" class="icon-button" title="Включить звук" aria-label="Включить звук" data-icon="volumeOff"></button><button id="settings-open" class="icon-button" title="Настройки" aria-label="Настройки" data-icon="settings"></button><button id="help-open" class="icon-button" title="Управление" aria-label="Управление" data-icon="help"></button></div>
+    <div class="top-actions"><a class="classic-workshop-link" href="./workshop.html?view=orders">Мастерская</a><button id="telemetry-shortcut" class="icon-button" title="Диагностика / I" aria-label="Диагностика / I" data-icon="scan"></button><button id="saves-open" class="icon-button" title="Слоты сохранений" aria-label="Слоты сохранений" data-icon="clipboard"></button><button id="save-now" class="icon-button" title="Сохранить" aria-label="Сохранить" data-icon="clipboard"></button><button id="pause-button" class="icon-button" title="Пауза" aria-label="Пауза" data-icon="power"></button><button id="sound-toggle" class="icon-button" title="Включить звук" aria-label="Включить звук" data-icon="volumeOff"></button><button id="settings-open" class="icon-button" title="Настройки" aria-label="Настройки" data-icon="settings"></button><button id="help-open" class="icon-button" title="Управление" aria-label="Управление" data-icon="help"></button></div>
   </header>
 
   <main id="welcome" class="welcome">
-    <div class="eyebrow"><span></span> СИМУЛЯТОР АВТОМЕХАНИКА</div>
-    <h1>ХОРОШИЙ РЕМОНТ<br>НАЧИНАЕТСЯ<br><em>С ТЕБЯ.</em></h1>
-    <p class="welcome-description">Твоя мастерская. Один автомобиль.<br>От первой ошибки до ровного звука мотора.</p>
+    <div class="eyebrow"><span></span> ПОЛНЫЙ ЗАКАЗ KOVA S4</div>
+    <h1>РЕМОНТ<br><em>ДВИГАТЕЛЯ</em></h1>
+    <p class="welcome-description">Считай ошибки, сними двигатель краном и проверь результат после сборки.</p>
     <div class="welcome-selectors"><label for="mode-choice">РЕЖИМ ИГРЫ</label><select id="mode-choice"><option value="guided">Обучение</option></select><label for="job-choice">РЕМОНТ</label><select id="job-choice" disabled><option value="ignition">Зажигание</option></select></div>
-    <button id="landscape-welcome" type="button" class="landscape-button">⛶ ПОЛНЫЙ ЭКРАН · ГОРИЗОНТАЛЬНО</button><button id="start-button" class="primary-button"><span data-icon="power"></span> НАЧАТЬ СМЕНУ <span class="button-arrow">↗</span></button>
+    <button id="landscape-welcome" type="button" class="landscape-button">⛶ ПОЛНЫЙ ЭКРАН · ГОРИЗОНТАЛЬНО</button><button id="start-button" class="primary-button"><span data-icon="power"></span> НАЧАТЬ ЗАКАЗ <span class="button-arrow">↗</span></button>
     <div class="welcome-actions"><button id="continue-button" class="secondary-button hidden">ПРОДОЛЖИТЬ РЕМОНТ ↗</button><button id="saves-menu" class="secondary-button">СОХРАНЕНИЯ / ИМПОРТ ↗</button><button id="profile-menu" class="secondary-button">ПРОФИЛЬ / СТАТИСТИКА ↗</button></div><div class="welcome-meta"><span><i></i> 3D ОТ ПЕРВОГО ЛИЦА</span><span>26 СЪЁМНЫХ УЗЛОВ</span></div>
     <div class="welcome-controls"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> движение</span><span><span data-icon="mouse"></span> осмотр</span></div>
   </main>
@@ -69,6 +70,6 @@
   <div id="modal-backdrop" class="modal-backdrop hidden">
     <section id="modal" class="modal glass" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button id="modal-close" class="modal-close icon-button" aria-label="Закрыть" data-icon="close"></button><div id="modal-body"></div></section>
   </div>
-  <script type="module" src="./js/main.js"></script>
+  <script type="module" src="./js/main.js?v=038"></script>
 </body>
 </html>

@@ -46,7 +46,7 @@ try{
   world=createWorld(renderer);
 }catch(error){
   $('#loading-text').textContent='Не удалось запустить WebGL. Открой игру в Chrome или Edge с аппаратным ускорением.';
-  $('.loading-track').style.display='none';console.error(error);throw error;
+  $('.loading-track').style.display='none';$('#loader-workshop').hidden=false;console.error(error);throw error;
 }
 const scene=world.scene;
 const camera=new THREE.PerspectiveCamera(53,innerWidth/innerHeight,.05,65);
@@ -536,7 +536,6 @@ $('#sound-toggle').addEventListener('click',toggleAudio);
 $('#journal-open').addEventListener('click',()=>{
   openModal(`<div class="eyebrow">ЗАКАЗ № 001 · ${MODES[session.mode]}</div><h2 id="modal-title">Журнал ремонта</h2><p>Выполнено ${session.index} из ${session.steps.length} действий. ${session.diagnosed?JOBS[session.jobId].fault:'Диагностика не выполнена.'}</p><ul class="journal-list">${session.history.map((h,i)=>`<li><span class="check">✓</span><span>${i+1}. ${session.steps.find(s=>s.id===h.id)?.title||h.id} <small>${new Date(h.at).toLocaleTimeString('ru-RU')}</small></span></li>`).join('')}</ul><p class="help-note">Снято узлов: ${session.removed.size}. Ошибочных гипотез: ${session.wrongHypotheses}.</p>`);
 });
-$('.brand').addEventListener('click',e=>{e.preventDefault();if(session.started)toast('Ты уже в мастерской. Продолжай текущий заказ.');});
 
 // First-person controls. Pointer Lock has a drag-look fallback for embedded browsers.
 let carTap=null;

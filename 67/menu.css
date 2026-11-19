@@ -213,6 +213,7 @@ body:not(.is-playing) #scene { visibility: hidden; }
   min-height: 133px;
   padding: 15px 16px;
   text-align: left;
+  text-decoration: none;
   border: 1px solid var(--menu-border);
   border-radius: 10px;
   background: var(--menu-surface);

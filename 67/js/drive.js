@@ -1165,6 +1165,7 @@ async function initialize(renderer) {
     $('#welcome').hidden = state !== 'menu';
     $('.location').hidden = hud.hidden = state === 'menu';
     $('#menu').hidden = state === 'menu';
+    $('#menu').textContent = state==='shift' ? 'Мастерская' : 'Меню';
     notice.hidden = true;
     updateJob();
     updateControls();
@@ -1709,7 +1710,10 @@ async function initialize(renderer) {
     fpsTime = fpsFrames = 0;
     if (document.hidden && dirty) persistPit();
   });
-  $('#menu').onclick = () => { $('#menu').blur(); show('menu'); };
+  $('#menu').onclick = () => {
+    if (state==='shift') location.assign('./workshop.html?view=orders');
+    else { $('#menu').blur(); show('menu'); }
+  };
   document.addEventListener('garage-setting', ({detail}) => {
     if (detail==='open') {
       clearControls();

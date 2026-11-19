@@ -43,7 +43,7 @@ async function launch(request, dialog) {
   const status = message => { if (!slow) loading.textContent = message; };
   try {
     if (!game) {
-      const { boot } = await import('./drive.js?v=037');
+      const { boot } = await import('./drive.js?v=038');
       game = await boot();
     }
     await game.launch(request,status);
@@ -112,7 +112,6 @@ async function updateNeonPreview() {
 }
 
 $('#start').onclick = () => void launch({mode:'garage'});
-$('#shift').onclick = () => void launch({mode:'workshop'});
 $('#online-open').onclick = () => void launch({mode:'online'});
 retry.onclick = () => { if (lastLaunch) void launch(lastLaunch); };
 
@@ -167,4 +166,6 @@ $('#duo-form').onsubmit = event => {
   void launch({ mode:'duo', car:duoFirst.value, second:duoSecond.value, competition:duoMode.value,
     route:$('#duo-route').value, contacts:$('#duo-contact').value==='on' },duo);
 };
-if (/^\d{6}$/.test(new URLSearchParams(location.search).get('room') ?? '')) void launch({mode:'invite'});
+const entry = new URLSearchParams(location.search);
+if (/^\d{6}$/.test(entry.get('room') ?? '')) void launch({mode:'invite'});
+else if (entry.get('workshop')==='orders') void launch({mode:'workshop'});
